@@ -2,12 +2,30 @@ const { supabase } = require('../db/supabase');
 const { askGroq } = require('../ai/groq');
 const { notifyLead } = require('./notifier');
 
+// ─── ANTI-BAN: delays aleatorios entre respuestas ───────────────────────────
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+const randomDelay = () => sleep(Math.floor(Math.random() * 2000) + 1000); // 1-3 seg
+
+// Contador simple en memoria para limitar mensajes por hora por contacto
+const messageCount = new Map();
+const MAX_MESSAGES_PER_HOUR = 20;
+
+const isRateLimited = (contactPhone) => {
+  const key = `${contactPhone}_${Math.floor(Date.now() / 3600000)}`; // key por hora
+  const count = messageCount.get(key) || 0;
+  if (count >= MAX_MESSAGES_PER_HOUR) return true;
+  messageCount.set(key, count + 1);
+  return false;
+};
+// ─────────────────────────────────────────────────────────────────────────────
+
 const handleIncomingMessage = async (client, msg, sessionId, userId) => {
   const contactPhone = msg.from.replace('@c.us', '');
   const contactName = msg._data?.notifyName || contactPhone;
   const text = msg.body?.trim() || '';
 
   if (!text) return;
+  if (msg.from.includes('@g.us')) return; // ignorar grupos
 
   // 1. Buscar o crear conversación
   let { data: conversation } = await supabase
@@ -31,7 +49,6 @@ const handleIncomingMessage = async (client, msg, sessionId, userId) => {
       .single();
     conversation = newConv;
   } else {
-    // Actualizar nombre y timestamp
     await supabase
       .from('conversations')
       .update({
@@ -51,21 +68,41 @@ const handleIncomingMessage = async (client, msg, sessionId, userId) => {
     timestamp: new Date().toISOString(),
   });
 
-  // Emitir mensaje al frontend en tiempo real
+  // Emitir al frontend en tiempo real
   if (global.io) {
     global.io.to(`session_${sessionId}`).emit('new_message', {
       conversationId: conversation.id,
       message: { content: text, direction: 'inbound', sent_by: 'human', timestamp: new Date() },
     });
+    // Actualizar lista de conversaciones
+    global.io.to(`session_${sessionId}`).emit('conversation_updated', {
+      conversationId: conversation.id,
+      contactName,
+      lastMessage: text,
+      unreadCount: (conversation.unread_count || 0) + 1,
+    });
   }
 
-  // 3. Si la conversación está en blacklist o bot desactivado, no responder
+  // 3. Si está en blacklist o bot desactivado → solo notificar al dueño sin responder
   if (conversation.is_blacklisted || !conversation.bot_active) {
-    console.log(`Bot desactivado para ${contactPhone}, mensaje ignorado.`);
+    console.log(`Bot desactivado para ${contactPhone}`);
+    if (global.io) {
+      global.io.to(`session_${sessionId}`).emit('manual_needed', {
+        conversationId: conversation.id,
+        contactName,
+        message: text,
+      });
+    }
     return;
   }
 
-  // 4. Obtener business del usuario
+  // 4. Anti-ban: rate limit
+  if (isRateLimited(contactPhone)) {
+    console.log(`Rate limit alcanzado para ${contactPhone}`);
+    return;
+  }
+
+  // 5. Obtener business
   const { data: business } = await supabase
     .from('businesses')
     .select('*')
@@ -74,10 +111,11 @@ const handleIncomingMessage = async (client, msg, sessionId, userId) => {
 
   if (!business) return;
 
-  // 5. Verificar horario de atención
+  // 6. Verificar horario
   const now = new Date();
-  const localHour = new Date(now.toLocaleString('en-US', { timeZone: business.timezone })).getHours();
-  const dayOfWeek = new Date(now.toLocaleString('en-US', { timeZone: business.timezone })).getDay();
+  const localTime = new Date(now.toLocaleString('en-US', { timeZone: business.timezone || 'America/Bogota' }));
+  const localHour = localTime.getHours();
+  const dayOfWeek = localTime.getDay();
   const activeDays = business.active_days || [1, 2, 3, 4, 5];
   const startHour = parseInt(business.active_hours_start?.split(':')[0] || '8');
   const endHour = parseInt(business.active_hours_end?.split(':')[0] || '18');
@@ -86,19 +124,19 @@ const handleIncomingMessage = async (client, msg, sessionId, userId) => {
   const isActiveDay = activeDays.includes(dayOfWeek);
 
   if (!isWithinHours || !isActiveDay) {
-    const awayMsg = business.away_msg || 'Gracias por escribirnos. Te respondemos en horario de atención.';
-    await sendBotMessage(client, msg.from, awayMsg, conversation.id, sessionId);
+    await randomDelay(); // anti-ban
+    await sendBotMessage(client, msg.from, business.away_msg || 'Gracias por escribirnos. Te respondemos en horario de atención 🙏', conversation.id, sessionId);
     return;
   }
 
-  // 6. Obtener knowledge base del negocio
+  // 7. Knowledge base
   const { data: knowledge } = await supabase
     .from('knowledge_base')
     .select('title, content, type')
     .eq('business_id', business.id)
     .eq('is_active', true);
 
-  // 7. Obtener historial de conversación (últimos 10 mensajes)
+  // 8. Historial (últimos 10 mensajes para contexto)
   const { data: history } = await supabase
     .from('messages')
     .select('content, direction, sent_by')
@@ -108,16 +146,19 @@ const handleIncomingMessage = async (client, msg, sessionId, userId) => {
 
   const chatHistory = (history || []).reverse();
 
-  // 8. Generar respuesta con Groq
+  // 9. IA con Groq
   const { reply, isLeadHot, tokensUsed } = await askGroq(text, business, knowledge || [], chatHistory);
 
-  // 9. Si detecta lead caliente, notificar
+  // 10. Lead caliente → notificar
   if (isLeadHot) {
     await supabase.from('conversations').update({ is_lead: true }).eq('id', conversation.id);
-    await notifyLead(business, contactPhone, contactName, text, conversation.id, client, sessionId);
+    await notifyLead(business, contactPhone, contactName, text, conversation.id, client);
   }
 
-  // 10. Enviar respuesta del bot
+  // 11. Anti-ban: delay antes de responder (simula humano escribiendo)
+  await randomDelay();
+
+  // 12. Enviar respuesta
   await sendBotMessage(client, msg.from, reply, conversation.id, sessionId, tokensUsed);
 };
 
@@ -125,7 +166,6 @@ const sendBotMessage = async (client, to, text, conversationId, sessionId, token
   try {
     await client.sendMessage(to, text);
 
-    // Guardar en DB
     await supabase.from('messages').insert({
       conversation_id: conversationId,
       content: text,
@@ -135,7 +175,6 @@ const sendBotMessage = async (client, to, text, conversationId, sessionId, token
       groq_tokens_used: tokensUsed,
     });
 
-    // Emitir al frontend
     if (global.io) {
       global.io.to(`session_${sessionId}`).emit('new_message', {
         conversationId,
@@ -143,7 +182,7 @@ const sendBotMessage = async (client, to, text, conversationId, sessionId, token
       });
     }
   } catch (err) {
-    console.error('Error enviando mensaje del bot:', err);
+    console.error('Error enviando mensaje:', err);
   }
 };
 

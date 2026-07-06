@@ -41,6 +41,8 @@ app.use('/api/knowledge', knowledgeRoutes);
 app.use('/api/admin', adminRoutes);
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok', time: new Date() }));
+// Keepalive para Render free tier (UptimeRobot pinga este endpoint cada 14 min)
+app.get('/ping', (req, res) => res.send('pong 🤖'));
 
 // Socket.io conexión
 io.on('connection', (socket) => {
