@@ -11,6 +11,7 @@ const conversationsRoutes = require('./routes/conversations');
 const businessRoutes = require('./routes/business');
 const knowledgeRoutes = require('./routes/knowledge');
 const adminRoutes = require('./routes/admin');
+const appointmentsRoutes = require('./routes/appointments');
 
 const { SessionManager } = require('./whatsapp/sessionManager');
 const { checkRenewals } = require('./jobs/renewalChecker');
@@ -39,6 +40,7 @@ app.use('/api/conversations', conversationsRoutes);
 app.use('/api/business', businessRoutes);
 app.use('/api/knowledge', knowledgeRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/appointments', appointmentsRoutes);
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok', time: new Date() }));
 // Keepalive para Render free tier (UptimeRobot pinga este endpoint cada 14 min)

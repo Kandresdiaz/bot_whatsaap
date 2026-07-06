@@ -2,6 +2,7 @@ const { supabase } = require('../db/supabase');
 const { askGroq } = require('../ai/groq');
 const { notifyLead } = require('./notifier');
 const { MessageMedia } = require('whatsapp-web.js');
+const { handleAppointmentFlow } = require('./appointmentFlow');
 
 // ─── ANTI-BAN: delays aleatorios entre respuestas ───────────────────────────
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
@@ -130,7 +131,11 @@ const handleIncomingMessage = async (client, msg, sessionId, userId) => {
     return;
   }
 
-  // 7. Knowledge base
+  // 7. Intentar flujo de agendamiento primero
+  const tookOverFlow = await handleAppointmentFlow(client, msg, conversation, business);
+  if (tookOverFlow) return; // el flujo de citas tomó control, no responde la IA
+
+  // 8. Knowledge base
   const { data: knowledge } = await supabase
     .from('knowledge_base')
     .select('title, content, type')
