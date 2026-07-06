@@ -3,41 +3,44 @@ const Groq = require('groq-sdk');
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 const buildKnowledgeContext = (knowledge) => {
-  if (!knowledge?.length) return 'No hay información específica del negocio disponible.';
+  if (!knowledge?.length) return null;
 
   return knowledge.map((k) => {
-    if (k.type === 'faq') return `P: ${k.title}\nR: ${k.content}`;
-    return `[${k.title}]\n${k.content}`;
-  }).join('\n\n');
+    if (k.type === 'faq') return `PREGUNTA FRECUENTE:\nP: ${k.title}\nR: ${k.content}`;
+    if (k.type === 'image') return `IMAGEN/PRODUCTO [${k.title}]:\nDescripción: ${k.content}\nURL imagen: ${k.file_url || 'sin url'}`;
+    return `[${k.title.toUpperCase()}]:\n${k.content}`;
+  }).join('\n\n---\n\n');
 };
 
 const buildSystemPrompt = (business, knowledge) => {
   const knowledgeText = buildKnowledgeContext(knowledge);
 
-  return `Eres el asistente virtual de "${business.name}", un negocio de ${business.category || 'servicios'} ubicado en ${business.city || 'Colombia'}.
+  const hasKnowledge = !!knowledgeText;
 
-Tu personalidad es: ${business.bot_personality || 'profesional y amigable'}.
+  return `Eres el asistente de WhatsApp de "${business.name}" (${business.category || 'negocio'} en ${business.city || 'Colombia'}).
+Tu tono es: ${business.bot_personality || 'amigable y profesional'}.
 
-=== INFORMACIÓN DEL NEGOCIO ===
+${hasKnowledge ? `=== INFORMACIÓN OFICIAL DEL NEGOCIO ===
 ${knowledgeText}
-================================
+=== FIN DE LA INFORMACIÓN ===` : '=== AÚN NO HAY INFORMACIÓN CARGADA DEL NEGOCIO ==='}
 
-REGLAS IMPORTANTES:
-1. Responde ÚNICAMENTE con información del negocio proporcionada arriba.
-2. Si te preguntan algo que no está en la información, di: "Para eso te puedo comunicar con alguien del equipo. ¿Me das un momento?"
-3. Sé natural y conversacional, como un empleado real, NO como un robot.
-4. Respuestas cortas y directas. Máximo 3-4 oraciones por respuesta.
-5. Usa emojis ocasionalmente para ser más cercano 😊
-6. Si el cliente quiere comprar, contratar, agendar o pagar, incluye exactamente la frase: [LEAD_CALIENTE] al FINAL de tu respuesta (oculta del cliente).
-7. Idioma: español colombiano natural.
-8. Nunca inventes precios ni información que no esté en el contexto.`;
+REGLAS ESTRICTAS (MUY IMPORTANTE):
+1. SOLO responde con información que esté TEXTUALMENTE en la sección "INFORMACIÓN OFICIAL DEL NEGOCIO".
+2. Si te preguntan algo que NO está en esa información, di EXACTAMENTE: "Esa información no la tengo disponible, pero puedo comunicarte con alguien del equipo para que te ayude 😊"
+3. NUNCA inventes precios, fechas, disponibilidad ni ningún dato.
+4. NUNCA digas que tienes información que no tienes.
+5. Si hay una imagen disponible para el producto preguntado, indica: [ENVIAR_IMAGEN: nombre_del_producto]
+6. Respuestas cortas y claras, máximo 4 líneas.
+7. Si el cliente menciona querer comprar, contratar, pagar o agendar, escribe al final: [LEAD_CALIENTE]
+8. Usa emojis con moderación, máximo 2 por mensaje.
+9. Habla en español natural colombiano.
+10. Saluda solo si es el primer mensaje del historial.`;
 };
 
 const askGroq = async (userMessage, business, knowledge, chatHistory = []) => {
   try {
     const systemPrompt = buildSystemPrompt(business, knowledge);
 
-    // Construir historial de mensajes para contexto
     const messages = [
       { role: 'system', content: systemPrompt },
       ...chatHistory.slice(-8).map((m) => ({
@@ -50,26 +53,33 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = []) => {
     const response = await groq.chat.completions.create({
       model: 'llama-3.1-8b-instant',
       messages,
-      max_tokens: 300,
-      temperature: 0.7,
+      max_tokens: 350,
+      temperature: 0.3, // MUY bajo para evitar alucinaciones
     });
 
-    const fullReply = response.choices[0]?.message?.content || 'Disculpa, en este momento no puedo responder. ¿Puedes intentarlo de nuevo?';
+    const fullReply = response.choices[0]?.message?.content || 
+      'Disculpa, no puedo responder en este momento. Intenta de nuevo en un momento 🙏';
     const tokensUsed = response.usage?.total_tokens || 0;
 
-    // Detectar si es lead caliente
     const isLeadHot = fullReply.includes('[LEAD_CALIENTE]');
+    // Detectar si hay imagen para enviar
+    const imageMatch = fullReply.match(/\[ENVIAR_IMAGEN:\s*(.+?)\]/i);
+    const imageName = imageMatch ? imageMatch[1].trim() : null;
 
-    // Limpiar la etiqueta del mensaje que verá el cliente
-    const reply = fullReply.replace('[LEAD_CALIENTE]', '').trim();
+    // Limpiar marcadores del mensaje visible
+    const reply = fullReply
+      .replace('[LEAD_CALIENTE]', '')
+      .replace(/\[ENVIAR_IMAGEN:[^\]]+\]/gi, '')
+      .trim();
 
-    return { reply, isLeadHot, tokensUsed };
+    return { reply, isLeadHot, tokensUsed, imageName };
   } catch (err) {
-    console.error('Error con Groq:', err);
+    console.error('Error con Groq:', err.message);
     return {
       reply: 'Disculpa, tengo un problema técnico momentáneo. Por favor intenta de nuevo en unos minutos 🙏',
       isLeadHot: false,
       tokensUsed: 0,
+      imageName: null,
     };
   }
 };

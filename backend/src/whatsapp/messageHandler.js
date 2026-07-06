@@ -1,6 +1,7 @@
 const { supabase } = require('../db/supabase');
 const { askGroq } = require('../ai/groq');
 const { notifyLead } = require('./notifier');
+const { MessageMedia } = require('whatsapp-web.js');
 
 // ─── ANTI-BAN: delays aleatorios entre respuestas ───────────────────────────
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
@@ -155,10 +156,26 @@ const handleIncomingMessage = async (client, msg, sessionId, userId) => {
     await notifyLead(business, contactPhone, contactName, text, conversation.id, client);
   }
 
-  // 11. Anti-ban: delay antes de responder (simula humano escribiendo)
+  // 11. Anti-ban: delay antes de responder
   await randomDelay();
 
-  // 12. Enviar respuesta
+  // 12. Si hay imagen para enviar, buscarla en knowledge base y enviarla
+  if (imageName) {
+    const imageItem = (knowledge || []).find(k =>
+      k.type === 'image' && k.title.toLowerCase().includes(imageName.toLowerCase()) && k.file_url
+    );
+    if (imageItem?.file_url) {
+      try {
+        const media = await MessageMedia.fromUrl(imageItem.file_url, { unsafeMime: true });
+        await client.sendMessage(msg.from, media, { caption: imageItem.content });
+        await sleep(800);
+      } catch (imgErr) {
+        console.error('Error enviando imagen:', imgErr.message);
+      }
+    }
+  }
+
+  // 13. Enviar respuesta de texto
   await sendBotMessage(client, msg.from, reply, conversation.id, sessionId, tokensUsed);
 };
 

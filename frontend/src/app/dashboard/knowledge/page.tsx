@@ -8,8 +8,8 @@ export default function KnowledgePage() {
   const { user } = useAuth();
   const [businessId, setBusinessId] = useState<string | null>(null);
   const [items, setItems] = useState<KBItem[]>([]);
-  const [tab, setTab] = useState<'text' | 'faq' | 'file'>('text');
-  const [form, setForm] = useState({ title: '', content: '', question: '', answer: '' });
+  const [tab, setTab] = useState<'text' | 'faq' | 'file' | 'image'>('text');
+  const [form, setForm] = useState({ title: '', content: '', question: '', answer: '', imageUrl: '', imageDesc: '' });
   const [loading, setLoading] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL;
@@ -58,6 +58,19 @@ export default function KnowledgePage() {
     setLoading(false);
   };
 
+  const addImage = async () => {
+    if (!businessId || !form.title || !form.imageUrl) return;
+    setLoading(true);
+    await fetch(`${BACKEND}/api/knowledge/${businessId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'image', title: form.title, content: form.imageDesc || form.title, file_url: form.imageUrl }),
+    });
+    setForm(p => ({ ...p, title: '', imageUrl: '', imageDesc: '' }));
+    await loadItems(businessId);
+    setLoading(false);
+  };
+
   const uploadPdf = async () => {
     if (!businessId || !file) return;
     setLoading(true);
@@ -83,8 +96,8 @@ export default function KnowledgePage() {
     setItems(prev => prev.filter(i => i.id !== id));
   };
 
-  const typeIcon = { text: '📝', faq: '❓', file: '📄' };
-  const typeLabel = { text: 'Texto', faq: 'FAQ', file: 'PDF' };
+  const typeIcon = { text: '📝', faq: '❓', file: '📄', image: '🖼️' };
+  const typeLabel = { text: 'Texto', faq: 'FAQ', file: 'PDF', image: 'Imagen' };
 
   return (
     <div>
@@ -106,7 +119,7 @@ export default function KnowledgePage() {
 
           {/* Tabs */}
           <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
-            {(['text', 'faq', 'file'] as const).map(t => (
+            {(['text', 'faq', 'file', 'image'] as const).map(t => (
               <button
                 key={t}
                 className={`btn ${tab === t ? 'btn-primary' : 'btn-ghost'}`}
@@ -150,12 +163,30 @@ export default function KnowledgePage() {
               >
                 <div style={{ fontSize: 32, marginBottom: 8 }}>{file ? '📄' : '📁'}</div>
                 <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-                  {file ? file.name : 'Haz clic para subir un PDF (menú, catálogo, etc.)'}
+                  {file ? file.name : 'Haz clic para subir un PDF (menú, catálogo, tarifas, etc.)'}
                 </p>
                 <input id="pdf-input" type="file" accept=".pdf" style={{ display: 'none' }} onChange={e => setFile(e.target.files?.[0] || null)} />
               </div>
               <button className="btn btn-primary" onClick={uploadPdf} disabled={loading || !file || !businessId}>
                 {loading ? 'Procesando PDF...' : 'Subir y procesar PDF'}
+              </button>
+            </div>
+          )}
+
+          {tab === 'image' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ background: 'rgba(124,58,237,0.08)', border: '1px solid rgba(124,58,237,0.2)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: 'var(--text-muted)' }}>
+                💡 El bot enviará automáticamente la imagen cuando el cliente pregunte por este producto/propiedad.
+              </div>
+              <input className="input" placeholder="Nombre (ej: Apartamento 301, Pizza Especial, Corte de Cabello)" value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))} />
+              <input className="input" placeholder="URL de la imagen (sube a Imgur, Google Drive, etc.)" value={form.imageUrl} onChange={e => setForm(p => ({ ...p, imageUrl: e.target.value }))} />
+              {form.imageUrl && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={form.imageUrl} alt="preview" style={{ width: '100%', maxHeight: 180, objectFit: 'cover', borderRadius: 10, border: '1px solid var(--border)' }} onError={e => (e.currentTarget.style.display = 'none')} />
+              )}
+              <textarea className="input" placeholder="Descripción detallada (precio, características, disponibilidad...)" value={form.imageDesc} onChange={e => setForm(p => ({ ...p, imageDesc: e.target.value }))} style={{ minHeight: 80 }} />
+              <button className="btn btn-primary" onClick={addImage} disabled={loading || !businessId || !form.title || !form.imageUrl}>
+                {loading ? 'Guardando...' : '🖼️ Guardar imagen'}
               </button>
             </div>
           )}
