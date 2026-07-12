@@ -40,7 +40,7 @@ export default function KnowledgePage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ type: 'text', title: form.title, content: form.content }),
     });
-    setForm({ title: '', content: '', question: '', answer: '' });
+    setForm({ title: '', content: '', question: '', answer: '', imageUrl: '', imageDesc: '' });
     await loadItems(businessId);
     setLoading(false);
   };
@@ -53,7 +53,7 @@ export default function KnowledgePage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ type: 'faq', title: form.question, content: form.answer }),
     });
-    setForm({ title: '', content: '', question: '', answer: '' });
+    setForm({ title: '', content: '', question: '', answer: '', imageUrl: '', imageDesc: '' });
     await loadItems(businessId);
     setLoading(false);
   };
