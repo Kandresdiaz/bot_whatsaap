@@ -21,7 +21,7 @@ const server = http.createServer(app);
 
 const io = new Server(server, {
   cors: {
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    origin: '*',
     methods: ['GET', 'POST'],
   },
 });
@@ -29,7 +29,12 @@ const io = new Server(server, {
 // Guardar io globalmente para usarlo en otros módulos
 global.io = io;
 
-app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:3000' }));
+// Aceptar múltiples orígenes en producción (Vercel y Localhost)
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-admin-key']
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
