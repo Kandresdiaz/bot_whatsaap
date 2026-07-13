@@ -1,6 +1,5 @@
-// Notificar al admin cuando hay un lead caliente
-// Recibe el client directamente para evitar circular dependency
-const notifyLead = async (business, contactPhone, contactName, lastMessage, conversationId, client) => {
+// Notificar al admin cuando hay un lead caliente (Baileys)
+const notifyLead = async (business, contactPhone, contactName, lastMessage, conversationId, sock, fromJid) => {
   try {
     const adminPhone = process.env.ADMIN_WHATSAPP;
     if (!adminPhone) return;
@@ -13,8 +12,8 @@ const notifyLead = async (business, contactPhone, contactName, lastMessage, conv
       `💬 Dijo: "${lastMessage}"\n\n` +
       `👉 Ver conversación:\n${dashboardUrl}`;
 
-    const adminChatId = `${adminPhone}@c.us`;
-    await client.sendMessage(adminChatId, message);
+    const adminChatId = `${adminPhone}@s.whatsapp.net`;
+    await sock.sendMessage(adminChatId, { text: message });
     console.log(`✅ Lead notificado al admin: ${contactPhone}`);
   } catch (err) {
     console.error('Error notificando lead:', err);

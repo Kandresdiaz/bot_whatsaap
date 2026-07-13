@@ -1,155 +1,164 @@
-const { Client, LocalAuth } = require('whatsapp-web.js');
-const qrcode = require('qrcode');
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, makeCacheableSignalKeyStore } = require('@whiskeysockets/baileys');
+const { Boom } = require('@hapi/boom');
+const pino = require('pino');
+const path = require('path');
+const fs = require('fs');
 const { supabase } = require('../db/supabase');
 const { handleIncomingMessage } = require('./messageHandler');
 
-// Mapa en memoria: sessionId -> client de whatsapp-web.js
-const activeSessions = new Map();
+// Mapa de sesiones activas: userId → socket de Baileys
+const sessions = new Map();
 
-const createWhatsAppClient = (sessionId, userId) => {
-  const client = new Client({
-    authStrategy: new LocalAuth({ clientId: sessionId }),
-    puppeteer: {
-      headless: true,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
-        '--no-first-run',
-        '--no-zygote',
-        '--single-process',
-        '--disable-gpu',
-      ],
+const SESSIONS_DIR = path.join(__dirname, '../../sessions');
+if (!fs.existsSync(SESSIONS_DIR)) fs.mkdirSync(SESSIONS_DIR, { recursive: true });
+
+const logger = pino({ level: 'silent' }); // silenciar logs internos de Baileys
+
+const createSession = async (userId, businessId, io) => {
+  if (sessions.has(userId)) {
+    console.log(`Sesión ya existe para ${userId}`);
+    return;
+  }
+
+  const sessionDir = path.join(SESSIONS_DIR, userId);
+  if (!fs.existsSync(sessionDir)) fs.mkdirSync(sessionDir, { recursive: true });
+
+  const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
+  const { version } = await fetchLatestBaileysVersion();
+
+  const sock = makeWASocket({
+    version,
+    auth: {
+      creds: state.creds,
+      keys: makeCacheableSignalKeyStore(state.keys, logger),
     },
+    logger,
+    printQRInTerminal: false,
+    browser: ['BotWA', 'Chrome', '120.0'],
+    generateHighQualityLinkPreview: false,
+    syncFullHistory: false,
   });
 
-  // QR generado
-  client.on('qr', async (qr) => {
-    console.log(`QR generado para sesión ${sessionId}`);
-    try {
-      const qrDataUrl = await qrcode.toDataURL(qr);
-      // Guardar QR en DB
+  // ─── Guardar credenciales cuando cambian ────────────────────────────────
+  sock.ev.on('creds.update', saveCreds);
+
+  // ─── QR Code ────────────────────────────────────────────────────────────
+  sock.ev.on('connection.update', async (update) => {
+    const { connection, lastDisconnect, qr } = update;
+
+    if (qr) {
+      console.log(`QR generado para usuario ${userId}`);
+      // Emitir QR al frontend vía Socket.io
+      if (io) io.to(`user_${userId}`).emit('qr', { qr });
+
+      // Guardar QR en BD para que el frontend lo muestre
       await supabase
         .from('whatsapp_sessions')
-        .update({ qr_code: qrDataUrl, status: 'connecting' })
-        .eq('id', sessionId);
+        .upsert({ user_id: userId, qr_code: qr, status: 'qr_ready' }, { onConflict: 'user_id' });
+    }
 
-      // Emitir QR al frontend via Socket.io
-      if (global.io) {
-        global.io.to(`session_${sessionId}`).emit('qr', { sessionId, qr: qrDataUrl });
+    if (connection === 'open') {
+      const phone = sock.user?.id?.split(':')[0] || '';
+      console.log(`✅ WhatsApp conectado: ${phone} (usuario: ${userId})`);
+
+      sessions.set(userId, { sock, businessId });
+
+      await supabase
+        .from('whatsapp_sessions')
+        .upsert({
+          user_id: userId,
+          phone_number: phone,
+          status: 'connected',
+          qr_code: null,
+          connected_at: new Date().toISOString(),
+        }, { onConflict: 'user_id' });
+
+      if (io) io.to(`user_${userId}`).emit('connected', { phone });
+    }
+
+    if (connection === 'close') {
+      const code = (lastDisconnect?.error instanceof Boom)
+        ? lastDisconnect.error.output?.statusCode
+        : 0;
+
+      const shouldReconnect = code !== DisconnectReason.loggedOut;
+      console.log(`Conexión cerrada para ${userId}. Código: ${code}. Reconectar: ${shouldReconnect}`);
+
+      sessions.delete(userId);
+
+      await supabase
+        .from('whatsapp_sessions')
+        .upsert({ user_id: userId, status: shouldReconnect ? 'reconnecting' : 'disconnected' }, { onConflict: 'user_id' });
+
+      if (io) io.to(`user_${userId}`).emit('disconnected', { shouldReconnect });
+
+      // Auto-reconectar si no fue logout intencional
+      if (shouldReconnect) {
+        console.log(`Reconectando ${userId} en 5 segundos...`);
+        setTimeout(() => createSession(userId, businessId, io), 5000);
       }
-    } catch (err) {
-      console.error('Error guardando QR:', err);
     }
   });
 
-  // Listo y autenticado
-  client.on('ready', async () => {
-    console.log(`✅ WhatsApp conectado - sesión ${sessionId}`);
-    const info = client.info;
-    const phone = info?.wid?.user || 'unknown';
+  // ─── Mensajes entrantes ──────────────────────────────────────────────────
+  sock.ev.on('messages.upsert', async ({ messages, type }) => {
+    if (type !== 'notify') return;
 
-    await supabase
-      .from('whatsapp_sessions')
-      .update({
-        status: 'connected',
-        phone_number: phone,
-        qr_code: null,
-        last_seen: new Date().toISOString(),
-      })
-      .eq('id', sessionId);
+    for (const msg of messages) {
+      if (msg.key.fromMe) continue; // ignorar mensajes propios
+      if (!msg.message) continue;
 
-    if (global.io) {
-      global.io.to(`session_${sessionId}`).emit('session_ready', { sessionId, phone });
+      const sessionData = sessions.get(userId);
+      if (!sessionData) continue;
+
+      try {
+        await handleIncomingMessage(sock, msg, userId, businessId);
+      } catch (err) {
+        console.error(`Error procesando mensaje de ${userId}:`, err.message);
+      }
     }
   });
 
-  // Mensaje entrante
-  client.on('message', async (msg) => {
-    if (msg.fromMe) return; // Ignorar mensajes enviados por nosotros
-    await handleIncomingMessage(client, msg, sessionId, userId);
-  });
-
-  // Desconectado
-  client.on('disconnected', async (reason) => {
-    console.log(`❌ WhatsApp desconectado: ${sessionId} - ${reason}`);
-    activeSessions.delete(sessionId);
-
-    await supabase
-      .from('whatsapp_sessions')
-      .update({ status: 'disconnected' })
-      .eq('id', sessionId);
-
-    if (global.io) {
-      global.io.to(`session_${sessionId}`).emit('session_disconnected', { sessionId, reason });
-    }
-  });
-
-  return client;
+  sessions.set(userId, { sock, businessId });
+  return sock;
 };
 
-const SessionManager = {
-  // Iniciar una nueva sesión (genera QR)
-  async startSession(sessionId, userId) {
-    if (activeSessions.has(sessionId)) {
-      return { success: true, message: 'Sesión ya activa' };
-    }
-
-    const client = createWhatsAppClient(sessionId, userId);
-    activeSessions.set(sessionId, client);
-
-    await client.initialize();
-    return { success: true, message: 'Sesión iniciando, espera el QR' };
-  },
-
-  // Cerrar sesión
-  async stopSession(sessionId) {
-    const client = activeSessions.get(sessionId);
-    if (client) {
-      await client.destroy();
-      activeSessions.delete(sessionId);
-    }
-
-    await supabase
-      .from('whatsapp_sessions')
-      .update({ status: 'disconnected' })
-      .eq('id', sessionId);
-
-    return { success: true };
-  },
-
-  // Obtener cliente activo
-  getClient(sessionId) {
-    return activeSessions.get(sessionId);
-  },
-
-  // Restaurar sesiones activas al reiniciar el servidor
-  async restoreAllSessions() {
-    const { data: sessions } = await supabase
-      .from('whatsapp_sessions')
-      .select('id, user_id, status')
-      .eq('status', 'connected');
-
-    if (!sessions?.length) return;
-
-    console.log(`Restaurando ${sessions.length} sesiones...`);
-    for (const session of sessions) {
-      await this.startSession(session.id, session.user_id);
-    }
-  },
-
-  // Enviar mensaje desde el dueño (intervención humana)
-  async sendMessage(sessionId, phone, message) {
-    const client = activeSessions.get(sessionId);
-    if (!client) return { success: false, error: 'Sesión no activa' };
-
-    const chatId = phone.includes('@c.us') ? phone : `${phone}@c.us`;
-    await client.sendMessage(chatId, message);
-    return { success: true };
-  },
-
-  activeSessions,
+const disconnectSession = async (userId) => {
+  const session = sessions.get(userId);
+  if (!session) return;
+  await session.sock.logout();
+  sessions.delete(userId);
+  await supabase
+    .from('whatsapp_sessions')
+    .upsert({ user_id: userId, status: 'disconnected', phone_number: null }, { onConflict: 'user_id' });
 };
 
-module.exports = { SessionManager };
+const getSession = (userId) => sessions.get(userId);
+
+const restoreSessions = async (io) => {
+  const { data: activeSessions } = await supabase
+    .from('whatsapp_sessions')
+    .select('user_id, business_id')
+    .eq('status', 'connected');
+
+  if (!activeSessions?.length) return;
+  console.log(`Restaurando ${activeSessions.length} sesión(es) activa(s)...`);
+
+  for (const session of activeSessions) {
+    const sessionDir = path.join(SESSIONS_DIR, session.user_id);
+    if (fs.existsSync(sessionDir)) {
+      await createSession(session.user_id, session.business_id, io);
+      await new Promise(r => setTimeout(r, 2000)); // esperar entre sesiones
+    }
+  }
+};
+
+// Función para enviar mensaje desde el dashboard (intervención manual)
+const sendMessage = async (userId, to, text) => {
+  const session = sessions.get(userId);
+  if (!session) throw new Error('Sesión no conectada');
+  const jid = to.includes('@') ? to : `${to}@s.whatsapp.net`;
+  await session.sock.sendMessage(jid, { text });
+};
+
+module.exports = { createSession, disconnectSession, getSession, restoreSessions, sendMessage };
