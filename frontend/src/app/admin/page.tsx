@@ -18,7 +18,7 @@ export default function AdminPage() {
   const [activeTab, setActiveTab] = useState<'clients' | 'payments'>('clients');
   const [modal, setModal] = useState<{ type: string; client?: Client } | null>(null);
   const [payForm, setPayForm] = useState({ months: 1, plan: 'starter', amount: 75000, method: 'nequi', note: '' });
-  const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL;
+  const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://bot-whatsaap-tkjd.onrender.com';
   const ADMIN_KEY = typeof window !== 'undefined' ? localStorage.getItem('wbot_token') || '' : '';
 
   const headers = { 'Content-Type': 'application/json', 'x-admin-key': process.env.NEXT_PUBLIC_ADMIN_KEY || 'admin123' };

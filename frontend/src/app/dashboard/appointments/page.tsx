@@ -33,7 +33,7 @@ export default function AppointmentsPage() {
   const [businessId, setBusinessId] = useState<string | null>(null);
   const [filter, setFilter] = useState('all');
   const [loading, setLoading] = useState(true);
-  const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL;
+  const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://bot-whatsaap-tkjd.onrender.com';
 
   useEffect(() => {
     if (!user) return;

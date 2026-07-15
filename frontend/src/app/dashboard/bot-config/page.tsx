@@ -24,7 +24,7 @@ export default function BotConfigPage() {
   });
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(false);
-  const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL;
+  const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://bot-whatsaap-tkjd.onrender.com';
 
   useEffect(() => {
     if (!user) return;

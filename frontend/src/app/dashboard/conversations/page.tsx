@@ -33,7 +33,7 @@ export default function ConversationsPage() {
   const [search, setSearch] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const socketRef = useRef<Socket | null>(null);
-  const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL;
+  const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://bot-whatsaap-tkjd.onrender.com';
 
   // Cargar sesión del usuario
   useEffect(() => {

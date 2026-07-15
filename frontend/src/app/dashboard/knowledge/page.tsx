@@ -12,7 +12,7 @@ export default function KnowledgePage() {
   const [form, setForm] = useState({ title: '', content: '', question: '', answer: '', imageUrl: '', imageDesc: '' });
   const [loading, setLoading] = useState(false);
   const [file, setFile] = useState<File | null>(null);
-  const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL;
+  const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://bot-whatsaap-tkjd.onrender.com';
 
   useEffect(() => {
     if (!user) return;

@@ -10,7 +10,7 @@ export default function ConnectPage() {
   const [qr, setQr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('disconnected');
-  const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL;
+  const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://bot-whatsaap-tkjd.onrender.com';
 
   // Obtener estado actual de la sesión
   useEffect(() => {

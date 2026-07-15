@@ -7,7 +7,7 @@ export default function DashboardHome() {
   const { user } = useAuth();
   const [session, setSession] = useState<any>(null);
   const [stats, setStats] = useState({ conversations: 0, messages: 0, leads: 0 });
-  const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL;
+  const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://bot-whatsaap-tkjd.onrender.com';
 
   useEffect(() => {
     if (!user) return;
