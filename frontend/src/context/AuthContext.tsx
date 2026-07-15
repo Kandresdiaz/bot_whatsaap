@@ -53,9 +53,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       localStorage.setItem('wbot_token', data.token);
       setUser(data.user);
       if (data.user.is_admin) {
-        router.push('/admin');
+        window.location.href = '/admin';
       } else {
-        router.push('/dashboard');
+        window.location.href = '/dashboard';
       }
     }
     return data;
