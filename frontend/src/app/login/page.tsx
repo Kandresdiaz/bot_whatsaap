@@ -13,11 +13,16 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
     setError('');
-    const result = await login(email, password);
-    if (!result.success) {
-      setError(result.error || 'Error al iniciar sesión');
+    try {
+      const result = await login(email, password);
+      if (!result.success) {
+        setError(result.error || 'Error al iniciar sesión. Verifica tus datos.');
+      }
+    } catch (err: any) {
+      setError(`Error de conexión con el servidor backend: ${err.message || err}. Asegúrate de que el backend en Render esté activo.`);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (
