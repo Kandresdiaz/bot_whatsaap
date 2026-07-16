@@ -29,15 +29,24 @@ const io = new Server(server, {
 // Guardar io globalmente para usarlo en otros módulos
 global.io = io;
 
-// Habilitar CORS de manera súper agresiva para evitar bloqueos del navegador
+// Habilitar CORS dinámico que lee y devuelve el origen de la petición entrante
 app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
+  const origin = req.headers.origin;
+  
+  // Si viene un origen, lo devolvemos tal cual para dar acceso al navegador
+  if (origin) {
+    res.header('Access-Control-Allow-Origin', origin);
+  } else {
+    res.header('Access-Control-Allow-Origin', '*');
+  }
+  
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-admin-key');
+  res.header('Access-Control-Allow-Credentials', 'true');
   
-  // Responder inmediatamente a las peticiones pre-flight OPTIONS
+  // Interceptar OPTIONS pre-flight y responder con 200 inmediatamente
   if (req.method === 'OPTIONS') {
-    return res.sendStatus(200);
+    return res.status(200).end();
   }
   next();
 });
