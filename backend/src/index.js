@@ -29,12 +29,18 @@ const io = new Server(server, {
 // Guardar io globalmente para usarlo en otros módulos
 global.io = io;
 
-// Aceptar múltiples orígenes en producción (Vercel y Localhost)
-app.use(cors({
-  origin: '*',
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-admin-key']
-}));
+// Habilitar CORS de manera súper agresiva para evitar bloqueos del navegador
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-admin-key');
+  
+  // Responder inmediatamente a las peticiones pre-flight OPTIONS
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
