@@ -12,7 +12,7 @@ const knowledgeRoutes = require('./routes/knowledge');
 const adminRoutes = require('./routes/admin');
 const appointmentsRoutes = require('./routes/appointments');
 
-const { SessionManager } = require('./whatsapp/sessionManager');
+const { restoreSessions } = require('./whatsapp/sessionManager');
 const { checkRenewals } = require('./jobs/renewalChecker');
 
 const app = express();
@@ -86,7 +86,7 @@ cron.schedule('0 9 * * *', async () => {
 });
 
 // Restaurar sesiones activas al iniciar
-SessionManager.restoreAllSessions().then(() => {
+restoreSessions(io).then(() => {
   console.log('Sesiones restauradas');
 });
 
