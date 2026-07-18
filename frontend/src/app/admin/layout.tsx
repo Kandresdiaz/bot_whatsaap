@@ -37,6 +37,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           ))}
         </nav>
         <div style={{ padding: '16px 12px', borderTop: '1px solid var(--border)' }}>
+          <Link href="/dashboard" className="nav-link" style={{ color: 'var(--accent-light)', marginBottom: 8 }}>
+            <span>🤖</span> Modo Bot (Demo)
+          </Link>
           <button className="nav-link" onClick={logout} style={{ color: '#ef4444' }}>
             <span>🚪</span> Cerrar sesión
           </button>

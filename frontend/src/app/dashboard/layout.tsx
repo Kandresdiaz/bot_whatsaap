@@ -55,6 +55,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <span className="badge badge-purple">{user.plan}</span>
             </div>
           </div>
+          {user.is_admin && (
+            <Link href="/admin" className="nav-link" style={{ color: '#22d3ee', marginBottom: 8 }}>
+              <span>🛡️</span> Volver a Admin
+            </Link>
+          )}
           <button className="nav-link" onClick={logout} style={{ color: '#ef4444' }}>
             <span>🚪</span> Cerrar sesión
           </button>
