@@ -27,50 +27,71 @@ export default function ConnectPage() {
 
   // Socket.io para QR en tiempo real
   useEffect(() => {
-    if (!session?.id) return;
+    if (!user?.id) return;
     const socket = io(BACKEND!);
-    socket.emit('join_session', session.id);
+    socket.emit('join_session', user.id);
 
     socket.on('qr', ({ qr: qrData }) => {
       setQr(qrData);
       setStatus('connecting');
+      setLoading(false);
+    });
+
+    socket.on('connected', ({ phone }) => {
+      setQr(null);
+      setStatus('connected');
+      setLoading(false);
+      setSession((prev: any) => ({ ...prev, phone_number: phone, status: 'connected' }));
     });
 
     socket.on('session_ready', ({ phone }) => {
       setQr(null);
       setStatus('connected');
+      setLoading(false);
       setSession((prev: any) => ({ ...prev, phone_number: phone, status: 'connected' }));
+    });
+
+    socket.on('disconnected', () => {
+      setStatus('disconnected');
+      setQr(null);
+      setLoading(false);
     });
 
     socket.on('session_disconnected', () => {
       setStatus('disconnected');
       setQr(null);
+      setLoading(false);
     });
 
     return () => { socket.disconnect(); };
-  }, [session?.id, BACKEND]);
+  }, [user?.id, BACKEND]);
 
   const startSession = async () => {
+    if (!user?.id) return;
     setLoading(true);
     const res = await fetch(`${BACKEND}/api/sessions/start`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: user!.id }),
+      body: JSON.stringify({ userId: user.id }),
     });
     const data = await res.json();
-    if (data.success) setSession({ id: data.sessionId });
-    setLoading(false);
+    if (data.success) {
+      setSession((prev: any) => ({ ...prev, id: data.sessionId }));
+    } else {
+      setLoading(false);
+    }
   };
 
   const stopSession = async () => {
-    if (!session?.id) return;
+    if (!user?.id) return;
     await fetch(`${BACKEND}/api/sessions/stop`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessionId: session.id }),
+      body: JSON.stringify({ userId: user.id }),
     });
     setStatus('disconnected');
     setQr(null);
+    setLoading(false);
   };
 
   const statusColor = { connected: 'green', connecting: 'yellow', disconnected: 'red' }[status] || 'red';

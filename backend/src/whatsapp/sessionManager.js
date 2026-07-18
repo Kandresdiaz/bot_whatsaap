@@ -48,13 +48,23 @@ const createSession = async (userId, businessId, io) => {
 
     if (qr) {
       console.log(`QR generado para usuario ${userId}`);
-      // Emitir QR al frontend vía Socket.io
-      if (io) io.to(`user_${userId}`).emit('qr', { qr });
+      try {
+        const QRCode = require('qrcode');
+        const qrImageDataUrl = await QRCode.toDataURL(qr);
+        
+        // Emitir QR imagen DataURL al frontend vía Socket.io
+        if (io) {
+          io.to(`user_${userId}`).emit('qr', { qr: qrImageDataUrl });
+          io.to(`session_${userId}`).emit('qr', { qr: qrImageDataUrl });
+        }
 
-      // Guardar QR en BD para que el frontend lo muestre
-      await supabase
-        .from('whatsapp_sessions')
-        .upsert({ user_id: userId, qr_code: qr, status: 'qr_ready' }, { onConflict: 'user_id' });
+        // Guardar QR en BD para que el frontend lo muestre
+        await supabase
+          .from('whatsapp_sessions')
+          .upsert({ user_id: userId, qr_code: qrImageDataUrl, status: 'qr_ready' }, { onConflict: 'user_id' });
+      } catch (errQr) {
+        console.error('Error generando DataURL del QR:', errQr);
+      }
     }
 
     if (connection === 'open') {
@@ -73,7 +83,12 @@ const createSession = async (userId, businessId, io) => {
           connected_at: new Date().toISOString(),
         }, { onConflict: 'user_id' });
 
-      if (io) io.to(`user_${userId}`).emit('connected', { phone });
+      if (io) {
+        io.to(`user_${userId}`).emit('connected', { phone });
+        io.to(`user_${userId}`).emit('session_ready', { phone });
+        io.to(`session_${userId}`).emit('connected', { phone });
+        io.to(`session_${userId}`).emit('session_ready', { phone });
+      }
     }
 
     if (connection === 'close') {
@@ -90,7 +105,12 @@ const createSession = async (userId, businessId, io) => {
         .from('whatsapp_sessions')
         .upsert({ user_id: userId, status: shouldReconnect ? 'reconnecting' : 'disconnected' }, { onConflict: 'user_id' });
 
-      if (io) io.to(`user_${userId}`).emit('disconnected', { shouldReconnect });
+      if (io) {
+        io.to(`user_${userId}`).emit('disconnected', { shouldReconnect });
+        io.to(`user_${userId}`).emit('session_disconnected', { shouldReconnect });
+        io.to(`session_${userId}`).emit('disconnected', { shouldReconnect });
+        io.to(`session_${userId}`).emit('session_disconnected', { shouldReconnect });
+      }
 
       // Auto-reconectar si no fue logout intencional
       if (shouldReconnect) {

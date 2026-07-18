@@ -69,9 +69,10 @@ app.get('/ping', (req, res) => res.send('pong 🤖'));
 io.on('connection', (socket) => {
   console.log('Cliente conectado:', socket.id);
 
-  socket.on('join_session', (sessionId) => {
-    socket.join(`session_${sessionId}`);
-    console.log(`Socket unido a sesión: ${sessionId}`);
+  socket.on('join_session', (id) => {
+    socket.join(`session_${id}`);
+    socket.join(`user_${id}`);
+    console.log(`Socket unido a sesión/usuario: ${id}`);
   });
 
   socket.on('disconnect', () => {
