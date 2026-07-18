@@ -8,6 +8,22 @@ router.post('/login', async (req, res) => {
 
   // Admin hardcoded
   if (email === 'admin@bot.com' && password === process.env.ADMIN_PASSWORD) {
+    // Asegurar que el administrador tenga un registro de negocio en Supabase para sus pruebas
+    try {
+      const { data: bus } = await supabase.from('businesses').select('id').eq('user_id', 'admin').single();
+      if (!bus) {
+        await supabase.from('businesses').insert({
+          user_id: 'admin',
+          name: 'BotWA Ventas',
+          category: 'Tecnología',
+          city: 'Medellín',
+          timezone: 'America/Bogota'
+        });
+      }
+    } catch (e) {
+      console.error('Error asegurando negocio de admin:', e.message);
+    }
+
     return res.json({
       success: true,
       user: { id: 'admin', email, name: 'Admin', is_admin: true, plan: 'business' },
