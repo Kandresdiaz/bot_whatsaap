@@ -4,94 +4,117 @@ const http = require('http');
 const { Server } = require('socket.io');
 const cron = require('node-cron');
 
-const authRoutes = require('./routes/auth');
-const sessionsRoutes = require('./routes/sessions');
-const conversationsRoutes = require('./routes/conversations');
-const businessRoutes = require('./routes/business');
-const knowledgeRoutes = require('./routes/knowledge');
-const adminRoutes = require('./routes/admin');
-const appointmentsRoutes = require('./routes/appointments');
-
-const { restoreSessions } = require('./whatsapp/sessionManager');
-const { checkRenewals } = require('./jobs/renewalChecker');
-
 const app = express();
 const server = http.createServer(app);
 
-const io = new Server(server, {
-  cors: {
-    origin: '*',
-    methods: ['GET', 'POST'],
-  },
-});
-
-// Guardar io globalmente para usarlo en otros módulos
-global.io = io;
-
-// Habilitar CORS dinámico que lee y devuelve el origen de la petición entrante
+// ── CORS dinámico ANTES de todo ─────────────────────────────────────────────
 app.use((req, res, next) => {
   const origin = req.headers.origin;
-  
-  // Si viene un origen, lo devolvemos tal cual para dar acceso al navegador
-  if (origin) {
-    res.header('Access-Control-Allow-Origin', origin);
-  } else {
-    res.header('Access-Control-Allow-Origin', '*');
-  }
-  
+  res.header('Access-Control-Allow-Origin', origin || '*');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-admin-key');
   res.header('Access-Control-Allow-Credentials', 'true');
-  
-  // Interceptar OPTIONS pre-flight y responder con 200 inmediatamente
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
+  if (req.method === 'OPTIONS') return res.status(200).end();
   next();
 });
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Rutas
-app.use('/api/auth', authRoutes);
-app.use('/api/sessions', sessionsRoutes);
-app.use('/api/conversations', conversationsRoutes);
-app.use('/api/business', businessRoutes);
-app.use('/api/knowledge', knowledgeRoutes);
-app.use('/api/admin', adminRoutes);
-app.use('/api/appointments', appointmentsRoutes);
+// ── Socket.io ────────────────────────────────────────────────────────────────
+const io = new Server(server, {
+  cors: { origin: '*', methods: ['GET', 'POST'] },
+});
+global.io = io;
 
-app.get('/api/health', (req, res) => res.json({ status: 'ok', time: new Date() }));
-// Keepalive para Render free tier (UptimeRobot pinga este endpoint cada 14 min)
-app.get('/ping', (req, res) => res.send('pong 🤖'));
-
-// Socket.io conexión
 io.on('connection', (socket) => {
-  console.log('Cliente conectado:', socket.id);
+  console.log('[IO] Cliente conectado:', socket.id);
 
   socket.on('join_session', (id) => {
     socket.join(`session_${id}`);
     socket.join(`user_${id}`);
-    console.log(`Socket unido a sesión/usuario: ${id}`);
+    console.log(`[IO] Socket unido a: session_${id} y user_${id}`);
   });
 
   socket.on('disconnect', () => {
-    console.log('Cliente desconectado:', socket.id);
+    console.log('[IO] Cliente desconectado:', socket.id);
   });
 });
 
-// Cron: verificar renovaciones cada día a las 9am
-cron.schedule('0 9 * * *', async () => {
-  console.log('Verificando renovaciones...');
-  await checkRenewals();
+// ── Rutas (importación diferida con manejo de errores) ───────────────────────
+const loadRoute = (path, name) => {
+  try {
+    return require(path);
+  } catch (e) {
+    console.error(`[ROUTE] Error cargando ${name}:`, e.message);
+    const r = express.Router();
+    r.all('*', (req, res) => res.status(503).json({ error: `${name} no disponible: ${e.message}` }));
+    return r;
+  }
+};
+
+app.use('/api/auth',          loadRoute('./routes/auth',          'auth'));
+app.use('/api/sessions',      loadRoute('./routes/sessions',      'sessions'));
+app.use('/api/conversations', loadRoute('./routes/conversations', 'conversations'));
+app.use('/api/business',      loadRoute('./routes/business',      'business'));
+app.use('/api/knowledge',     loadRoute('./routes/knowledge',     'knowledge'));
+app.use('/api/admin',         loadRoute('./routes/admin',         'admin'));
+app.use('/api/appointments',  loadRoute('./routes/appointments',  'appointments'));
+
+// ── Health / Debug ───────────────────────────────────────────────────────────
+app.get('/ping', (req, res) => res.send('pong 🤖'));
+app.get('/api/health', (req, res) => res.json({ status: 'ok', time: new Date() }));
+
+// Endpoint de diagnóstico — muestra versión del código y env vars presentes
+app.get('/api/debug/version', (req, res) => {
+  res.json({
+    commit: process.env.RENDER_GIT_COMMIT || 'local',
+    node: process.version,
+    uptime: process.uptime(),
+    env: {
+      GROQ_API_KEY: !!process.env.GROQ_API_KEY,
+      SUPABASE_URL: !!process.env.SUPABASE_URL,
+      SUPABASE_SERVICE_KEY: !!process.env.SUPABASE_SERVICE_KEY,
+      ADMIN_PASSWORD: !!process.env.ADMIN_PASSWORD,
+    },
+    timestamp: new Date().toISOString(),
+  });
 });
 
-// Restaurar sesiones activas al iniciar
-restoreSessions(io).then(() => {
-  console.log('Sesiones restauradas');
-});
+// ── Cron ─────────────────────────────────────────────────────────────────────
+try {
+  const { checkRenewals } = require('./jobs/renewalChecker');
+  cron.schedule('0 9 * * *', async () => {
+    console.log('[CRON] Verificando renovaciones...');
+    try { await checkRenewals(); } catch (e) { console.error('[CRON]', e.message); }
+  });
+} catch (e) {
+  console.error('[CRON] Error cargando renewalChecker:', e.message);
+}
 
+// ── Restaurar sesiones activas (sin bloquear el arranque) ───────────────────
+setTimeout(async () => {
+  try {
+    const { restoreSessions } = require('./whatsapp/sessionManager');
+    await restoreSessions(io);
+    console.log('[STARTUP] Sesiones restauradas');
+  } catch (e) {
+    console.error('[STARTUP] Error restaurando sesiones (no crítico):', e.message);
+  }
+}, 3000); // Esperar 3s para que el servidor esté completamente listo
+
+// ── Start ─────────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
-  console.log(`🚀 Backend corriendo en http://localhost:${PORT}`);
+  console.log(`🚀 BotWA Backend v8377b30 corriendo en puerto ${PORT}`);
+});
+
+// ── Manejo de errores no capturados ──────────────────────────────────────────
+process.on('uncaughtException', (err) => {
+  console.error('[CRASH] uncaughtException:', err.message, err.stack);
+  // No hacemos process.exit — dejamos que el servidor siga vivo
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[CRASH] unhandledRejection:', reason);
 });
