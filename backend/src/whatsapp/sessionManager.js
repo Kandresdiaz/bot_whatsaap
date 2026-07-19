@@ -58,10 +58,14 @@ const createSession = async (userId, businessId, io) => {
           io.to(`session_${userId}`).emit('qr', { qr: qrImageDataUrl });
         }
 
-        // Guardar QR en BD para que el frontend lo muestre
-        await supabase
-          .from('whatsapp_sessions')
-          .upsert({ user_id: userId, qr_code: qrImageDataUrl, status: 'qr_ready' }, { onConflict: 'user_id' });
+        // Guardar QR en BD si es posible, sin bloquear si falla
+        try {
+          await supabase
+            .from('whatsapp_sessions')
+            .upsert({ user_id: userId, qr_code: qrImageDataUrl, status: 'qr_ready' }, { onConflict: 'user_id' });
+        } catch (eDb) {
+          console.warn('DB QR update aviso:', eDb.message);
+        }
       } catch (errQr) {
         console.error('Error generando DataURL del QR:', errQr);
       }

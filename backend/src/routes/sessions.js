@@ -11,32 +11,43 @@ router.post('/start', async (req, res) => {
     return res.status(400).json({ success: false, error: 'userId es requerido' });
   }
 
+  let businessId = null;
+  let sessionId = userId;
+
   try {
-    // 1. Obtener el business_id del usuario sin lanzar excepción si no existe
+    // 1. Obtener el business_id del usuario si existe
     const { data: business } = await supabase
       .from('businesses')
       .select('id')
       .eq('user_id', userId)
       .maybeSingle();
 
-    const businessId = business?.id || null;
+    businessId = business?.id || null;
 
-    // 2. Upsert seguro de la sesión en DB
-    let { data: session } = await supabase
-      .from('whatsapp_sessions')
-      .upsert({ user_id: userId, business_id: businessId, status: 'connecting' }, { onConflict: 'user_id' })
-      .select()
-      .maybeSingle();
+    // 2. Intentar guardar o actualizar sesión en DB sin romper si falla
+    try {
+      const { data: session } = await supabase
+        .from('whatsapp_sessions')
+        .upsert({ user_id: userId, business_id: businessId, status: 'connecting' }, { onConflict: 'user_id' })
+        .select()
+        .maybeSingle();
 
-    // 3. Iniciar sesión de Baileys asíncronamente
+      if (session?.id) sessionId = session.id;
+    } catch (dbErr) {
+      console.warn('DB upsert aviso (continuando con Baileys):', dbErr.message);
+    }
+
+    // 3. Iniciar sesión de Baileys siempre
     createSession(userId, businessId, global.io).catch(err => {
       console.error('Error en Baileys createSession:', err);
     });
 
-    res.json({ success: true, sessionId: session?.id || userId });
+    return res.json({ success: true, sessionId });
   } catch (err) {
     console.error('Error iniciando sesión:', err);
-    res.status(500).json({ success: false, error: err.message });
+    // Aunque haya un error de lectura, iniciamos Baileys de todas formas
+    createSession(userId, businessId, global.io).catch(e => console.error('Baileys fallback err:', e));
+    return res.json({ success: true, sessionId: userId });
   }
 });
 
