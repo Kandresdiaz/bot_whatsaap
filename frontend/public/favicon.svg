@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#080E1F"/>
+      <stop offset="100%" stop-color="#0D1428"/>
+    </linearGradient>
+    <linearGradient id="icon" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1A6BFF"/>
+      <stop offset="100%" stop-color="#00CFFF"/>
+    </linearGradient>
+  </defs>
+  <!-- Fondo redondeado -->
+  <rect width="64" height="64" rx="14" fill="url(#bg)"/>
+  <!-- Burbuja de chat -->
+  <path d="M8 12C8 9.8 9.8 8 12 8H52C54.2 8 56 9.8 56 12V40C56 42.2 54.2 44 52 44H36L24 56V44H12C9.8 44 8 42.2 8 40V12Z" fill="url(#icon)" opacity="0.18" stroke="url(#icon)" stroke-width="2"/>
+  <!-- Rayo IA -->
+  <path d="M36 13L24 31H33L28 51L44 29H35L36 13Z" fill="url(#icon)"/>
+</svg>
