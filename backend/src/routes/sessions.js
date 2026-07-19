@@ -1,44 +1,39 @@
 const express = require('express');
 const router = express.Router();
 const { supabase } = require('../db/supabase');
-const { createSession, disconnectSession, sendMessage, getSession } = require('../whatsapp/sessionManager');
+const { createSession, disconnectSession, sendMessage } = require('../whatsapp/sessionManager');
 
 // Iniciar sesión (genera QR con Baileys)
 router.post('/start', async (req, res) => {
   const { userId } = req.body;
 
+  if (!userId) {
+    return res.status(400).json({ success: false, error: 'userId es requerido' });
+  }
+
   try {
-    // 1. Obtener el business_id del usuario
+    // 1. Obtener el business_id del usuario sin lanzar excepción si no existe
     const { data: business } = await supabase
       .from('businesses')
       .select('id')
       .eq('user_id', userId)
-      .single();
+      .maybeSingle();
 
     const businessId = business?.id || null;
 
-    // 2. Crear o buscar sesión en DB
+    // 2. Upsert seguro de la sesión en DB
     let { data: session } = await supabase
       .from('whatsapp_sessions')
-      .select('*')
-      .eq('user_id', userId)
-      .single();
-
-    if (!session) {
-      const { data: newSession } = await supabase
-        .from('whatsapp_sessions')
-        .insert({ user_id: userId, business_id: businessId, status: 'connecting' })
-        .select()
-        .single();
-      session = newSession;
-    }
+      .upsert({ user_id: userId, business_id: businessId, status: 'connecting' }, { onConflict: 'user_id' })
+      .select()
+      .maybeSingle();
 
     // 3. Iniciar sesión de Baileys asíncronamente
     createSession(userId, businessId, global.io).catch(err => {
       console.error('Error en Baileys createSession:', err);
     });
 
-    res.json({ success: true, sessionId: session.id });
+    res.json({ success: true, sessionId: session?.id || userId });
   } catch (err) {
     console.error('Error iniciando sesión:', err);
     res.status(500).json({ success: false, error: err.message });
@@ -49,20 +44,28 @@ router.post('/start', async (req, res) => {
 router.get('/status/:userId', async (req, res) => {
   const { userId } = req.params;
 
-  const { data: session } = await supabase
-    .from('whatsapp_sessions')
-    .select('*')
-    .eq('user_id', userId)
-    .single();
+  try {
+    const { data: session } = await supabase
+      .from('whatsapp_sessions')
+      .select('*')
+      .eq('user_id', userId)
+      .maybeSingle();
 
-  res.json({ success: true, session });
+    res.json({ success: true, session: session || null });
+  } catch (err) {
+    res.json({ success: false, session: null });
+  }
 });
 
 // Desconectar sesión
 router.post('/stop', async (req, res) => {
   const { userId } = req.body;
   if (userId) {
-    await disconnectSession(userId);
+    try {
+      await disconnectSession(userId);
+    } catch (e) {
+      console.error('Error desconectando sesión:', e);
+    }
   }
   res.json({ success: true });
 });
@@ -75,7 +78,6 @@ router.post('/send', async (req, res) => {
     await sendMessage(userId, phone, message);
 
     if (conversationId) {
-      // Guardar en DB como mensaje humano
       await supabase.from('messages').insert({
         conversation_id: conversationId,
         content: message,

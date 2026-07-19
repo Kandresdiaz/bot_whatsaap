@@ -12,17 +12,32 @@ export default function ConnectPage() {
   const [status, setStatus] = useState('disconnected');
   const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://bot-whatsaap-tkjd.onrender.com';
 
-  // Obtener estado actual de la sesión
+  // Obtener estado actual de la sesión + polling si se está conectando
   useEffect(() => {
     if (!user) return;
-    fetch(`${BACKEND}/api/sessions/status/${user.id}`)
-      .then(r => r.json())
-      .then(d => {
-        if (d.session) {
-          setSession(d.session);
-          setStatus(d.session.status);
-        }
-      });
+    const fetchStatus = () => {
+      fetch(`${BACKEND}/api/sessions/status/${user.id}`)
+        .then(r => r.json())
+        .then(d => {
+          if (d.session) {
+            setSession(d.session);
+            setStatus(d.session.status || 'disconnected');
+            if (d.session.qr_code && d.session.status !== 'connected') {
+              setQr(d.session.qr_code);
+              setLoading(false);
+            }
+            if (d.session.status === 'connected') {
+              setQr(null);
+              setLoading(false);
+            }
+          }
+        })
+        .catch(e => console.error('Error fetching session status:', e));
+    };
+
+    fetchStatus();
+    const interval = setInterval(fetchStatus, 3000);
+    return () => clearInterval(interval);
   }, [user, BACKEND]);
 
   // Socket.io para QR en tiempo real
