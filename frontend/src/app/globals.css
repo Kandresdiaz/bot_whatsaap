@@ -319,3 +319,86 @@ input:checked + .toggle-slider:before { transform: translateX(20px); background:
   animation: spin 0.8s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* ─── MEDIA QUERIES RESPONSIVOS PARA MÓVILES Y TABLETS ────────────────────────── */
+@media (max-width: 768px) {
+  .sidebar {
+    position: relative;
+    width: 100%;
+    height: auto;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    padding: 16px 0;
+  }
+
+  .sidebar-logo {
+    padding: 0 16px 12px;
+    font-size: 18px;
+  }
+
+  .sidebar-nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+    padding: 10px;
+    gap: 6px;
+    overflow-x: auto;
+  }
+
+  .nav-link {
+    padding: 8px 12px;
+    font-size: 13px;
+    width: auto;
+    white-space: nowrap;
+  }
+
+  .nav-link.active {
+    border-left: none;
+    border-bottom: 2px solid var(--accent);
+  }
+
+  .main {
+    margin-left: 0 !important;
+    padding: 16px !important;
+    width: 100%;
+  }
+
+  .stats-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .card {
+    padding: 16px;
+    border-radius: 12px;
+  }
+
+  .page-title {
+    font-size: 20px;
+  }
+
+  .page-subtitle {
+    font-size: 13px;
+  }
+
+  /* Hacer las tablas scrolleables horizontalmente en móvil sin romper la pantalla */
+  .card:has(.table), div:has(> .table) {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .msg-bubble {
+    max-width: 88%;
+  }
+
+  .qr-container {
+    padding: 20px;
+    width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+}
+

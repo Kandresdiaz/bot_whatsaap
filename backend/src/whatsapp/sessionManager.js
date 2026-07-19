@@ -156,20 +156,28 @@ const disconnectSession = async (userId) => {
 const getSession = (userId) => sessions.get(userId);
 
 const restoreSessions = async (io) => {
-  const { data: activeSessions } = await supabase
-    .from('whatsapp_sessions')
-    .select('user_id, business_id')
-    .eq('status', 'connected');
+  try {
+    const { data: activeSessions, error } = await supabase
+      .from('whatsapp_sessions')
+      .select('user_id, business_id')
+      .eq('status', 'connected');
 
-  if (!activeSessions?.length) return;
-  console.log(`Restaurando ${activeSessions.length} sesión(es) activa(s)...`);
+    if (error || !activeSessions?.length) return;
+    console.log(`Restaurando ${activeSessions.length} sesión(es) activa(s)...`);
 
-  for (const session of activeSessions) {
-    const sessionDir = path.join(SESSIONS_DIR, session.user_id);
-    if (fs.existsSync(sessionDir)) {
-      await createSession(session.user_id, session.business_id, io);
-      await new Promise(r => setTimeout(r, 2000)); // esperar entre sesiones
+    for (const session of activeSessions) {
+      try {
+        const sessionDir = path.join(SESSIONS_DIR, session.user_id);
+        if (fs.existsSync(sessionDir)) {
+          await createSession(session.user_id, session.business_id, io);
+          await new Promise(r => setTimeout(r, 2000));
+        }
+      } catch (errSingle) {
+        console.error(`Error restaurando sesión para usuario ${session.user_id}:`, errSingle.message);
+      }
     }
+  } catch (errAll) {
+    console.error('Error restaurando sesiones:', errAll.message);
   }
 };
 
