@@ -246,6 +246,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-07-20** | ci: GitHub Actions auto-deploy Render + auto-docs SKILL.md en cada push (`c5391a7`) | Auto-deploy |
 
+| **2026-07-20** | build: forzar redespliegue de Vercel (frontend) (`846b8ba`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
