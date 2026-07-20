@@ -106,7 +106,35 @@ setTimeout(async () => {
 // ── Start ─────────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
-  console.log(`🚀 BotWA Backend v8377b30 corriendo en puerto ${PORT}`);
+  console.log(`🚀 BotWA Backend LATEST corriendo en puerto ${PORT}`);
+
+  // ── SELF-PING KEEPALIVE ────────────────────────────────────────────────────
+  // Render free tier duerme después de 15 min de inactividad.
+  // Este self-ping cada 10 min mantiene el servidor despierto 24/7 sin costo.
+  const https = require('https');
+  const http2 = require('http');
+  const selfUrl = process.env.RENDER_EXTERNAL_URL || process.env.RAILWAY_STATIC_URL || null;
+
+  if (selfUrl) {
+    const pingUrl = `${selfUrl}/ping`;
+    console.log(`[KEEPALIVE] Self-ping activado → ${pingUrl}`);
+
+    setInterval(() => {
+      const client = pingUrl.startsWith('https') ? https : http2;
+      client.get(pingUrl, (res) => {
+        console.log(`[KEEPALIVE] Ping OK (${res.statusCode})`);
+      }).on('error', (e) => {
+        console.warn('[KEEPALIVE] Ping falló:', e.message);
+      });
+    }, 10 * 60 * 1000); // cada 10 minutos
+  } else {
+    // Fallback: ping a sí mismo por localhost
+    setInterval(() => {
+      http2.get(`http://localhost:${PORT}/ping`, (res) => {
+        if (res.statusCode === 200) console.log('[KEEPALIVE] localhost ping OK');
+      }).on('error', () => {});
+    }, 10 * 60 * 1000);
+  }
 });
 
 // ── Manejo de errores no capturados ──────────────────────────────────────────
