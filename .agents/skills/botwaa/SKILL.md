@@ -5,54 +5,94 @@ description: Documentación técnica completa de BotWA - bot de WhatsApp con IA 
 
 # BotWA — Documentación del Proyecto
 
+> 📅 Última actualización manual: 2026-07-20
+> 🤖 Las siguientes actualizaciones se generan automáticamente en cada `git push` via GitHub Actions.
+
 ## Qué es
-SaaS de bots de WhatsApp con IA para negocios colombianos.
-- **Dueño del producto:** Kevin (admin)
+SaaS de bots de WhatsApp con IA para negocios latinoamericanos (restaurantes, dentistas, consultorías, etc.).
+- **Dueño del producto:** Kevin (admin@bot.com)
 - **Clientes:** Negocios que pagan mensualidad para tener un bot que responde 24/7
-- **URL live:** bot-whatsaap.vercel.app
+- **URL live frontend:** https://bot-whatsaap.vercel.app
+- **URL live backend:** https://bot-whatsaap-tkjd.onrender.com
 
 ---
 
 ## Stack técnico actual
 
-### Frontend
+### Frontend (Vercel — auto-deploy desde GitHub)
 | Tecnología | Versión | Por qué |
 |---|---|---|
-| Next.js | 16 | SSR + routing + deploy en Vercel |
+| Next.js | 14+ | SSR + routing + deploy en Vercel |
 | TypeScript | 5 | Tipos, menos bugs |
-| CSS Variables | — | Dark mode, sin Tailwind |
+| CSS Variables | — | Dark mode azul/cyan, sin Tailwind |
 | Socket.io client | — | Tiempo real para QR y mensajes |
+| Inter (Google Fonts) | — | Tipografía premium |
 
-### Backend
+### Backend (Render — keepalive con UptimeRobot cada 5 min)
 | Tecnología | Versión | Por qué |
 |---|---|---|
 | Node.js + Express | 18 | Ligero, async, ideal para bots |
-| **Baileys** | **7.0.0-rc13** | Protocolo WhatsApp multi-device directo, ~50MB RAM por sesión |
-| Groq SDK | — | IA gratis (llama-3.1-8b-instant) |
-| Socket.io | — | WebSockets para dashboard en tiempo real |
-| Supabase JS | — | Cliente de base de datos |
+| **Baileys** | **7.0.0-rc13** | Protocolo WhatsApp multi-device directo, ~50MB RAM |
+| Groq SDK | 0.5.0 | IA gratis — llama-3.3-70b-versatile + llama-3.1-8b-instant fallback |
+| Socket.io | 4.7.5 | WebSockets para dashboard en tiempo real |
+| Supabase JS | 2.45.0 | Cliente de base de datos |
+| qrcode | 1.5.4 | Convierte string QR de Baileys a DataURL PNG |
+| pino | 10.3.1 | Logger silencioso para Baileys |
 
-### Base de datos
+### Base de datos (Supabase — Free)
 | Tabla | Propósito |
 |---|---|
 | users | Clientes del SaaS (negocios) |
-| businesses | Configuración de cada negocio |
-| whatsapp_sessions | Estado de conexión WA por usuario |
-| conversations | Chats activos |
-| messages | Historial de mensajes |
-| knowledge_base | Contenido para alimentar la IA |
+| businesses | Configuración de cada negocio (nombre, horario, personalidad, ciudad) |
+| whatsapp_sessions | Estado de conexión WA por usuario + QR code |
+| conversations | Chats activos con metadata |
+| messages | Historial de mensajes + tokens Groq usados |
+| knowledge_base | Contenido para RAG (texto, FAQ, PDF, imágenes) |
 | appointments | Citas agendadas por el bot |
 | payments | Registro de pagos manuales |
 
 ### Infraestructura
-| Servicio | Plan | Costo |
-|---|---|---|
-| Vercel | Free | $0 |
-| Render | Free | $0 |
-| Supabase | Free | $0 |
-| Groq | Free | $0 |
-| UptimeRobot | Free | $0 |
-| **Total** | | **$0/mes** |
+| Servicio | Plan | Costo | Nota |
+|---|---|---|---|
+| Vercel | Free | $0 | Auto-deploy GitHub, siempre activo |
+| Render | Free | $0 | ⚠️ Duerme si no hay tráfico → keepalive con UptimeRobot |
+| Supabase | Free | $0 | 500MB DB, 50MB storage |
+| Groq | Free | $0 | 30 req/min, llama-3.3-70b |
+| UptimeRobot | Free | $0 | Pinga /ping cada 5 min → servidor despierto |
+| **Total** | | **$0/mes** | |
+
+---
+
+## Tema visual actual
+- **Fondo:** `#080E1F` (navy oscuro)
+- **Acento primario:** `#1A6BFF` → `#00CFFF` (azul océano + cyan)
+- **Sin morado** — reemplazado completamente en julio 2026
+- **Logo:** SVG inline — burbuja de chat + rayo IA en gradiente azul/cyan
+- **Favicon:** `/public/favicon.svg` — mismo diseño del logo
+
+---
+
+## RAG con Groq (anti-alucinación)
+
+```
+Mensaje del cliente
+    ↓
+[Multi-Query RAG]
+  1. Genera 2-3 sub-consultas alternativas con llama-3.1-8b-instant
+  2. Busca en knowledge_base con TODAS las consultas
+  3. Score por coincidencia (título = 2pts, contenido = 1pt)
+  4. Top 6 chunks más relevantes
+    ↓
+[System Prompt con contexto real]
+  - Solo responde con info del negocio
+  - Si no está en knowledge base → "no tengo esa info"
+  - Temperatura 0.2 (mínima alucinación)
+    ↓
+[llama-3.3-70b-versatile] (inteligente)
+  → fallback a [llama-3.1-8b-instant] si falla
+    ↓
+Respuesta precisa en WhatsApp ✅
+```
 
 ---
 
@@ -63,10 +103,10 @@ SaaS de bots de WhatsApp con IA para negocios colombianos.
 1. Kevin crea cliente en /admin
 2. Cliente recibe usuario + contraseña
 3. Cliente entra al dashboard
-4. Conecta su WhatsApp (escanea QR)
-5. Configura el bot (horarios, personalidad, mensajes)
-6. Sube información del negocio a Knowledge Base
-7. Bot activo 24/7 respondiendo
+4. Wizard onboarding: tipo negocio, nombre, horario, servicios
+5. Conecta WhatsApp escaneando QR en /dashboard/connect
+6. Sube info del negocio a Knowledge Base (texto/FAQ/PDF/imagen)
+7. Bot activo 24/7 respondiendo con RAG
 8. Kevin recibe alerta cuando hay lead caliente
 9. Kevin registra pago manualmente (Nequi/transferencia)
 10. Kevin activa/pausa clientes desde /admin
@@ -74,90 +114,67 @@ SaaS de bots de WhatsApp con IA para negocios colombianos.
 
 ### Flujo de un mensaje entrante
 ```
-WhatsApp → Baileys (protocolo directo)
+WhatsApp → Baileys (protocolo directo, sin API de Meta)
   → messageHandler.js
     1. ¿Es grupo? → ignorar
-    2. ¿Blacklist? → ignorar  
+    2. ¿Blacklist? → ignorar
     3. ¿Bot off? → notificar dueño
     4. ¿Rate limit (20/hora)? → ignorar
     5. ¿Fuera de horario? → mensaje away
     6. ¿Quiere cita? → flujo appointmentFlow.js
-    7. IA Groq (temperatura 0.3, solo usa knowledge base)
-    8. ¿Lead caliente? → notificar Kevin por WA
-    9. Delay 1-3s (anti-ban)
-   10. Responder + guardar en Supabase
-   11. Emitir al dashboard (Socket.io)
+    7. RAG multi-query (sub-consultas + búsqueda knowledge base)
+    8. IA Groq temperatura 0.2 (anti-alucinación máxima)
+    9. ¿Lead caliente? → notificar Kevin por WA
+   10. Delay random 800-2800ms (anti-ban humanizado)
+   11. Responder + guardar en Supabase
+   12. Emitir al dashboard via Socket.io
 ```
 
 ---
 
-## Nuestra arquitectura vs Evolution API
-
-### Evolution API
-```
-[Tu código] → HTTP → [Evolution API server] → Baileys → WhatsApp
-                ↑ servicio Docker separado
-                ↑ latencia extra
-                ↑ más infraestructura
-                ↑ dependes de su API pública
-```
-
-### BotWA (nuestro)
-```
-[Express + Baileys] → WhatsApp
-      ↑ todo en uno
-      ↑ sin intermediario
-      ↑ tú controlas el código completo
-      ↑ más rápido
-      ↑ misma tecnología base
-```
-
-**BotWA = Evolution API + Dashboard + IA + Citas integrado en un solo proyecto.**
-
----
-
-## Anti-ban strategy actual
+## Anti-ban strategy
 
 | Medida | Implementada |
 |---|---|
-| Delay aleatorio 1-3s antes de responder | ✅ |
+| Delay aleatorio 800-2800ms antes de responder | ✅ |
 | Rate limit 20 mensajes/hora por contacto | ✅ |
 | Ignorar grupos | ✅ |
-| Solo responde cuando el cliente escribe primero | ✅ |
+| Solo responde a mensajes entrantes (nunca inicia) | ✅ |
 | Nunca envía mensajes masivos | ✅ |
-| Temperatura IA 0.3 (respuestas consistentes) | ✅ |
-| Browser fingerprint: `['BotWA', 'Chrome', '120.0']` | ✅ |
-
-**Riesgo real:** Bajo-medio. El bot solo responde a mensajes entrantes,
-nunca inicia conversaciones. Comportamiento idéntico a un humano respondiendo.
+| Temperatura IA 0.2 (respuestas consistentes) | ✅ |
+| Browser fingerprint: `['BotWA SaaS', 'Chrome', '120.0.0']` | ✅ |
+| Versión WA hardcodeada (sin fetch externo) | ✅ |
+| Sin whatsapp-web.js (Puppeteer) — solo Baileys directo | ✅ |
 
 ---
 
 ## Features actuales del dashboard
 
-### Vista usuario (cliente)
-- `/dashboard` — Home con estado del bot
-- `/dashboard/connect` — QR para conectar WhatsApp
-- `/dashboard/conversations` — Todos los chats + toggle IA por chat
+### Vista usuario (cliente del SaaS)
+- `/dashboard` — Home con stats del bot
+- `/dashboard/connect` — QR con diagnóstico del servidor + errores visibles
+- `/dashboard/conversations` — Chats en tiempo real + toggle IA por conversación
 - `/dashboard/appointments` — Citas agendadas por el bot
-- `/dashboard/knowledge` — Texto / FAQ / PDF / Imágenes para la IA
+- `/dashboard/knowledge` — Texto / FAQ / PDF / Imágenes para RAG
 - `/dashboard/bot-config` — Horarios, personalidad, mensajes
 
 ### Vista admin (Kevin)
-- `/admin` — Stats + lista de clientes + estado de bots
+- `/admin` — Stats globales + lista de clientes + estado de bots
 - Registrar pagos (Nequi, transferencia, efectivo)
 - Activar/pausar clientes
 - Ver ingresos totales COP
+- Botón `🤖 Modo Bot (Demo)` para ver la vista de cliente
 
 ---
 
-## Precios actuales del SaaS
+## Precios del SaaS
 
-| Plan | Precio COP/mes | Incluye |
-|---|---|---|
-| Starter | $75.000 | 1 número, bot básico |
-| Pro | $160.000 | 1 número, citas + analytics |
-| Business | $320.000 | Multi-usuario, soporte prioritario |
+| Plan | Precio COP/mes | USD aprox | Incluye |
+|---|---|---|---|
+| Básico | $29.900 | ~$7 | 1 número, 500 msgs/mes, 5 docs knowledge |
+| Profesional | $79.900 | ~$20 | 1 número, ilimitado, 50 docs, dashboard |
+| Negocio | $179.900 | ~$45 | 3 números, ilimitado, métricas |
+| Agencia | $499.900 | ~$125 | 10 clientes, white label |
 
 ---
 
@@ -166,12 +183,12 @@ nunca inicia conversaciones. Comportamiento idéntico a un humano respondiendo.
 ### Backend (Render)
 ```
 SUPABASE_URL=https://rptxtzrwoyuedbjzpqhp.supabase.co
-SUPABASE_ANON_KEY=eyJ...
-SUPABASE_SERVICE_KEY=*** conseguir en Supabase → Settings → API → service_role
-GROQ_API_KEY=*** conseguir en console.groq.com
-ADMIN_PASSWORD=admin123
+SUPABASE_SERVICE_KEY=*** Supabase → Settings → API → service_role
+GROQ_API_KEY=*** console.groq.com
+ADMIN_PASSWORD=***
 ADMIN_WHATSAPP=57XXXXXXXXXX
-PORT=3001
+PORT=10000
+RENDER_EXTERNAL_URL=https://bot-whatsaap-tkjd.onrender.com
 FRONTEND_URL=https://bot-whatsaap.vercel.app
 ```
 
@@ -179,24 +196,51 @@ FRONTEND_URL=https://bot-whatsaap.vercel.app
 ```
 NEXT_PUBLIC_BACKEND_URL=https://bot-whatsaap-tkjd.onrender.com
 NEXT_PUBLIC_SUPABASE_URL=https://rptxtzrwoyuedbjzpqhp.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
-NEXT_PUBLIC_ADMIN_KEY=admin123
+NEXT_PUBLIC_SUPABASE_ANON_KEY=***
+```
+
+### GitHub Secrets (para GitHub Actions)
+```
+RENDER_DEPLOY_HOOK=https://api.render.com/deploy/srv-xxxxx?key=xxxxx
 ```
 
 ---
 
-## Actualizaciones importantes realizadas
+## CI/CD — GitHub Actions
+
+### Workflow: `deploy-and-docs.yml`
+Se ejecuta en cada `git push` a `main`:
+1. **Job 1 — Deploy Render:** Llama al Deploy Hook de Render → redespliegue automático
+2. **Job 2 — Update Docs:** Actualiza esta tabla de actualizaciones con el commit info
+
+### Cómo activar el auto-deploy de Render:
+1. Render Dashboard → tu servicio → Settings → **Deploy Hooks** → Create Hook
+2. Copiar la URL del hook
+3. GitHub repo → Settings → Secrets → `RENDER_DEPLOY_HOOK` = URL copiada
+4. ✅ Desde ese momento, cada push redesploy automático
+
+---
+
+## Actualizaciones importantes
 
 | Fecha | Cambio | Impacto |
 |---|---|---|
 | 2026-07-04 | Proyecto iniciado, Supabase configurado | Base |
-| 2026-07-04 | Backend + Frontend iniciales | MVP |
+| 2026-07-04 | Backend + Frontend iniciales MVP | MVP |
 | 2026-07-05 | Deploy Render + Vercel | Live |
 | 2026-07-06 | Anti-ban delays + rate limit | Seguridad |
-| 2026-07-06 | Knowledge base con imágenes | Feature |
+| 2026-07-06 | Knowledge base con imágenes y PDF | Feature |
 | 2026-07-06 | Sistema de citas automáticas | Feature |
 | 2026-07-12 | Fix TypeScript errors | Estabilidad |
 | **2026-07-13** | **Migración whatsapp-web.js → Baileys v7** | **Performance 10x** |
+| 2026-07-19 | RAG multi-query con sub-consultas Groq | IA más precisa |
+| 2026-07-19 | Tema azul/cyan — eliminado morado | Branding |
+| 2026-07-19 | Logo SVG + favicon en pestaña | Branding |
+| 2026-07-19 | Connect page con diagnóstico de servidor | UX |
+| 2026-07-19 | index.js indestructible — sin crashes | Estabilidad |
+| 2026-07-19 | Self-ping keepalive cada 10 min | Uptime |
+| 2026-07-20 | GitHub Actions auto-deploy + auto-docs | CI/CD |
+| 2026-07-20 | UptimeRobot activo cada 5 min | Uptime 24/7 |
 
 ---
 
@@ -204,15 +248,16 @@ NEXT_PUBLIC_ADMIN_KEY=admin123
 
 | Feature | Prioridad | Impacto |
 |---|---|---|
-| Landing page pública con precios | 🔴 Alta | Ventas |
-| Crear cliente desde admin (sin SQL) | 🔴 Alta | Operación |
-| Cambio de color morado → verde/otro | 🟡 Media | Branding |
-| Persistencia de sesiones Baileys en Supabase Storage | 🟡 Media | Estabilidad |
+| Wizard onboarding (5 preguntas al registrarse) | 🔴 Alta | Activación de clientes |
+| Landing page pública con precios y demo | 🔴 Alta | Ventas |
+| Configurar RENDER_DEPLOY_HOOK en GitHub Secrets | 🔴 Alta | CI/CD automático |
+| Crear cliente desde admin UI (sin SQL) | 🔴 Alta | Operación |
+| Persistencia sesiones Baileys en volumen/storage | 🟡 Media | Estabilidad |
 | Analytics por conversación | 🟢 Baja | Valor percibido |
-| Webhook para notificaciones | 🟢 Baja | Integraciones |
 
 ---
 
 ## Cómo actualizar este documento
-Cuando se implemente una feature importante, actualizar la tabla
-"Actualizaciones importantes" y "Features actuales" arriba.
+**Automático:** Cada `git push` a `main` ejecuta el GitHub Action que agrega el commit a la tabla de actualizaciones.
+**Manual:** Editar este archivo directamente para cambios estructurales grandes.
+**Skill trigger:** Este archivo se activa cuando se habla del proyecto, se planean features o se quiere contexto técnico.

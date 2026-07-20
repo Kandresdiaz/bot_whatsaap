@@ -1,0 +1,96 @@
+name: 🚀 Deploy a Render + Actualizar Documentación
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  # ── JOB 1: Trigger redespliegue en Render ──────────────────────────────────
+  deploy-render:
+    name: Redeploy Render Backend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render Deploy Hook
+        run: |
+          if [ -n "${{ secrets.RENDER_DEPLOY_HOOK }}" ]; then
+            echo "🚀 Disparando redeploy en Render..."
+            curl -X POST "${{ secrets.RENDER_DEPLOY_HOOK }}"
+            echo "✅ Redeploy disparado. Render tardará ~3-5 min en aplicar."
+          else
+            echo "⚠️  RENDER_DEPLOY_HOOK no configurado. Ve a:"
+            echo "   Render Dashboard → tu servicio → Settings → Deploy Hooks → Create Hook"
+            echo "   Luego en GitHub → Settings → Secrets → New secret → RENDER_DEPLOY_HOOK"
+          fi
+
+  # ── JOB 2: Actualizar SKILL.md automáticamente ─────────────────────────────
+  update-docs:
+    name: Actualizar Documentación del Proyecto
+    runs-on: ubuntu-latest
+    needs: deploy-render
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generar fecha y commit info
+        id: info
+        run: |
+          echo "DATE=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+          echo "COMMIT_MSG=$(git log -1 --pretty='%s')" >> $GITHUB_OUTPUT
+          echo "COMMIT_SHA=$(git log -1 --pretty='%h')" >> $GITHUB_OUTPUT
+          echo "AUTHOR=$(git log -1 --pretty='%an')" >> $GITHUB_OUTPUT
+
+      - name: Actualizar tabla de cambios en SKILL.md
+        run: |
+          SKILL_FILE=".agents/skills/botwaa/SKILL.md"
+          DATE="${{ steps.info.outputs.DATE }}"
+          MSG="${{ steps.info.outputs.COMMIT_MSG }}"
+          SHA="${{ steps.info.outputs.COMMIT_SHA }}"
+
+          # Agregar nueva fila a la tabla de actualizaciones
+          NEW_ROW="| **${DATE}** | **${MSG}** (\`${SHA}\`) | Auto-deployed |"
+
+          # Insertar antes de la línea "---" final de la tabla de actualizaciones
+          sed -i "/^| 2026-07/!b;/Actualizaciones importantes/!b;n" "$SKILL_FILE" || true
+
+          # Append al final de la sección de actualizaciones usando Python (más confiable)
+          python3 << 'EOF'
+          import re, os
+
+          skill_path = ".agents/skills/botwaa/SKILL.md"
+          date = os.environ.get("DATE", "")
+          msg = os.environ.get("MSG", "")
+          sha = os.environ.get("SHA", "")
+
+          with open(skill_path, "r", encoding="utf-8") as f:
+              content = f.read()
+
+          # Nueva fila para la tabla
+          new_row = f"| **{date}** | {msg} (`{sha}`) | Auto-deploy |\n"
+
+          # Insertar antes de la sección "## Próximas mejoras"
+          content = content.replace(
+              "## Próximas mejoras sugeridas",
+              new_row + "\n## Próximas mejoras sugeridas"
+          )
+
+          with open(skill_path, "w", encoding="utf-8") as f:
+              f.write(content)
+
+          print(f"✅ Documentación actualizada con: {date} - {msg}")
+          EOF
+        env:
+          DATE: ${{ steps.info.outputs.DATE }}
+          MSG: ${{ steps.info.outputs.COMMIT_MSG }}
+          SHA: ${{ steps.info.outputs.COMMIT_SHA }}
+
+      - name: Commit actualización de documentación
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "BotWA Docs Bot"
+          git add .agents/skills/botwaa/SKILL.md
+          git diff --staged --quiet || git commit -m "docs: auto-actualización SKILL.md [${{ steps.info.outputs.DATE }}]"
+          git push || echo "Sin cambios para pushear"
