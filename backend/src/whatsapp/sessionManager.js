@@ -48,6 +48,9 @@ const createSession = async (userId, businessId, io) => {
   const sessionDir = path.join(SESSIONS_DIR, userId);
   if (!fs.existsSync(sessionDir)) fs.mkdirSync(sessionDir, { recursive: true });
 
+  // Guardar estado inicial en memoria inmediatamente
+  sessions.set(userId, { status: 'connecting', businessId });
+
   // Guardar estado inicial en DB inmediatamente al solicitar conexión
   await safeUpsert('whatsapp_sessions', {
     user_id: userId,
@@ -192,7 +195,8 @@ const createSession = async (userId, businessId, io) => {
     }
   });
 
-  sessions.set(userId, { sock, businessId });
+  const existing = sessions.get(userId) || {};
+  sessions.set(userId, { ...existing, sock, businessId });
   return sock;
 };
 
