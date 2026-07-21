@@ -38,6 +38,9 @@ export default function ConnectPage() {
           setQr(s.qr_code);
           setStatus('qr_ready');
           setError(null);
+        } else if (s.status === 'connecting') {
+          setStatus('connecting');
+          if (s.qr_code) setQr(s.qr_code);
         }
       } catch (_) {
         // silencioso — el polling sigue intentando
