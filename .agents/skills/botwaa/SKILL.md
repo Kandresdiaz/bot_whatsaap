@@ -252,6 +252,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-07-21** | feat: autogenerar QR inmediatamente al entrar a /dashboard/connect estilo WhatsApp Web (`ec6fb5e`) | Auto-deploy |
 
+| **2026-07-21** | fix: agregar fallback en memoria para /api/sessions/status/:userId para evitar respuestas nulas (`083b707`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
