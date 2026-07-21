@@ -258,6 +258,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-07-21** | fix: asegurar registro instantaneo de la sesion en el mapa en memoria sessions (`c8349d7`) | Auto-deploy |
 
+| **2026-07-21** | fix: manejar estado 'connecting' explícitamente en polling para evitar reseteos visuales (`7bdf93e`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
