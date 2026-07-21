@@ -248,6 +248,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-07-20** | build: forzar redespliegue de Vercel (frontend) (`846b8ba`) | Auto-deploy |
 
+| **2026-07-21** | fix: asegurar guardado explicito de estado 'connecting' al iniciar sesion Baileys (`f0f94d7`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
