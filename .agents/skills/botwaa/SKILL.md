@@ -250,6 +250,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-07-21** | fix: asegurar guardado explicito de estado 'connecting' al iniciar sesion Baileys (`f0f94d7`) | Auto-deploy |
 
+| **2026-07-21** | feat: autogenerar QR inmediatamente al entrar a /dashboard/connect estilo WhatsApp Web (`ec6fb5e`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
