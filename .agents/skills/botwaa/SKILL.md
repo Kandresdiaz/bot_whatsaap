@@ -254,6 +254,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-07-21** | fix: agregar fallback en memoria para /api/sessions/status/:userId para evitar respuestas nulas (`083b707`) | Auto-deploy |
 
+| **2026-07-21** | fix: retorno ultrarrápido de QR en memoria RAM si Supabase tarda en persistir (`e9d3f0f`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
