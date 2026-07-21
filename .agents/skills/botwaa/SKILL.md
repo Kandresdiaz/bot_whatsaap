@@ -256,6 +256,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-07-21** | fix: retorno ultrarrápido de QR en memoria RAM si Supabase tarda en persistir (`e9d3f0f`) | Auto-deploy |
 
+| **2026-07-21** | fix: asegurar registro instantaneo de la sesion en el mapa en memoria sessions (`c8349d7`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
