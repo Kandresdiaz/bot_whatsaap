@@ -62,7 +62,14 @@ router.get('/status/:userId', async (req, res) => {
       .eq('user_id', userId)
       .maybeSingle();
 
+    const { getSession } = require('../whatsapp/sessionManager');
+    const active = getSession(userId);
+
     if (session) {
+      if (!session.qr_code && active?.qr) {
+        session.qr_code = active.qr;
+        session.status = 'qr_ready';
+      }
       return res.json({ success: true, session });
     }
 
