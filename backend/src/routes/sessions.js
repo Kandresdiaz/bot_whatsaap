@@ -69,7 +69,14 @@ router.get('/status/:userId', async (req, res) => {
     const { getSession } = require('../whatsapp/sessionManager');
     const active = getSession(userId);
     if (active) {
-      return res.json({ success: true, session: { status: 'connecting', user_id: userId } });
+      return res.json({
+        success: true,
+        session: {
+          status: active.status || 'connecting',
+          user_id: userId,
+          qr_code: active.qr || null
+        }
+      });
     }
 
     res.json({ success: true, session: null });

@@ -97,6 +97,10 @@ const createSession = async (userId, businessId, io) => {
         const QRCode = require('qrcode');
         const qrDataUrl = await QRCode.toDataURL(qr, { width: 300, margin: 2 });
 
+        // Guardar en memoria activa para respuesta instantánea de API
+        const sData = sessions.get(userId) || {};
+        sessions.set(userId, { ...sData, qr: qrDataUrl, status: 'qr_ready' });
+
         // Emitir al frontend por Socket.io
         if (io) {
           io.to(`user_${userId}`).emit('qr', { qr: qrDataUrl });
