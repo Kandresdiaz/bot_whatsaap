@@ -49,6 +49,13 @@ export default function ConnectPage() {
     return () => { cancelled = true; clearInterval(interval); };
   }, [user?.id, retryCount]);
 
+  // Auto-iniciar sesión al cargar la página si no está conectada (Estilo WhatsApp Web)
+  useEffect(() => {
+    if (user?.id && status === 'disconnected') {
+      startSession();
+    }
+  }, [user?.id]);
+
   // ── Socket.io para QR en tiempo real ─────────────────────────────────────
   useEffect(() => {
     if (!user?.id) return;
