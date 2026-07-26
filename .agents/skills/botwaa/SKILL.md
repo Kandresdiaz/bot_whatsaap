@@ -262,6 +262,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-07-21** | fix: fusionar siempre el QR mas reciente de la memoria RAM con la respuesta de la base de datos (`9b21c4c`) | Auto-deploy |
 
+| **2026-07-26** | chore: agregar fly.toml y Dockerfile para deploy alternativo en Fly.io (`eca733b`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
