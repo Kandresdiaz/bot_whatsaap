@@ -42,24 +42,13 @@ io.on('connection', (socket) => {
 });
 
 // ── Rutas (importación diferida con manejo de errores) ───────────────────────
-const loadRoute = (path, name) => {
-  try {
-    return require(path);
-  } catch (e) {
-    console.error(`[ROUTE] Error cargando ${name}:`, e.message);
-    const r = express.Router();
-    r.all('*', (req, res) => res.status(503).json({ error: `${name} no disponible: ${e.message}` }));
-    return r;
-  }
-};
-
-app.use('/api/auth',          loadRoute('./routes/auth',          'auth'));
-app.use('/api/sessions',      loadRoute('./routes/sessions',      'sessions'));
-app.use('/api/conversations', loadRoute('./routes/conversations', 'conversations'));
-app.use('/api/business',      loadRoute('./routes/business',      'business'));
-app.use('/api/knowledge',     loadRoute('./routes/knowledge',     'knowledge'));
-app.use('/api/admin',         loadRoute('./routes/admin',         'admin'));
-app.use('/api/appointments',  loadRoute('./routes/appointments',  'appointments'));
+app.use('/api/auth',          require('./routes/auth'));
+app.use('/api/sessions',      require('./routes/sessions'));
+app.use('/api/conversations', require('./routes/conversations'));
+app.use('/api/business',      require('./routes/business'));
+app.use('/api/knowledge',     require('./routes/knowledge'));
+app.use('/api/admin',         require('./routes/admin'));
+app.use('/api/appointments',  require('./routes/appointments'));
 
 // ── Health / Debug ───────────────────────────────────────────────────────────
 app.get('/ping', (req, res) => res.send('pong 🤖'));
