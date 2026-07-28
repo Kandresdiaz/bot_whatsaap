@@ -77,13 +77,16 @@ const createSession = async (userId, businessId, io) => {
       keys: makeCacheableSignalKeyStore(state.keys, logger),
     },
     logger,
-    printQRInTerminal: true, // también imprimir en consola para debug
+    printQRInTerminal: false,
     browser: ['BotWA SaaS', 'Chrome', '120.0.0'],
     generateHighQualityLinkPreview: false,
     syncFullHistory: false,
-    connectTimeoutMs: 60000,
-    keepAliveIntervalMs: 10000,
-    retryRequestDelayMs: 2000,
+    downloadHistory: false,
+    markOnlineOnConnect: false,
+    shouldSyncHistoryMessage: () => false,
+    connectTimeoutMs: 30000,
+    keepAliveIntervalMs: 15000,
+    retryRequestDelayMs: 3000,
   });
 
   // Guardar credenciales al cambiar
