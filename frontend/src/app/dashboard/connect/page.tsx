@@ -2,7 +2,10 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '@/context/AuthContext';
 
-const rawBackend = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://bot-whatsaap-tkjd.onrender.com';
+const envUrl = process.env.NEXT_PUBLIC_BACKEND_URL || '';
+const rawBackend = (envUrl.includes('replit.app') || !envUrl)
+  ? 'https://bot-whatsaap-tkjd.onrender.com'
+  : envUrl;
 const BACKEND = rawBackend.replace(/\/+$/, '');
 
 type Status = 'disconnected' | 'connecting' | 'qr_ready' | 'connected' | 'error';
