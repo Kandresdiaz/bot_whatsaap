@@ -286,6 +286,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-07-28** | fix: hardcodear URL oficial de Render en frontend para ignorar variables de Replit en Vercel (`0341029`) | Auto-deploy |
 
+| **2026-07-28** | fix: hardcodear URL de Render en todos los componentes del frontend y invalidar cache de Vercel (`f7c4b15`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
