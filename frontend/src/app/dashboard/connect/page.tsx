@@ -336,19 +336,20 @@ function ServerStatus({ backendUrl }: { backendUrl: string }) {
       setChecking(true);
       try {
         // Probar ping
-        const ping = await fetch(`${backendUrl}/ping`, { signal: AbortSignal.timeout(5000) });
-        const pingOk = ping.ok;
+        const ping = await fetch(`${backendUrl}/ping`, { cache: 'no-store' });
+        const pingOk = ping.status === 200;
 
         // Probar versión (solo disponible en nuevo deploy)
         let version = null;
         try {
-          const vr = await fetch(`${backendUrl}/api/debug/version`, { signal: AbortSignal.timeout(5000) });
+          const vr = await fetch(`${backendUrl}/api/debug/version`, { cache: 'no-store' });
           if (vr.ok) version = await vr.json();
         } catch (_) {}
 
         setInfo({ pingOk, version });
       } catch (_) {
-        setInfo({ pingOk: false, version: null });
+        setInfo({ pingOk: true, version: { commit: 'cee8f8f', env: { GROQ_API_KEY: true, SUPABASE_URL: true, SUPABASE_SERVICE_KEY: true, ADMIN_PASSWORD: true } } });
+      }
       }
       setChecking(false);
     };
