@@ -1,0 +1,10 @@
+run = "npm start --prefix backend"
+entrypoint = "backend/src/index.js"
+
+[modules]
+modules = ["web"]
+
+[[ports]]
+localPort = 3001
+externalPort = 80
+protocol = "http"
