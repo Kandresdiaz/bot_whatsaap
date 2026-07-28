@@ -288,6 +288,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-07-28** | fix: hardcodear URL de Render en todos los componentes del frontend y invalidar cache de Vercel (`f7c4b15`) | Auto-deploy |
 
+| **2026-07-28** | chore: bump layout version 1.0.6 for Vercel edge cache purge (`2de074d`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
