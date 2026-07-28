@@ -272,6 +272,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-07-28** | build: trigger Vercel frontend rebuild to sync with lightweight Render backend (`2545dc9`) | Auto-deploy |
 
+| **2026-07-28** | fix: cargar rutas express directamente sin fallback 503 (`0c428bd`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
