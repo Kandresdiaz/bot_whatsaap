@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { supabase } = require('../db/supabase');
-const { createSession, disconnectSession, sendMessage } = require('../whatsapp/sessionManager');
+const { createSession, disconnectSession, sendMessage, getSession } = require('../whatsapp/sessionManager');
 
 // Iniciar sesión (genera QR con Baileys)
 router.post('/start', async (req, res) => {
@@ -62,7 +62,6 @@ router.get('/status/:userId', async (req, res) => {
       .eq('user_id', userId)
       .maybeSingle();
 
-    const { getSession } = require('../whatsapp/sessionManager');
     const active = getSession(userId);
 
     if (session) {
@@ -73,8 +72,6 @@ router.get('/status/:userId', async (req, res) => {
       return res.json({ success: true, session });
     }
 
-    const { getSession } = require('../whatsapp/sessionManager');
-    const active = getSession(userId);
     if (active) {
       return res.json({
         success: true,
