@@ -274,6 +274,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-07-28** | fix: cargar rutas express directamente sin fallback 503 (`0c428bd`) | Auto-deploy |
 
+| **2026-07-28** | fix: corregir SyntaxError de variable duplicada getSession en sessions.js (`24083e1`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
