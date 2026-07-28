@@ -282,6 +282,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-07-28** | fix: sanitizar BACKEND URL eliminando slashes duplicados y asegurar HTTPS directo (`741f656`) | Auto-deploy |
 
+| **2026-07-28** | fix: descartar replit.app de NEXT_PUBLIC_BACKEND_URL y forzar Render en frontend (`80cb422`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
