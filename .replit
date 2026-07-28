@@ -8,3 +8,7 @@ modules = ["web"]
 localPort = 3001
 externalPort = 80
 protocol = "http"
+
+[deployment]
+run = "npm start --prefix backend"
+buildCommand = "npm install --prefix backend"
