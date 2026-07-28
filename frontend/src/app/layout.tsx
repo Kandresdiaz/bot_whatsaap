@@ -3,7 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
 
-// Versión del Frontend: 1.0.4 (Render ultra-low memory sync)
+// Versión del Frontend: 1.0.5 (Purga total de Replit URL)
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
