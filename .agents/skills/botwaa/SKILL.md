@@ -268,6 +268,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-07-28** | chore: agregar bloque deployment explicito en .replit para produccion (`83574ad`) | Auto-deploy |
 
+| **2026-07-28** | perf: ultra-low RAM/CPU configuration for Baileys on Render Free Tier (`63a2103`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
