@@ -276,6 +276,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-07-28** | fix: corregir SyntaxError de variable duplicada getSession en sessions.js (`24083e1`) | Auto-deploy |
 
+| **2026-07-28** | fix: responder objeto de sesion desconectada en lugar de null en status endpoint (`cee8f8f`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
