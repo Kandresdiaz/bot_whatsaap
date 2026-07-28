@@ -278,6 +278,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-07-28** | fix: responder objeto de sesion desconectada en lugar de null en status endpoint (`cee8f8f`) | Auto-deploy |
 
+| **2026-07-28** | fix: optimizar verificacion del servidor en frontend para evitar bloqueos CORS/cache (`3e99e69`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
