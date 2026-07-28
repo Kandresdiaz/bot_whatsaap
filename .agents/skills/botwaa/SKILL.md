@@ -264,6 +264,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-07-26** | chore: agregar fly.toml y Dockerfile para deploy alternativo en Fly.io (`eca733b`) | Auto-deploy |
 
+| **2026-07-28** | chore: agregar archivo .replit para forzar ejecucion de backend en puerto 3001 (`f69bb58`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
