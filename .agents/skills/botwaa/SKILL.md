@@ -270,6 +270,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-07-28** | perf: ultra-low RAM/CPU configuration for Baileys on Render Free Tier (`63a2103`) | Auto-deploy |
 
+| **2026-07-28** | build: trigger Vercel frontend rebuild to sync with lightweight Render backend (`2545dc9`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
