@@ -284,6 +284,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-07-28** | fix: descartar replit.app de NEXT_PUBLIC_BACKEND_URL y forzar Render en frontend (`80cb422`) | Auto-deploy |
 
+| **2026-07-28** | fix: hardcodear URL oficial de Render en frontend para ignorar variables de Replit en Vercel (`0341029`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
