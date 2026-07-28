@@ -280,6 +280,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-07-28** | fix: optimizar verificacion del servidor en frontend para evitar bloqueos CORS/cache (`3e99e69`) | Auto-deploy |
 
+| **2026-07-28** | fix: sanitizar BACKEND URL eliminando slashes duplicados y asegurar HTTPS directo (`741f656`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
