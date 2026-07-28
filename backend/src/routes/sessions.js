@@ -83,9 +83,9 @@ router.get('/status/:userId', async (req, res) => {
       });
     }
 
-    res.json({ success: true, session: null });
+    res.json({ success: true, session: { status: 'disconnected', user_id: userId } });
   } catch (err) {
-    res.json({ success: false, session: null });
+    res.json({ success: true, session: { status: 'disconnected', user_id: userId } });
   }
 });
 
