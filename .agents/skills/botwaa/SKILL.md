@@ -290,6 +290,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-07-28** | chore: bump layout version 1.0.6 for Vercel edge cache purge (`2de074d`) | Auto-deploy |
 
+| **2026-07-29** | fix: corregir sintaxis de llaves en ServerStatus de page.tsx (`a19256e`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
