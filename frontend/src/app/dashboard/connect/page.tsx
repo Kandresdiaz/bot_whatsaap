@@ -350,7 +350,6 @@ function ServerStatus({ backendUrl }: { backendUrl: string }) {
       } catch (_) {
         setInfo({ pingOk: true, version: { commit: 'cee8f8f', env: { GROQ_API_KEY: true, SUPABASE_URL: true, SUPABASE_SERVICE_KEY: true, ADMIN_PASSWORD: true } } });
       }
-      }
       setChecking(false);
     };
     check();
