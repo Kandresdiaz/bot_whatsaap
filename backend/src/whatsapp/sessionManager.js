@@ -49,7 +49,7 @@ const createSession = async (userId, businessId, io) => {
   if (!fs.existsSync(sessionDir)) fs.mkdirSync(sessionDir, { recursive: true });
 
   // Guardar estado inicial en memoria inmediatamente
-  sessions.set(userId, { status: 'connecting', businessId });
+  sessions.set(userId, { status: 'connecting', businessId, sock: null });
 
   // Guardar estado inicial en DB inmediatamente al solicitar conexión
   await safeUpsert('whatsapp_sessions', {
@@ -59,12 +59,13 @@ const createSession = async (userId, businessId, io) => {
 
   let state, saveCreds;
   try {
-    const auth = await useMultiFileAuthState(sessionDir);
-    state = auth.state;
-    saveCreds = auth.saveCreds;
-  } catch (e) {
-    console.error('[Baileys] Error cargando auth state:', e.message);
-    throw e;
+    const authResult = await useMultiFileAuthState(sessionDir);
+    state = authResult.state;
+    saveCreds = authResult.saveCreds;
+  } catch (authErr) {
+    console.error(`[Baileys] Error cargando credenciales de ${userId}:`, authErr);
+    sessions.delete(userId);
+    return;
   }
 
   // Usar versión hardcodeada para no depender de fetch externo
@@ -88,6 +89,10 @@ const createSession = async (userId, businessId, io) => {
     keepAliveIntervalMs: 15000,
     retryRequestDelayMs: 3000,
   });
+
+  // Guardar instancia de socket activa
+  const currentS = sessions.get(userId) || {};
+  sessions.set(userId, { ...currentS, sock });
 
   // Guardar credenciales al cambiar
   sock.ev.on('creds.update', saveCreds);
