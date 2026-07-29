@@ -292,6 +292,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-07-29** | fix: corregir sintaxis de llaves en ServerStatus de page.tsx (`a19256e`) | Auto-deploy |
 
+| **2026-07-29** | fix: asegurar inicializacion de Baileys socket y guardado de memoria RAM (`1690eb9`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
