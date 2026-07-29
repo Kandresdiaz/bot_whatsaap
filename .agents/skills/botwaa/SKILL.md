@@ -294,6 +294,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-07-29** | fix: asegurar inicializacion de Baileys socket y guardado de memoria RAM (`1690eb9`) | Auto-deploy |
 
+| **2026-07-29** | fix: hardcodear URL de Render en admin, citas, config, conversaciones y knowledge pages (`cc1d61b`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
