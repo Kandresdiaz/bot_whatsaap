@@ -318,6 +318,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-13** | fix: forzar reconexión limpia al escanear QR para sincronizar historial completo e id de sesión consistente (`22413f6`) | Auto-deploy |
 
+| **2026-08-13** | feat: agregar boton de re-vinculacion con QR fresco para forzar descarga del historial de WhatsApp (`2ff9626`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
