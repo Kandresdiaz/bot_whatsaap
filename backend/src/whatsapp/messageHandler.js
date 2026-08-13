@@ -82,6 +82,7 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
         .from('conversations')
         .insert({
           user_id: userId,
+          session_id: userId,
           contact_phone: contactPhone,
           contact_name: contactName,
           bot_active: true,

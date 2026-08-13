@@ -35,25 +35,45 @@ export default function ConversationsPage() {
   const socketRef = useRef<Socket | null>(null);
   const BACKEND = 'https://bot-whatsaap-tkjd.onrender.com';
 
+  const [syncing, setSyncing] = useState(false);
+
   // Cargar sesión del usuario
   useEffect(() => {
     if (!user) return;
+    setSessionId(user.id);
     fetch(`${BACKEND}/api/sessions/status/${user.id}`)
       .then(r => r.json())
-      .then(d => { if (d.session?.id) setSessionId(d.session.id); });
+      .then(d => {
+        if (d.session?.id) setSessionId(d.session.id);
+      });
   }, [user, BACKEND]);
+
+  const loadConversations = (targetId: string) => {
+    fetch(`${BACKEND}/api/conversations/${targetId}`)
+      .then(r => r.json())
+      .then(d => setConversations(d.conversations || []));
+  };
 
   // Cargar conversaciones
   useEffect(() => {
-    if (!sessionId) return;
-    fetch(`${BACKEND}/api/conversations/${sessionId}`)
-      .then(r => r.json())
-      .then(d => setConversations(d.conversations || []));
+    const targetId = sessionId || user?.id;
+    if (!targetId) return;
+
+    loadConversations(targetId);
 
     // Socket para mensajes en tiempo real
     const socket = io(BACKEND!);
     socketRef.current = socket;
-    socket.emit('join_session', sessionId);
+    socket.emit('join_session', targetId);
+    if (user?.id) socket.emit('join_session', user.id);
+
+    socket.on('chats_synced', () => {
+      loadConversations(targetId);
+    });
+
+    socket.on('conversation_updated', () => {
+      loadConversations(targetId);
+    });
 
     socket.on('new_message', ({ conversationId, message }) => {
       if (active?.id === conversationId) {
@@ -67,7 +87,21 @@ export default function ConversationsPage() {
     });
 
     return () => { socket.disconnect(); };
-  }, [sessionId, BACKEND]);
+  }, [sessionId, user, BACKEND]);
+
+  const handleManualSync = async () => {
+    const targetId = sessionId || user?.id;
+    if (!targetId) return;
+    setSyncing(true);
+    try {
+      await fetch(`${BACKEND}/api/conversations/sync/${targetId}`, { method: 'POST' });
+      loadConversations(targetId);
+    } catch (e) {
+      console.error('Error al sincronizar:', e);
+    } finally {
+      setTimeout(() => setSyncing(false), 1000);
+    }
+  };
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -133,7 +167,18 @@ export default function ConversationsPage() {
       {/* Lista de conversaciones */}
       <div className="card" style={{ width: 340, flexShrink: 0, padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
         <div style={{ padding: '16px', borderBottom: '1px solid var(--border)' }}>
-          <h2 style={{ fontWeight: 700, marginBottom: 12 }}>💬 Conversaciones</h2>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <h2 style={{ fontWeight: 700, margin: 0 }}>💬 Conversaciones</h2>
+            <button
+              className="btn btn-ghost"
+              style={{ fontSize: 12, padding: '4px 8px' }}
+              onClick={handleManualSync}
+              disabled={syncing}
+              title="Sincronizar chats de WhatsApp"
+            >
+              {syncing ? '🔄 Sincronizando...' : '🔄 Sincronizar'}
+            </button>
+          </div>
           <input
             className="input"
             placeholder="Buscar..."

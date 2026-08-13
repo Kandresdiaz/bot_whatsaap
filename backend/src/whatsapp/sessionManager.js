@@ -52,6 +52,154 @@ const safeUpsert = async (table, data, conflict = 'user_id') => {
   }
 };
 
+// Helper para extraer texto de mensajes de Baileys
+const extractText = (msg) => {
+  if (!msg || !msg.message) return '';
+  const m = msg.message;
+  return m.conversation
+    || m.extendedTextMessage?.text
+    || m.imageMessage?.caption
+    || m.videoMessage?.caption
+    || m.buttonsResponseMessage?.selectedDisplayText
+    || m.listResponseMessage?.title
+    || (m.imageMessage ? '[Imagen]' : '')
+    || (m.videoMessage ? '[Video]' : '')
+    || (m.audioMessage ? '[Audio]' : '')
+    || (m.documentMessage ? '[Documento]' : '')
+    || (m.stickerMessage ? '[Sticker]' : '')
+    || '';
+};
+
+// Sincronizador de chats, contactos e historial a Supabase
+const syncChatsAndMessagesToDb = async (userId, chats = [], contacts = [], messages = [], io = null) => {
+  if (!supabase) return;
+
+  const contactsMap = new Map();
+  if (Array.isArray(contacts)) {
+    for (const c of contacts) {
+      if (c && c.id) {
+        const name = c.name || c.notify || c.verifiedName;
+        if (name) contactsMap.set(c.id, name);
+      }
+    }
+  }
+
+  // 1. Procesar chats de WhatsApp
+  if (Array.isArray(chats) && chats.length > 0) {
+    for (const chat of chats) {
+      if (!chat || !chat.id) continue;
+      const jid = chat.id;
+      const contactPhone = jid.replace('@s.whatsapp.net', '').replace('@g.us', '').replace(/[^0-9]/g, '');
+      if (!contactPhone) continue;
+
+      const isGroup = jid.endsWith('@g.us');
+      const contactName = chat.name || contactsMap.get(jid) || (isGroup ? 'Grupo WA' : contactPhone);
+
+      const ts = chat.conversationTimestamp
+        ? new Date(Number(chat.conversationTimestamp) * 1000).toISOString()
+        : new Date().toISOString();
+
+      try {
+        const { data: existing } = await supabase
+          .from('conversations')
+          .select('id, contact_name')
+          .eq('user_id', userId)
+          .eq('contact_phone', contactPhone)
+          .maybeSingle();
+
+        if (existing) {
+          const updateData = {
+            last_message_at: ts,
+            session_id: userId,
+          };
+          if (contactName && contactName !== contactPhone) {
+            updateData.contact_name = contactName;
+          }
+          await supabase.from('conversations').update(updateData).eq('id', existing.id);
+        } else {
+          await supabase.from('conversations').insert({
+            user_id: userId,
+            session_id: userId,
+            contact_phone: contactPhone,
+            contact_name: contactName || contactPhone,
+            bot_active: true,
+            is_blacklisted: false,
+            unread_count: chat.unreadCount || 0,
+            last_message_at: ts,
+          });
+        }
+      } catch (err) {
+        console.warn(`[Sync] Error guardando chat ${contactPhone}:`, err.message);
+      }
+    }
+  }
+
+  // 2. Procesar mensajes recibidos en el historial
+  if (Array.isArray(messages) && messages.length > 0) {
+    for (const msg of messages) {
+      if (!msg || !msg.key || !msg.message) continue;
+      const jid = msg.key.remoteJid;
+      if (!jid) continue;
+      const contactPhone = jid.replace('@s.whatsapp.net', '').replace('@g.us', '').replace(/[^0-9]/g, '');
+      if (!contactPhone) continue;
+
+      const text = extractText(msg);
+      if (!text) continue;
+
+      const pushName = msg.pushName || contactsMap.get(jid) || contactPhone;
+      const msgTime = msg.messageTimestamp
+        ? new Date(Number(msg.messageTimestamp) * 1000).toISOString()
+        : new Date().toISOString();
+
+      try {
+        let conversationId = null;
+        const { data: conv } = await supabase
+          .from('conversations')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('contact_phone', contactPhone)
+          .maybeSingle();
+
+        if (conv) {
+          conversationId = conv.id;
+        } else {
+          const { data: newConv } = await supabase
+            .from('conversations')
+            .insert({
+              user_id: userId,
+              session_id: userId,
+              contact_phone: contactPhone,
+              contact_name: pushName,
+              bot_active: true,
+              is_blacklisted: false,
+              last_message_at: msgTime,
+            })
+            .select()
+            .maybeSingle();
+          conversationId = newConv?.id;
+        }
+
+        if (conversationId) {
+          await supabase.from('messages').insert({
+            conversation_id: conversationId,
+            content: text,
+            direction: msg.key.fromMe ? 'outbound' : 'inbound',
+            sent_by: msg.key.fromMe ? 'human' : 'customer',
+            timestamp: msgTime,
+          });
+        }
+      } catch (e) {
+        console.warn(`[Sync] Error guardando mensaje de ${contactPhone}:`, e.message);
+      }
+    }
+  }
+
+  if (io) {
+    io.to(`user_${userId}`).emit('chats_synced', { timestamp: new Date().toISOString() });
+    io.to(`session_${userId}`).emit('chats_synced', { timestamp: new Date().toISOString() });
+  }
+};
+
 const createSession = async (userId, businessId, io, forceClean = false) => {
   const existingSession = sessions.get(userId);
 
@@ -116,10 +264,10 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
     printQRInTerminal: false,
     browser: ['BotWA SaaS', 'Chrome', '120.0.0'],
     generateHighQualityLinkPreview: false,
-    syncFullHistory: false,
-    downloadHistory: false,
+    syncFullHistory: true,
+    downloadHistory: true,
     markOnlineOnConnect: false,
-    shouldSyncHistoryMessage: () => false,
+    shouldSyncHistoryMessage: () => true,
     connectTimeoutMs: 30000,
     keepAliveIntervalMs: 15000,
     retryRequestDelayMs: 3000,
@@ -131,6 +279,22 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
 
   // Guardar credenciales al cambiar
   sock.ev.on('creds.update', saveCreds);
+
+  // ─── Sincronización del historial enviado por WhatsApp al conectar ─────────
+  sock.ev.on('messaging-history.set', async ({ chats, contacts, messages }) => {
+    console.log(`[Baileys Sync] Sincronización inicial para ${userId}: ${chats?.length || 0} chats, ${contacts?.length || 0} contactos, ${messages?.length || 0} msgs`);
+    await syncChatsAndMessagesToDb(userId, chats, contacts, messages, io);
+  });
+
+  sock.ev.on('chats.upsert', async (chats) => {
+    console.log(`[Baileys Sync] ${chats?.length || 0} chats actualizados para ${userId}`);
+    await syncChatsAndMessagesToDb(userId, chats, [], [], io);
+  });
+
+  sock.ev.on('contacts.upsert', async (contacts) => {
+    console.log(`[Baileys Sync] ${contacts?.length || 0} contactos recibidos para ${userId}`);
+    await syncChatsAndMessagesToDb(userId, [], contacts, [], io);
+  });
 
   // ─── Eventos de conexión ─────────────────────────────────────────────────
   sock.ev.on('connection.update', async (update) => {
@@ -224,18 +388,71 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
     }
   });
 
-  // ─── Mensajes entrantes ──────────────────────────────────────────────────
+  // ─── Mensajes procesados (Entrantes y Salientes propios) ──────────────────
   sock.ev.on('messages.upsert', async ({ messages, type }) => {
-    if (type !== 'notify') return;
-
     for (const msg of messages) {
-      if (msg.key.fromMe) continue;
       if (!msg.message) continue;
 
       const sessionData = sessions.get(userId);
       if (!sessionData) continue;
 
-      if (handleIncomingMessage) {
+      // Si el mensaje fue enviado por el propio usuario desde su teléfono
+      if (msg.key.fromMe) {
+        const jid = msg.key.remoteJid || '';
+        const contactPhone = jid.replace('@s.whatsapp.net', '').replace(/[^0-9]/g, '');
+        const text = extractText(msg);
+        if (!contactPhone || !text) continue;
+
+        try {
+          const { data: conv } = await supabase
+            .from('conversations')
+            .select('id')
+            .eq('user_id', userId)
+            .eq('contact_phone', contactPhone)
+            .maybeSingle();
+
+          let conversationId = conv?.id;
+          if (!conversationId) {
+            const { data: newConv } = await supabase.from('conversations').insert({
+              user_id: userId,
+              session_id: userId,
+              contact_phone: contactPhone,
+              contact_name: contactPhone,
+              bot_active: true,
+              is_blacklisted: false,
+              last_message_at: new Date().toISOString(),
+            }).select().maybeSingle();
+            conversationId = newConv?.id;
+          }
+
+          if (conversationId) {
+            await supabase.from('conversations').update({
+              last_message_at: new Date().toISOString(),
+            }).eq('id', conversationId);
+
+            await supabase.from('messages').insert({
+              conversation_id: conversationId,
+              content: text,
+              direction: 'outbound',
+              sent_by: 'human',
+              timestamp: new Date().toISOString(),
+            });
+
+            if (io) {
+              io.to(`user_${userId}`).emit('new_message', {
+                conversationId,
+                message: { content: text, direction: 'outbound', sent_by: 'human', timestamp: new Date() },
+              });
+            }
+          }
+        } catch (e) {
+          console.error('[MSG fromMe] Error guardando mensaje propio:', e.message);
+        }
+        continue;
+      }
+
+      // Si es mensaje entrante del cliente
+      if (type === 'notify' && handleIncomingMessage) {
         try {
           await handleIncomingMessage(sock, msg, userId, businessId);
         } catch (err) {
@@ -305,5 +522,5 @@ const sendMessage = async (userId, to, text) => {
   await session.sock.sendMessage(jid, { text });
 };
 
-module.exports = { createSession, disconnectSession, getSession, restoreSessions, sendMessage };
+module.exports = { createSession, disconnectSession, getSession, restoreSessions, sendMessage, syncChatsAndMessagesToDb };
 

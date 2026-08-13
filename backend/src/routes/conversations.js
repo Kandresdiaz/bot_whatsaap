@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { supabase } = require('../db/supabase');
 
-// Listar conversaciones de una sesión
+// Listar conversaciones de una sesión o usuario
 router.get('/:sessionId', async (req, res) => {
   const { sessionId } = req.params;
   const { search, status } = req.query;
@@ -10,7 +10,7 @@ router.get('/:sessionId', async (req, res) => {
   let query = supabase
     .from('conversations')
     .select('*')
-    .eq('session_id', sessionId)
+    .or(`user_id.eq.${sessionId},session_id.eq.${sessionId}`)
     .order('last_message_at', { ascending: false });
 
   if (status) query = query.eq('status', status);
@@ -18,6 +18,26 @@ router.get('/:sessionId', async (req, res) => {
 
   const { data, error } = await query;
   res.json({ success: true, conversations: data || [] });
+});
+
+// Sincronizar chats de la sesión activa
+router.post('/sync/:userId', async (req, res) => {
+  const { userId } = req.params;
+  const { getSession } = require('../whatsapp/sessionManager');
+  const session = getSession(userId);
+
+  if (!session || !session.sock) {
+    return res.status(400).json({ success: false, error: 'Sesión de WhatsApp no activa' });
+  }
+
+  try {
+    if (global.io) {
+      global.io.to(`user_${userId}`).emit('chats_synced', { timestamp: new Date().toISOString() });
+    }
+    res.json({ success: true, message: 'Sincronización disparada correctamente' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 // Mensajes de una conversación
