@@ -86,6 +86,8 @@ export default function ConnectPage() {
         });
 
         socket.emit('join_session', user!.id);
+        if (user?.id === 'admin' || !user?.id) socket.emit('join_session', '00000000-0000-0000-0000-000000000001');
+        socket.emit('join_session', 'admin');
 
         socket.on('qr', ({ qr: qrData }: { qr: string }) => {
           setQr(qrData);

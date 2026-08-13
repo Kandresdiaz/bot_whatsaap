@@ -61,18 +61,35 @@ export default function ConversationsPage() {
 
     loadConversations(targetId);
 
+    // Sondeo automático continuo para actualizar frontal sin refrescar manualmente (especialmente al conectar por primera vez)
+    const interval = setInterval(() => {
+      loadConversations(targetId);
+      if (user?.id && user.id !== targetId) {
+        loadConversations(user.id);
+      }
+    }, 4000);
+
     // Socket para mensajes en tiempo real
     const socket = io(BACKEND!);
     socketRef.current = socket;
     socket.emit('join_session', targetId);
     if (user?.id) socket.emit('join_session', user.id);
+    if (user?.id === 'admin' || !user?.id) socket.emit('join_session', '00000000-0000-0000-0000-000000000001');
+    socket.emit('join_session', 'admin');
 
     socket.on('chats_synced', () => {
       loadConversations(targetId);
+      if (user?.id && user.id !== targetId) loadConversations(user.id);
     });
 
     socket.on('conversation_updated', () => {
       loadConversations(targetId);
+      if (user?.id && user.id !== targetId) loadConversations(user.id);
+    });
+
+    socket.on('connected', () => {
+      loadConversations(targetId);
+      if (user?.id && user.id !== targetId) loadConversations(user.id);
     });
 
     socket.on('new_message', ({ conversationId, message }) => {
@@ -86,7 +103,10 @@ export default function ConversationsPage() {
       ).sort((a, b) => new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime()));
     });
 
-    return () => { socket.disconnect(); };
+    return () => {
+      clearInterval(interval);
+      socket.disconnect();
+    };
   }, [sessionId, user, BACKEND]);
 
   const handleManualSync = async () => {

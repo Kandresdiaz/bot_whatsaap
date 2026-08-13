@@ -24,6 +24,9 @@ try {
 // Mapa de sesiones activas: userId → { sock, businessId, status, qr, phone }
 const sessions = new Map();
 
+// Caché en memoria de contactos por usuario: userId → Map(jid → name)
+const userContacts = new Map();
+
 const SESSIONS_DIR = path.join(__dirname, '../../sessions');
 if (!fs.existsSync(SESSIONS_DIR)) fs.mkdirSync(SESSIONS_DIR, { recursive: true });
 
@@ -47,6 +50,25 @@ const ADMIN_UUID = '00000000-0000-0000-0000-000000000001';
 const getValidUserId = (userId) => {
   if (!userId || userId === 'admin') return ADMIN_UUID;
   return userId;
+};
+
+// Emisor seguro de eventos Socket.io a todas las salas posibles del usuario
+const emitToUserRooms = (io, userId, sessionUuid, event, payload) => {
+  if (!io) return;
+  const validId = getValidUserId(userId);
+  const rooms = new Set([
+    `user_${userId}`,
+    `user_${validId}`,
+    `session_${userId}`,
+    `session_${validId}`,
+  ]);
+  if (sessionUuid) {
+    rooms.add(`session_${sessionUuid}`);
+    rooms.add(`user_${sessionUuid}`);
+  }
+  for (const room of rooms) {
+    io.to(room).emit(event, payload);
+  }
 };
 
 // Obtener o crear el UUID de sesión en whatsapp_sessions
@@ -117,32 +139,49 @@ const safeUpsert = async (table, data, conflict = 'user_id') => {
   }
 };
 
-// Helper para extraer texto de mensajes de Baileys
+// Helper robusto para extraer texto de mensajes de Baileys
 const extractText = (msg) => {
   if (!msg || !msg.message) return '';
-  const m = msg.message;
+  let m = msg.message;
+  if (m.ephemeralMessage) m = m.ephemeralMessage.message;
+  if (m.viewOnceMessage) m = m.viewOnceMessage.message;
+  if (m.viewOnceMessageV2) m = m.viewOnceMessageV2.message;
+  if (m.viewOnceMessageV2Extension) m = m.viewOnceMessageV2Extension.message;
+  if (m.documentWithCaptionMessage) m = m.documentWithCaptionMessage.message;
+  if (m.editedMessage) m = m.editedMessage.message?.protocolMessage?.editedMessage || m.editedMessage;
+  if (!m) return '';
+
   return m.conversation
     || m.extendedTextMessage?.text
     || m.imageMessage?.caption
     || m.videoMessage?.caption
+    || m.documentMessage?.caption
     || m.buttonsResponseMessage?.selectedDisplayText
     || m.listResponseMessage?.title
+    || m.templateButtonReplyMessage?.selectedId
     || (m.imageMessage ? '[Imagen]' : '')
     || (m.videoMessage ? '[Video]' : '')
     || (m.audioMessage ? '[Audio]' : '')
-    || (m.documentMessage ? '[Documento]' : '')
+    || (m.documentMessage ? (m.documentMessage.fileName ? `[Documento: ${m.documentMessage.fileName}]` : '[Documento]') : '')
     || (m.stickerMessage ? '[Sticker]' : '')
+    || (m.locationMessage ? '[Ubicación]' : '')
+    || (m.contactMessage ? '[Contacto]' : '')
     || '';
 };
 
-// Sincronizador de chats, contactos e historial a Supabase
+// Sincronizador optimizado en lote de chats, contactos e historial a Supabase
 const syncChatsAndMessagesToDb = async (userId, chats = [], contacts = [], messages = [], io = null) => {
   if (!supabase) return;
 
   const sessionUuid = await getSessionUuid(userId);
   if (!sessionUuid) return;
 
-  const contactsMap = new Map();
+  // Obtener/actualizar caché de contactos
+  if (!userContacts.has(userId)) {
+    userContacts.set(userId, new Map());
+  }
+  const contactsMap = userContacts.get(userId);
+
   if (Array.isArray(contacts)) {
     for (const c of contacts) {
       if (c && c.id) {
@@ -152,115 +191,170 @@ const syncChatsAndMessagesToDb = async (userId, chats = [], contacts = [], messa
     }
   }
 
+  // Cargar conversaciones existentes de Supabase en una sola consulta
+  const { data: existingConvs } = await supabase
+    .from('conversations')
+    .select('id, contact_phone, contact_name, last_message_at')
+    .eq('session_id', sessionUuid);
+
+  const convMap = new Map();
+  if (Array.isArray(existingConvs)) {
+    for (const c of existingConvs) {
+      convMap.set(c.contact_phone, c);
+    }
+  }
+
+  const newConvsToInsert = [];
+  const convsToUpdate = [];
+
   // 1. Procesar chats de WhatsApp
   if (Array.isArray(chats) && chats.length > 0) {
     for (const chat of chats) {
-      if (!chat || !chat.id) continue;
+      if (!chat || !chat.id || chat.id === 'status@broadcast') continue;
       const jid = chat.id;
       const contactPhone = jid.replace('@s.whatsapp.net', '').replace('@g.us', '').replace(/[^0-9]/g, '');
       if (!contactPhone) continue;
 
       const isGroup = jid.endsWith('@g.us');
-      const contactName = chat.name || contactsMap.get(jid) || (isGroup ? 'Grupo WA' : contactPhone);
+      let contactName = chat.name || contactsMap.get(jid) || (isGroup ? 'Grupo WA' : contactPhone);
+
+      // Si no tenemos nombre, buscar si hay pushName en mensajes recibidos de este JID
+      if (contactName === contactPhone && Array.isArray(messages)) {
+        const msgPush = messages.find(m => m.key?.remoteJid === jid && m.pushName);
+        if (msgPush?.pushName) contactName = msgPush.pushName;
+      }
 
       const ts = chat.conversationTimestamp
         ? new Date(Number(chat.conversationTimestamp) * 1000).toISOString()
         : new Date().toISOString();
 
-      try {
-        const { data: existing } = await supabase
-          .from('conversations')
-          .select('id, contact_name')
-          .eq('session_id', sessionUuid)
-          .eq('contact_phone', contactPhone)
-          .maybeSingle();
-
+      if (convMap.has(contactPhone)) {
+        const existing = convMap.get(contactPhone);
         if (existing) {
-          const updateData = { last_message_at: ts };
-          if (contactName && contactName !== contactPhone) {
+          const updateData = {};
+          if (new Date(ts) > new Date(existing.last_message_at || 0)) {
+            updateData.last_message_at = ts;
+          }
+          if (contactName && contactName !== contactPhone && existing.contact_name !== contactName) {
             updateData.contact_name = contactName;
           }
-          await supabase.from('conversations').update(updateData).eq('id', existing.id);
-        } else {
-          await supabase.from('conversations').insert({
-            session_id: sessionUuid,
-            contact_phone: contactPhone,
-            contact_name: contactName || contactPhone,
-            bot_active: true,
-            is_blacklisted: false,
-            unread_count: chat.unreadCount || 0,
-            last_message_at: ts,
-          });
+          if (Object.keys(updateData).length > 0) {
+            convsToUpdate.push({ id: existing.id, ...updateData });
+          }
         }
-      } catch (err) {
-        console.warn(`[Sync] Error guardando chat ${contactPhone}:`, err.message);
+      } else {
+        newConvsToInsert.push({
+          session_id: sessionUuid,
+          contact_phone: contactPhone,
+          contact_name: contactName || contactPhone,
+          bot_active: true,
+          is_blacklisted: false,
+          unread_count: chat.unreadCount || 0,
+          last_message_at: ts,
+        });
       }
     }
   }
 
-  // 2. Procesar mensajes recibidos en el historial
+  // 2. Procesar mensajes del historial para asegurar que sus chats existan
   if (Array.isArray(messages) && messages.length > 0) {
     for (const msg of messages) {
-      if (!msg || !msg.key || !msg.message) continue;
+      if (!msg || !msg.key || !msg.key.remoteJid || msg.key.remoteJid === 'status@broadcast') continue;
       const jid = msg.key.remoteJid;
-      if (!jid) continue;
       const contactPhone = jid.replace('@s.whatsapp.net', '').replace('@g.us', '').replace(/[^0-9]/g, '');
       if (!contactPhone) continue;
-
-      const text = extractText(msg);
-      if (!text) continue;
 
       const pushName = msg.pushName || contactsMap.get(jid) || contactPhone;
       const msgTime = msg.messageTimestamp
         ? new Date(Number(msg.messageTimestamp) * 1000).toISOString()
         : new Date().toISOString();
 
+      if (!convMap.has(contactPhone) && !newConvsToInsert.some(c => c.contact_phone === contactPhone)) {
+        newConvsToInsert.push({
+          session_id: sessionUuid,
+          contact_phone: contactPhone,
+          contact_name: pushName,
+          bot_active: true,
+          is_blacklisted: false,
+          last_message_at: msgTime,
+        });
+      }
+    }
+  }
+
+  // Guardar nuevas conversaciones en Supabase en lote
+  if (newConvsToInsert.length > 0) {
+    try {
+      const { data: inserted } = await supabase
+        .from('conversations')
+        .insert(newConvsToInsert)
+        .select('id, contact_phone, contact_name, last_message_at');
+
+      if (Array.isArray(inserted)) {
+        for (const c of inserted) {
+          convMap.set(c.contact_phone, c);
+        }
+      }
+    } catch (err) {
+      console.warn('[Sync] Error insertando nuevas conversaciones:', err.message);
+    }
+  }
+
+  // Actualizar conversaciones existentes
+  if (convsToUpdate.length > 0) {
+    for (const item of convsToUpdate) {
+      const { id, ...changes } = item;
       try {
-        let conversationId = null;
-        const { data: conv } = await supabase
-          .from('conversations')
-          .select('id')
-          .eq('session_id', sessionUuid)
-          .eq('contact_phone', contactPhone)
-          .maybeSingle();
+        await supabase.from('conversations').update(changes).eq('id', id);
+      } catch (_) {}
+    }
+  }
 
-        if (conv) {
-          conversationId = conv.id;
-        } else {
-          const { data: newConv } = await supabase
-            .from('conversations')
-            .insert({
-              session_id: sessionUuid,
-              contact_phone: contactPhone,
-              contact_name: pushName,
-              bot_active: true,
-              is_blacklisted: false,
-              last_message_at: msgTime,
-            })
-            .select()
-            .maybeSingle();
-          conversationId = newConv?.id;
-        }
+  // 3. Procesar y guardar mensajes en lote
+  if (Array.isArray(messages) && messages.length > 0) {
+    const messagesToInsert = [];
 
-        if (conversationId) {
-          await supabase.from('messages').insert({
-            conversation_id: conversationId,
-            content: text,
-            direction: msg.key.fromMe ? 'outbound' : 'inbound',
-            sent_by: msg.key.fromMe ? 'human' : 'customer',
-            timestamp: msgTime,
-          });
+    for (const msg of messages) {
+      if (!msg || !msg.key || !msg.message || msg.key.remoteJid === 'status@broadcast') continue;
+      const jid = msg.key.remoteJid;
+      const contactPhone = jid.replace('@s.whatsapp.net', '').replace('@g.us', '').replace(/[^0-9]/g, '');
+      if (!contactPhone) continue;
+
+      const text = extractText(msg);
+      if (!text) continue;
+
+      const msgTime = msg.messageTimestamp
+        ? new Date(Number(msg.messageTimestamp) * 1000).toISOString()
+        : new Date().toISOString();
+
+      const conv = convMap.get(contactPhone);
+      if (conv?.id) {
+        messagesToInsert.push({
+          conversation_id: conv.id,
+          content: text,
+          direction: msg.key.fromMe ? 'outbound' : 'inbound',
+          sent_by: msg.key.fromMe ? 'human' : 'customer',
+          timestamp: msgTime,
+        });
+      }
+    }
+
+    if (messagesToInsert.length > 0) {
+      // Insertar en lotes de 50 mensajes
+      const BATCH_SIZE = 50;
+      for (let i = 0; i < messagesToInsert.length; i += BATCH_SIZE) {
+        const batch = messagesToInsert.slice(i, i + BATCH_SIZE);
+        try {
+          await supabase.from('messages').insert(batch);
+        } catch (errMsg) {
+          console.warn(`[Sync] Error en lote de mensajes (${i}):`, errMsg.message);
         }
-      } catch (e) {
-        console.warn(`[Sync] Error guardando mensaje de ${contactPhone}:`, e.message);
       }
     }
   }
 
   if (io) {
-    const validId = getValidUserId(userId);
-    io.to(`user_${validId}`).emit('chats_synced', { timestamp: new Date().toISOString() });
-    io.to(`session_${validId}`).emit('chats_synced', { timestamp: new Date().toISOString() });
+    emitToUserRooms(io, userId, sessionUuid, 'chats_synced', { timestamp: new Date().toISOString() });
   }
 };
 
@@ -375,11 +469,9 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
         const sData = sessions.get(userId) || {};
         sessions.set(userId, { ...sData, qr: qrDataUrl, status: 'qr_ready' });
 
-        // Emitir al frontend por Socket.io
-        if (io) {
-          io.to(`user_${userId}`).emit('qr', { qr: qrDataUrl });
-          io.to(`session_${userId}`).emit('qr', { qr: qrDataUrl });
-        }
+        // Emitir al frontend por Socket.io a todas las salas del usuario
+        const sessionUuid = await getSessionUuid(userId);
+        emitToUserRooms(io, userId, sessionUuid, 'qr', { qr: qrDataUrl });
 
         // Guardar en DB (no bloquear si falla)
         await safeUpsert('whatsapp_sessions', {
@@ -399,6 +491,8 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
 
       sessions.set(userId, { sock, businessId, status: 'connected', phone, qr: null });
 
+      const sessionUuid = await getSessionUuid(userId);
+
       await safeUpsert('whatsapp_sessions', {
         user_id: userId,
         phone_number: phone,
@@ -408,12 +502,15 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
       });
 
       if (io) {
-        const payload = { phone };
-        io.to(`user_${userId}`).emit('connected', payload);
-        io.to(`user_${userId}`).emit('session_ready', payload);
-        io.to(`session_${userId}`).emit('connected', payload);
-        io.to(`session_${userId}`).emit('session_ready', payload);
+        const payload = { phone, userId, sessionId: sessionUuid };
+        emitToUserRooms(io, userId, sessionUuid, 'connected', payload);
+        emitToUserRooms(io, userId, sessionUuid, 'session_ready', payload);
       }
+
+      // Disparar sincronización inicial de chats en segundo plano
+      setTimeout(() => {
+        syncChatsAndMessagesToDb(userId, [], [], [], io).catch(console.error);
+      }, 1000);
     }
 
     // ── Conexión cerrada ──────────────────────────────────────────────────
@@ -433,6 +530,8 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
 
       sessions.delete(userId);
 
+      const sessionUuid = await getSessionUuid(userId);
+
       await safeUpsert('whatsapp_sessions', {
         user_id: userId,
         status: shouldReconnect ? 'reconnecting' : 'disconnected',
@@ -441,8 +540,7 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
 
       if (io) {
         const payload = { shouldReconnect };
-        io.to(`user_${userId}`).emit('disconnected', payload);
-        io.to(`session_${userId}`).emit('disconnected', payload);
+        emitToUserRooms(io, userId, sessionUuid, 'disconnected', payload);
       }
 
       if (shouldReconnect) {
@@ -505,10 +603,12 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
             });
 
             if (io) {
-              const validId = getValidUserId(userId);
-              io.to(`user_${validId}`).emit('new_message', {
+              emitToUserRooms(io, userId, sessionUuid, 'new_message', {
                 conversationId,
                 message: { content: text, direction: 'outbound', sent_by: 'human', timestamp: new Date() },
+              });
+              emitToUserRooms(io, userId, sessionUuid, 'conversation_updated', {
+                conversationId, contactPhone, lastMessage: text,
               });
             }
           }
@@ -612,5 +712,6 @@ const sendMessage = async (userId, to, text) => {
   await session.sock.sendMessage(jid, { text });
 };
 
-module.exports = { createSession, disconnectSession, getSession, restoreSessions, sendMessage, syncChatsAndMessagesToDb, getSessionUuid, getValidUserId };
+module.exports = { createSession, disconnectSession, getSession, restoreSessions, sendMessage, syncChatsAndMessagesToDb, getSessionUuid, getValidUserId, emitToUserRooms };
+
 

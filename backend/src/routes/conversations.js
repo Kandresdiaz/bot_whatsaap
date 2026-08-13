@@ -31,7 +31,7 @@ router.get('/:sessionId', async (req, res) => {
 // Sincronizar chats de la sesión activa
 router.post('/sync/:userId', async (req, res) => {
   const { userId } = req.params;
-  const { getSession, syncChatsAndMessagesToDb, getValidUserId } = require('../whatsapp/sessionManager');
+  const { getSession, syncChatsAndMessagesToDb, getValidUserId, emitToUserRooms, getSessionUuid } = require('../whatsapp/sessionManager');
   
   const validId = getValidUserId(userId);
   const session = getSession(userId) || getSession(validId);
@@ -41,10 +41,10 @@ router.post('/sync/:userId', async (req, res) => {
   }
 
   try {
+    const sessionUuid = await getSessionUuid(userId);
     await syncChatsAndMessagesToDb(userId, [], [], [], global.io);
     if (global.io) {
-      global.io.to(`user_${validId}`).emit('chats_synced', { timestamp: new Date().toISOString() });
-      global.io.to(`user_${userId}`).emit('chats_synced', { timestamp: new Date().toISOString() });
+      emitToUserRooms(global.io, userId, sessionUuid, 'chats_synced', { timestamp: new Date().toISOString() });
     }
     res.json({ success: true, message: 'Sincronización disparada correctamente' });
   } catch (err) {

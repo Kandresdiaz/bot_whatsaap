@@ -113,21 +113,42 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
 
     // Emitir tiempo real al dashboard
     if (global.io) {
-      global.io.to(`user_${userId}`).emit('new_message', {
-        conversationId: conversation.id,
-        message: { content: text, direction: 'inbound', sent_by: 'human', timestamp: new Date() },
-      });
-      global.io.to(`user_${userId}`).emit('conversation_updated', {
-        conversationId: conversation.id, contactName, lastMessage: text,
-      });
+      try {
+        const { emitToUserRooms, getSessionUuid } = require('./sessionManager');
+        getSessionUuid(userId).then(sessionUuid => {
+          emitToUserRooms(global.io, userId, sessionUuid, 'new_message', {
+            conversationId: conversation.id,
+            message: { content: text, direction: 'inbound', sent_by: 'human', timestamp: new Date() },
+          });
+          emitToUserRooms(global.io, userId, sessionUuid, 'conversation_updated', {
+            conversationId: conversation.id, contactName, lastMessage: text,
+          });
+        });
+      } catch (_) {
+        global.io.to(`user_${userId}`).emit('new_message', {
+          conversationId: conversation.id,
+          message: { content: text, direction: 'inbound', sent_by: 'human', timestamp: new Date() },
+        });
+      }
     }
   }
 
   // ── 3. Bot desactivado o blacklist ────────────────────────────────────────
   if (conversation?.is_blacklisted || (conversation && !conversation.bot_active)) {
-    if (global.io) global.io.to(`user_${userId}`).emit('manual_needed', {
-      conversationId: conversation.id, contactName, message: text,
-    });
+    if (global.io) {
+      try {
+        const { emitToUserRooms, getSessionUuid } = require('./sessionManager');
+        getSessionUuid(userId).then(sessionUuid => {
+          emitToUserRooms(global.io, userId, sessionUuid, 'manual_needed', {
+            conversationId: conversation.id, contactName, message: text,
+          });
+        });
+      } catch (_) {
+        global.io.to(`user_${userId}`).emit('manual_needed', {
+          conversationId: conversation.id, contactName, message: text,
+        });
+      }
+    }
     return;
   }
 
