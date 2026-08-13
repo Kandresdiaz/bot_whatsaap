@@ -298,6 +298,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-13** | fix: resolver problema de generacion de QR, limpieza de credenciales e integracion Baileys (`42cbb50`) | Auto-deploy |
 
+| **2026-08-13** | feat: sincronizar todos los chats y contactos de WhatsApp al conectar Baileys (`b75ac3a`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
