@@ -314,6 +314,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-13** | fix: emitir eventos de conexión Baileys inmediatamente sin bloqueos async (`272db5c`) | Auto-deploy |
 
+| **2026-08-13** | feat: capturar eventos append, chats.update y contacts.update de Baileys para descargar historial completo (`99cfd29`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
