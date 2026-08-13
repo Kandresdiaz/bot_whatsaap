@@ -296,6 +296,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-07-29** | fix: hardcodear URL de Render en admin, citas, config, conversaciones y knowledge pages (`cc1d61b`) | Auto-deploy |
 
+| **2026-08-13** | fix: resolver problema de generacion de QR, limpieza de credenciales e integracion Baileys (`42cbb50`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
