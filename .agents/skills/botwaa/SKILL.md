@@ -304,6 +304,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-13** | fix: vincular session_id UUID para guardar y mostrar todas las conversaciones en el dashboard (`b597ab4`) | Auto-deploy |
 
+| **2026-08-13** | feat: auto-redireccionar a conversaciones tras conectar WhatsApp exitosamente (`0b8180a`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
