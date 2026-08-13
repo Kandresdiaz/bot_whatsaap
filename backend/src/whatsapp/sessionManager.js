@@ -553,7 +553,30 @@ const disconnectSession = async (userId) => {
   });
 };
 
-const getSession = (userId) => sessions.get(userId);
+const getSession = (userId) => {
+  if (!userId) return null;
+
+  // 1. Coincidencia exacta de clave
+  if (sessions.has(userId)) return sessions.get(userId);
+
+  // 2. Coincidencia por validUserId ('admin' o ADMIN_UUID)
+  const validId = getValidUserId(userId);
+  if (sessions.has(validId)) return sessions.get(validId);
+  if (sessions.has('admin')) return sessions.get('admin');
+  if (sessions.has(ADMIN_UUID)) return sessions.get(ADMIN_UUID);
+
+  // 3. Buscar si alguna clave coincide en getValidUserId
+  for (const [key, s] of sessions.entries()) {
+    if (getValidUserId(key) === validId) return s;
+  }
+
+  // 4. Fallback: Si existe una única sesión activa en memoria RAM, retornarla
+  if (sessions.size === 1) {
+    return sessions.values().next().value;
+  }
+
+  return null;
+};
 
 const restoreSessions = async (io) => {
   if (!supabase) return;

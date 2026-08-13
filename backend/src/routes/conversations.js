@@ -37,7 +37,7 @@ router.post('/sync/:userId', async (req, res) => {
   const session = getSession(userId) || getSession(validId);
 
   if (!session || !session.sock) {
-    return res.status(400).json({ success: false, error: 'Sesión de WhatsApp no activa' });
+    return res.json({ success: false, message: 'La sesión de WhatsApp se está iniciando o no está activa aún' });
   }
 
   try {
