@@ -310,6 +310,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-13** | fix: mejorar resolucion de getSession para evitar error 400 en sync (`6ec39b8`) | Auto-deploy |
 
+| **2026-08-13** | feat: auto-sincronizar chats previos de WhatsApp y auto-actualizar frontend al conectar QR (`5630825`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
