@@ -306,6 +306,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-13** | feat: auto-redireccionar a conversaciones tras conectar WhatsApp exitosamente (`0b8180a`) | Auto-deploy |
 
+| **2026-08-13** | fix: resolver mapeo de getSessionUuid para soportar tanto ID de sesion UUID como userId admin y mostrar conversaciones (`c72b426`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
