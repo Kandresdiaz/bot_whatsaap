@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 
 const BACKEND = 'https://bot-whatsaap-tkjd.onrender.com';
@@ -8,11 +9,22 @@ type Status = 'disconnected' | 'connecting' | 'qr_ready' | 'connected' | 'error'
 
 export default function ConnectPage() {
   const { user } = useAuth();
+  const router = useRouter();
   const [status, setStatus] = useState<Status>('disconnected');
   const [qr, setQr] = useState<string | null>(null);
   const [phone, setPhone] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
+
+  // Redirigir automáticamente a conversaciones al conectar
+  useEffect(() => {
+    if (status === 'connected') {
+      const timer = setTimeout(() => {
+        router.push('/dashboard/conversations');
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [status, router]);
 
   // ── Polling: pregunta al backend cada 3s el estado de la sesión ──────────
   useEffect(() => {
