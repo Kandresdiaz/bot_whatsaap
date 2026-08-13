@@ -312,6 +312,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-13** | feat: auto-sincronizar chats previos de WhatsApp y auto-actualizar frontend al conectar QR (`5630825`) | Auto-deploy |
 
+| **2026-08-13** | fix: emitir eventos de conexión Baileys inmediatamente sin bloqueos async (`272db5c`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
