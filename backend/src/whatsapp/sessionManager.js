@@ -192,7 +192,11 @@ const syncChatsAndMessagesToDb = async (userId, chats = [], contacts = [], messa
       for (const c of contacts) {
         if (c && c.id) {
           const name = c.name || c.notify || c.verifiedName;
-          if (name) contactsMap.set(c.id, name);
+          if (name) {
+            contactsMap.set(c.id, name);
+            const cleanPhone = c.id.replace('@s.whatsapp.net', '').replace('@g.us', '').replace(/[^0-9]/g, '');
+            if (cleanPhone) contactsMap.set(cleanPhone, name);
+          }
         }
       }
     }
@@ -222,7 +226,7 @@ const syncChatsAndMessagesToDb = async (userId, chats = [], contacts = [], messa
         if (!contactPhone) continue;
 
         const isGroup = jid.endsWith('@g.us');
-        let contactName = chat.name || contactsMap.get(jid) || (isGroup ? 'Grupo WA' : contactPhone);
+        let contactName = chat.name || contactsMap.get(jid) || contactsMap.get(contactPhone) || (isGroup ? 'Grupo WA' : contactPhone);
 
         // Si no tenemos nombre, buscar si hay pushName en mensajes recibidos de este JID
         if (contactName === contactPhone && Array.isArray(messages)) {
@@ -270,7 +274,8 @@ const syncChatsAndMessagesToDb = async (userId, chats = [], contacts = [], messa
         const contactPhone = jid.replace('@s.whatsapp.net', '').replace('@g.us', '').replace(/[^0-9]/g, '');
         if (!contactPhone) continue;
 
-        const pushName = msg.pushName || contactsMap.get(jid) || contactPhone;
+        const isGroup = jid.endsWith('@g.us');
+        const pushName = msg.pushName || contactsMap.get(jid) || contactsMap.get(contactPhone) || (isGroup ? 'Grupo WA' : contactPhone);
         const msgTime = msg.messageTimestamp
           ? new Date(Number(msg.messageTimestamp) * 1000).toISOString()
           : new Date().toISOString();
@@ -346,14 +351,34 @@ const syncChatsAndMessagesToDb = async (userId, chats = [], contacts = [], messa
       }
 
       if (messagesToInsert.length > 0) {
-        // Insertar en lotes de 50 mensajes
-        const BATCH_SIZE = 50;
-        for (let i = 0; i < messagesToInsert.length; i += BATCH_SIZE) {
-          const batch = messagesToInsert.slice(i, i + BATCH_SIZE);
-          try {
-            await supabase.from('messages').insert(batch);
-          } catch (errMsg) {
-            console.warn(`[Sync] Error en lote de mensajes (${i}):`, errMsg.message);
+        // Cargar mensajes recientes para evitar duplicar mensajes exactos
+        const convIds = Array.from(convMap.values()).map(c => c.id);
+        const { data: existingMsgs } = await supabase
+          .from('messages')
+          .select('conversation_id, content, timestamp')
+          .in('conversation_id', convIds.slice(0, 50));
+
+        const existingMsgSet = new Set();
+        if (Array.isArray(existingMsgs)) {
+          for (const m of existingMsgs) {
+            existingMsgSet.add(`${m.conversation_id}_${m.content}_${m.timestamp}`);
+          }
+        }
+
+        const uniqueMessages = messagesToInsert.filter(
+          m => !existingMsgSet.has(`${m.conversation_id}_${m.content}_${m.timestamp}`)
+        );
+
+        if (uniqueMessages.length > 0) {
+          // Insertar en lotes de 50 mensajes
+          const BATCH_SIZE = 50;
+          for (let i = 0; i < uniqueMessages.length; i += BATCH_SIZE) {
+            const batch = uniqueMessages.slice(i, i + BATCH_SIZE);
+            try {
+              await supabase.from('messages').insert(batch);
+            } catch (errMsg) {
+              console.warn(`[Sync] Error en lote de mensajes (${i}):`, errMsg.message);
+            }
           }
         }
       }
@@ -448,8 +473,8 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
   sock.ev.on('creds.update', saveCreds);
 
   // ─── Sincronización del historial enviado por WhatsApp al conectar ─────────
-  sock.ev.on('messaging-history.set', async ({ chats, contacts, messages }) => {
-    console.log(`[Baileys Sync] Sincronización inicial para ${userId}: ${chats?.length || 0} chats, ${contacts?.length || 0} contactos, ${messages?.length || 0} msgs`);
+  sock.ev.on('messaging-history.set', async ({ chats, contacts, messages, syncType }) => {
+    console.log(`[Baileys Sync] messaging-history.set para ${userId}: ${chats?.length || 0} chats, ${contacts?.length || 0} contactos, ${messages?.length || 0} msgs (type: ${syncType})`);
     await syncChatsAndMessagesToDb(userId, chats, contacts, messages, io);
   });
 
@@ -458,8 +483,18 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
     await syncChatsAndMessagesToDb(userId, chats, [], [], io);
   });
 
+  sock.ev.on('chats.update', async (chats) => {
+    console.log(`[Baileys Sync] ${chats?.length || 0} chats modificados para ${userId}`);
+    await syncChatsAndMessagesToDb(userId, chats, [], [], io);
+  });
+
   sock.ev.on('contacts.upsert', async (contacts) => {
     console.log(`[Baileys Sync] ${contacts?.length || 0} contactos recibidos para ${userId}`);
+    await syncChatsAndMessagesToDb(userId, [], contacts, [], io);
+  });
+
+  sock.ev.on('contacts.update', async (contacts) => {
+    console.log(`[Baileys Sync] ${contacts?.length || 0} contactos modificados para ${userId}`);
     await syncChatsAndMessagesToDb(userId, [], contacts, [], io);
   });
 
@@ -557,8 +592,15 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
     }
   });
 
-  // ─── Mensajes procesados (Entrantes y Salientes propios) ──────────────────
+  // ─── Mensajes procesados (Entrantes, Salientes e Historial append) ────────
   sock.ev.on('messages.upsert', async ({ messages, type }) => {
+    // Si se están recibiendo paquetes del historial enviado por WhatsApp ('append')
+    if (type === 'append' && Array.isArray(messages) && messages.length > 0) {
+      console.log(`[Baileys Sync] Recibidos ${messages.length} mensajes del historial ('append') para ${userId}`);
+      await syncChatsAndMessagesToDb(userId, [], [], messages, io);
+      return;
+    }
+
     for (const msg of messages) {
       if (!msg.message) continue;
 
