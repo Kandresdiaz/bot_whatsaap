@@ -31,15 +31,19 @@ router.get('/:sessionId', async (req, res) => {
 // Sincronizar chats de la sesión activa
 router.post('/sync/:userId', async (req, res) => {
   const { userId } = req.params;
-  const { getSession } = require('../whatsapp/sessionManager');
-  const session = getSession(userId);
+  const { getSession, syncChatsAndMessagesToDb, getValidUserId } = require('../whatsapp/sessionManager');
+  
+  const validId = getValidUserId(userId);
+  const session = getSession(userId) || getSession(validId);
 
   if (!session || !session.sock) {
     return res.status(400).json({ success: false, error: 'Sesión de WhatsApp no activa' });
   }
 
   try {
+    await syncChatsAndMessagesToDb(userId, [], [], [], global.io);
     if (global.io) {
+      global.io.to(`user_${validId}`).emit('chats_synced', { timestamp: new Date().toISOString() });
       global.io.to(`user_${userId}`).emit('chats_synced', { timestamp: new Date().toISOString() });
     }
     res.json({ success: true, message: 'Sincronización disparada correctamente' });

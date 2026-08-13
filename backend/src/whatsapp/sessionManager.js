@@ -51,10 +51,31 @@ const getValidUserId = (userId) => {
 
 // Obtener o crear el UUID de sesión en whatsapp_sessions
 const getSessionUuid = async (userId) => {
-  const validUserId = getValidUserId(userId);
-  if (!supabase) return null;
+  if (!supabase || !userId) return null;
 
   try {
+    // 1. Probar si userId YA ES el UUID de una sesión en whatsapp_sessions (columna id)
+    const { data: byId } = await supabase
+      .from('whatsapp_sessions')
+      .select('id')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (byId?.id) return byId.id;
+
+    // 2. Obtener el validUserId ('admin' -> ADMIN_UUID)
+    const validUserId = getValidUserId(userId);
+
+    // 3. Probar por id usando validUserId
+    const { data: byValidId } = await supabase
+      .from('whatsapp_sessions')
+      .select('id')
+      .eq('id', validUserId)
+      .maybeSingle();
+
+    if (byValidId?.id) return byValidId.id;
+
+    // 4. Probar por columna user_id
     const { data: existing } = await supabase
       .from('whatsapp_sessions')
       .select('id')
@@ -63,6 +84,7 @@ const getSessionUuid = async (userId) => {
 
     if (existing?.id) return existing.id;
 
+    // 5. Si no existe, crear registro nuevo
     const { data: newSess } = await supabase
       .from('whatsapp_sessions')
       .insert({ user_id: validUserId, status: 'connected' })
