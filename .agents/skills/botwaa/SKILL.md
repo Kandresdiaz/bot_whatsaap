@@ -300,6 +300,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-13** | feat: sincronizar todos los chats y contactos de WhatsApp al conectar Baileys (`b75ac3a`) | Auto-deploy |
 
+| **2026-08-13** | fix: mejorar fallback de SUPABASE_ANON_KEY en db/supabase.js (`4dcca69`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
