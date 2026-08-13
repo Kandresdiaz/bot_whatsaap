@@ -71,33 +71,14 @@ const emitToUserRooms = (io, userId, event, payload, sessionUuid = null) => {
   }
 };
 
-// Obtener o crear el UUID de sesión en whatsapp_sessions
+// Obtener o crear el UUID de sesión en whatsapp_sessions (mapeo consistente por user_id)
 const getSessionUuid = async (userId) => {
   if (!supabase || !userId) return null;
 
   try {
-    // 1. Probar si userId YA ES el UUID de una sesión en whatsapp_sessions (columna id)
-    const { data: byId } = await supabase
-      .from('whatsapp_sessions')
-      .select('id')
-      .eq('id', userId)
-      .maybeSingle();
-
-    if (byId?.id) return byId.id;
-
-    // 2. Obtener el validUserId ('admin' -> ADMIN_UUID)
     const validUserId = getValidUserId(userId);
 
-    // 3. Probar por id usando validUserId
-    const { data: byValidId } = await supabase
-      .from('whatsapp_sessions')
-      .select('id')
-      .eq('id', validUserId)
-      .maybeSingle();
-
-    if (byValidId?.id) return byValidId.id;
-
-    // 4. Probar por columna user_id
+    // 1. Buscar primero por user_id (clave principal del negocio/usuario)
     const { data: existing } = await supabase
       .from('whatsapp_sessions')
       .select('id')
@@ -106,7 +87,16 @@ const getSessionUuid = async (userId) => {
 
     if (existing?.id) return existing.id;
 
-    // 5. Si no existe, crear registro nuevo
+    // 2. Probar si userId directamente coincide con id de whatsapp_sessions
+    const { data: byId } = await supabase
+      .from('whatsapp_sessions')
+      .select('id')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (byId?.id) return byId.id;
+
+    // 3. Crear registro nuevo usando validUserId
     const { data: newSess } = await supabase
       .from('whatsapp_sessions')
       .insert({ user_id: validUserId, status: 'connected' })
@@ -551,9 +541,26 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
         connected_at: new Date().toISOString(),
       }).catch(e => console.warn('[DB] Error guardando sesión en DB:', e.message));
 
-      // 4. Disparar sincronización inicial de chats en segundo plano
-      setTimeout(() => {
-        syncChatsAndMessagesToDb(userId, [], [], [], io).catch(console.error);
+      // 4. Disparar sincronización inicial de chats y grupos en segundo plano
+      setTimeout(async () => {
+        try {
+          await syncChatsAndMessagesToDb(userId, [], [], [], io);
+          if (sock.groupFetchAllParticipating) {
+            const groups = await sock.groupFetchAllParticipating();
+            if (groups) {
+              const groupChats = Object.values(groups).map(g => ({
+                id: g.id,
+                name: g.subject || g.name,
+                conversationTimestamp: g.creation || Math.floor(Date.now() / 1000),
+                unreadCount: 0,
+              }));
+              console.log(`[Baileys Sync] ${groupChats.length} grupos recuperados para ${userId}`);
+              await syncChatsAndMessagesToDb(userId, groupChats, [], [], io);
+            }
+          }
+        } catch (errSync) {
+          console.warn('[Sync open] Aviso en sync inicial:', errSync.message);
+        }
       }, 1000);
     }
 
