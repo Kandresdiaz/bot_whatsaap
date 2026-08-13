@@ -231,6 +231,19 @@ export default function ConnectPage() {
                 ⏹ Desconectar
               </button>
             )}
+            {status === 'connected' && (
+              <button
+                className="btn btn-ghost"
+                onClick={async () => {
+                  await stopSession();
+                  setTimeout(() => startSession(true), 500);
+                }}
+                style={{ fontSize: 13 }}
+                title="Genera un QR limpio para descargar todo el historial antiguo de WhatsApp"
+              >
+                🔄 Re-vincular con nuevo QR (Historial)
+              </button>
+            )}
             {(status === 'error' || status === 'connecting') && (
               <button
                 className="btn btn-ghost"
@@ -298,9 +311,21 @@ export default function ConnectPage() {
           <p style={{ fontSize: 14, color: 'var(--text-muted)', marginBottom: 16 }}>
             WhatsApp conectado. El bot responde automáticamente con IA.
           </p>
-          <a href="/dashboard/conversations" className="btn btn-success">
-            Ver conversaciones →
-          </a>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            <a href="/dashboard/conversations" className="btn btn-success">
+              Ver conversaciones →
+            </a>
+            <button
+              className="btn btn-ghost"
+              onClick={async () => {
+                await stopSession();
+                setTimeout(() => startSession(true), 500);
+              }}
+              style={{ fontSize: 13 }}
+            >
+              🔄 Re-vincular QR (Descargar Chats)
+            </button>
+          </div>
         </div>
       )}
 

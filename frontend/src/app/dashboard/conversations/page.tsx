@@ -209,8 +209,19 @@ export default function ConversationsPage() {
         </div>
         <div style={{ overflowY: 'auto', flex: 1 }}>
           {filtered.length === 0 && (
-            <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)', fontSize: 14 }}>
-              Sin conversaciones aún
+            <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13, lineHeight: 1.5 }}>
+              <div style={{ fontSize: 32, marginBottom: 8 }}>📲</div>
+              <strong style={{ display: 'block', color: 'var(--text)', marginBottom: 6 }}>Sin conversaciones cargadas</strong>
+              <p style={{ fontSize: 12, marginBottom: 12 }}>
+                Para traer tus chats anteriores, es necesario escanear un <strong>QR fresco</strong>. Haz clic abajo para generar el QR y descargar tu historial de WhatsApp:
+              </p>
+              <a
+                href="/dashboard/connect"
+                className="btn btn-primary"
+                style={{ fontSize: 12, display: 'block', width: '100%', textAlign: 'center', textDecoration: 'none' }}
+              >
+                🔌 Ir a Conectar / Re-vincular QR
+              </a>
             </div>
           )}
           {filtered.map(conv => (
