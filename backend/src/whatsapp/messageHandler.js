@@ -63,38 +63,42 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
   // ── 1. Buscar o crear conversación ───────────────────────────────────────
   let conversation = null;
   try {
-    const { data: existing } = await supabase
-      .from('conversations')
-      .select('*')
-      .eq('user_id', userId)
-      .eq('contact_phone', contactPhone)
-      .maybeSingle();
+    const { getSessionUuid } = require('./sessionManager');
+    const sessionUuid = await getSessionUuid(userId);
 
-    if (existing) {
-      conversation = existing;
-      await supabase.from('conversations').update({
-        contact_name: contactName,
-        last_message_at: new Date().toISOString(),
-        unread_count: (existing.unread_count || 0) + 1,
-      }).eq('id', existing.id);
-    } else {
-      const { data: newConv } = await supabase
+    if (sessionUuid) {
+      const { data: existing } = await supabase
         .from('conversations')
-        .insert({
-          user_id: userId,
-          session_id: userId,
-          contact_phone: contactPhone,
-          contact_name: contactName,
-          bot_active: true,
-          is_blacklisted: false,
-        })
-        .select()
+        .select('*')
+        .eq('session_id', sessionUuid)
+        .eq('contact_phone', contactPhone)
         .maybeSingle();
-      conversation = newConv;
+
+      if (existing) {
+        conversation = existing;
+        await supabase.from('conversations').update({
+          contact_name: contactName,
+          last_message_at: new Date().toISOString(),
+          unread_count: (existing.unread_count || 0) + 1,
+        }).eq('id', existing.id);
+      } else {
+        const { data: newConv } = await supabase
+          .from('conversations')
+          .insert({
+            session_id: sessionUuid,
+            contact_phone: contactPhone,
+            contact_name: contactName,
+            bot_active: true,
+            is_blacklisted: false,
+            last_message_at: new Date().toISOString(),
+          })
+          .select()
+          .maybeSingle();
+        conversation = newConv;
+      }
     }
   } catch (e) {
     console.error('[MSG] Error con conversación:', e.message);
-    // Continuar con conversación nula — no bloquear la respuesta
   }
 
   // ── 2. Guardar mensaje entrante ───────────────────────────────────────────

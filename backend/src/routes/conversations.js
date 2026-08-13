@@ -4,19 +4,27 @@ const { supabase } = require('../db/supabase');
 
 // Listar conversaciones de una sesión o usuario
 router.get('/:sessionId', async (req, res) => {
-  const { sessionId } = req.params;
+  let { sessionId } = req.params;
   const { search, status } = req.query;
+
+  const { getSessionUuid } = require('../whatsapp/sessionManager');
+  const sessionUuid = await getSessionUuid(sessionId);
+
+  if (!sessionUuid) {
+    return res.json({ success: true, conversations: [] });
+  }
 
   let query = supabase
     .from('conversations')
     .select('*')
-    .or(`user_id.eq.${sessionId},session_id.eq.${sessionId}`)
+    .eq('session_id', sessionUuid)
     .order('last_message_at', { ascending: false });
 
   if (status) query = query.eq('status', status);
   if (search) query = query.ilike('contact_name', `%${search}%`);
 
   const { data, error } = await query;
+  if (error) console.error('[Conversations GET Error]:', error?.message);
   res.json({ success: true, conversations: data || [] });
 });
 

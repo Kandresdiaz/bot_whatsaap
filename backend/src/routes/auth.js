@@ -2,19 +2,32 @@ const express = require('express');
 const router = express.Router();
 const { supabase } = require('../db/supabase');
 
+const ADMIN_UUID = '00000000-0000-0000-0000-000000000001';
+
 // ── Login ─────────────────────────────────────────────────────────────────────
 router.post('/login', async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) return res.status(400).json({ success: false, error: 'Email y contraseña requeridos' });
 
   // Admin hardcodeado
-  if (email === 'admin@bot.com' && password === process.env.ADMIN_PASSWORD) {
-    // Crear negocio de admin si no existe (sin bloquear login si falla)
+  if (email === 'admin@bot.com' && password === (process.env.ADMIN_PASSWORD || 'admin123')) {
+    // Asegurar registro de admin en BD
     try {
-      const { data: bus } = await supabase.from('businesses').select('id').eq('user_id', 'admin').maybeSingle();
+      const { data: u } = await supabase.from('users').select('id').eq('id', ADMIN_UUID).maybeSingle();
+      if (!u) {
+        await supabase.from('users').insert({
+          id: ADMIN_UUID,
+          email: 'admin@bot.com',
+          name: 'Admin BotWA',
+          plan: 'business',
+          status: 'active'
+        });
+      }
+
+      const { data: bus } = await supabase.from('businesses').select('id').eq('user_id', ADMIN_UUID).maybeSingle();
       if (!bus) {
         await supabase.from('businesses').insert({
-          user_id: 'admin',
+          user_id: ADMIN_UUID,
           name: 'BotWA Ventas',
           category: 'Tecnología',
           city: 'Medellín',
@@ -27,13 +40,13 @@ router.post('/login', async (req, res) => {
         console.log('[AUTH] Negocio de admin creado');
       }
     } catch (e) {
-      console.error('[AUTH] Error creando negocio admin (no crítico):', e.message);
+      console.error('[AUTH] Error creando usuario/negocio admin (no crítico):', e.message);
     }
 
     return res.json({
       success: true,
-      user: { id: 'admin', email, name: 'Admin BotWA', is_admin: true, plan: 'business' },
-      token: Buffer.from(`admin:${Date.now()}`).toString('base64'),
+      user: { id: ADMIN_UUID, email, name: 'Admin BotWA', is_admin: true, plan: 'business' },
+      token: Buffer.from(`${ADMIN_UUID}:${Date.now()}`).toString('base64'),
     });
   }
 

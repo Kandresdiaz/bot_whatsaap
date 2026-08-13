@@ -42,11 +42,54 @@ const deleteSessionFolder = (userId) => {
   }
 };
 
+const ADMIN_UUID = '00000000-0000-0000-0000-000000000001';
+
+const getValidUserId = (userId) => {
+  if (!userId || userId === 'admin') return ADMIN_UUID;
+  return userId;
+};
+
+// Obtener o crear el UUID de sesión en whatsapp_sessions
+const getSessionUuid = async (userId) => {
+  const validUserId = getValidUserId(userId);
+  if (!supabase) return null;
+
+  try {
+    const { data: existing } = await supabase
+      .from('whatsapp_sessions')
+      .select('id')
+      .eq('user_id', validUserId)
+      .maybeSingle();
+
+    if (existing?.id) return existing.id;
+
+    const { data: newSess } = await supabase
+      .from('whatsapp_sessions')
+      .insert({ user_id: validUserId, status: 'connected' })
+      .select('id')
+      .maybeSingle();
+
+    return newSess?.id || null;
+  } catch (e) {
+    console.warn('[DB] getSessionUuid aviso:', e.message);
+    return null;
+  }
+};
+
 // Helper seguro para upsert a Supabase sin lanzar excepción
 const safeUpsert = async (table, data, conflict = 'user_id') => {
   if (!supabase) return;
   try {
-    await supabase.from(table).upsert(data, { onConflict: conflict });
+    const dataWithValidId = { ...data };
+    if (dataWithValidId.user_id) {
+      dataWithValidId.user_id = getValidUserId(dataWithValidId.user_id);
+    }
+    const { data: existing } = await supabase.from(table).select('id').eq('user_id', dataWithValidId.user_id).maybeSingle();
+    if (existing?.id) {
+      await supabase.from(table).update(dataWithValidId).eq('id', existing.id);
+    } else {
+      await supabase.from(table).insert(dataWithValidId);
+    }
   } catch (e) {
     console.warn(`[DB] upsert ${table} aviso:`, e.message);
   }
@@ -73,6 +116,9 @@ const extractText = (msg) => {
 // Sincronizador de chats, contactos e historial a Supabase
 const syncChatsAndMessagesToDb = async (userId, chats = [], contacts = [], messages = [], io = null) => {
   if (!supabase) return;
+
+  const sessionUuid = await getSessionUuid(userId);
+  if (!sessionUuid) return;
 
   const contactsMap = new Map();
   if (Array.isArray(contacts)) {
@@ -103,23 +149,19 @@ const syncChatsAndMessagesToDb = async (userId, chats = [], contacts = [], messa
         const { data: existing } = await supabase
           .from('conversations')
           .select('id, contact_name')
-          .eq('user_id', userId)
+          .eq('session_id', sessionUuid)
           .eq('contact_phone', contactPhone)
           .maybeSingle();
 
         if (existing) {
-          const updateData = {
-            last_message_at: ts,
-            session_id: userId,
-          };
+          const updateData = { last_message_at: ts };
           if (contactName && contactName !== contactPhone) {
             updateData.contact_name = contactName;
           }
           await supabase.from('conversations').update(updateData).eq('id', existing.id);
         } else {
           await supabase.from('conversations').insert({
-            user_id: userId,
-            session_id: userId,
+            session_id: sessionUuid,
             contact_phone: contactPhone,
             contact_name: contactName || contactPhone,
             bot_active: true,
@@ -156,7 +198,7 @@ const syncChatsAndMessagesToDb = async (userId, chats = [], contacts = [], messa
         const { data: conv } = await supabase
           .from('conversations')
           .select('id')
-          .eq('user_id', userId)
+          .eq('session_id', sessionUuid)
           .eq('contact_phone', contactPhone)
           .maybeSingle();
 
@@ -166,8 +208,7 @@ const syncChatsAndMessagesToDb = async (userId, chats = [], contacts = [], messa
           const { data: newConv } = await supabase
             .from('conversations')
             .insert({
-              user_id: userId,
-              session_id: userId,
+              session_id: sessionUuid,
               contact_phone: contactPhone,
               contact_name: pushName,
               bot_active: true,
@@ -195,8 +236,9 @@ const syncChatsAndMessagesToDb = async (userId, chats = [], contacts = [], messa
   }
 
   if (io) {
-    io.to(`user_${userId}`).emit('chats_synced', { timestamp: new Date().toISOString() });
-    io.to(`session_${userId}`).emit('chats_synced', { timestamp: new Date().toISOString() });
+    const validId = getValidUserId(userId);
+    io.to(`user_${validId}`).emit('chats_synced', { timestamp: new Date().toISOString() });
+    io.to(`session_${validId}`).emit('chats_synced', { timestamp: new Date().toISOString() });
   }
 };
 
@@ -404,18 +446,20 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
         if (!contactPhone || !text) continue;
 
         try {
+          const sessionUuid = await getSessionUuid(userId);
+          if (!sessionUuid) continue;
+
           const { data: conv } = await supabase
             .from('conversations')
             .select('id')
-            .eq('user_id', userId)
+            .eq('session_id', sessionUuid)
             .eq('contact_phone', contactPhone)
             .maybeSingle();
 
           let conversationId = conv?.id;
           if (!conversationId) {
             const { data: newConv } = await supabase.from('conversations').insert({
-              user_id: userId,
-              session_id: userId,
+              session_id: sessionUuid,
               contact_phone: contactPhone,
               contact_name: contactPhone,
               bot_active: true,
@@ -439,7 +483,8 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
             });
 
             if (io) {
-              io.to(`user_${userId}`).emit('new_message', {
+              const validId = getValidUserId(userId);
+              io.to(`user_${validId}`).emit('new_message', {
                 conversationId,
                 message: { content: text, direction: 'outbound', sent_by: 'human', timestamp: new Date() },
               });
@@ -522,5 +567,5 @@ const sendMessage = async (userId, to, text) => {
   await session.sock.sendMessage(jid, { text });
 };
 
-module.exports = { createSession, disconnectSession, getSession, restoreSessions, sendMessage, syncChatsAndMessagesToDb };
+module.exports = { createSession, disconnectSession, getSession, restoreSessions, sendMessage, syncChatsAndMessagesToDb, getSessionUuid, getValidUserId };
 

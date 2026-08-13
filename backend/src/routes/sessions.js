@@ -54,17 +54,19 @@ router.post('/start', async (req, res) => {
 // Estado de la sesión
 router.get('/status/:userId', async (req, res) => {
   const { userId } = req.params;
+  const { getSession, getSessionUuid } = require('../whatsapp/sessionManager');
 
   try {
-    const active = getSession(userId);
+    const validUserId = (!userId || userId === 'admin') ? '00000000-0000-0000-0000-000000000001' : userId;
+    const active = getSession(userId) || getSession(validUserId);
 
     const { data: dbSession } = await supabase
       .from('whatsapp_sessions')
       .select('*')
-      .eq('user_id', userId)
+      .eq('user_id', validUserId)
       .maybeSingle();
 
-    // Si la memoria RAM tiene sesión activa (Socket / QR), RAM MANDA (es la verdad en tiempo real)
+    // Si la memoria RAM tiene sesión activa (Socket / QR), RAM MANDA
     if (active) {
       const finalStatus = active.status || (active.sock ? 'connecting' : 'disconnected');
       const finalQr = finalStatus === 'connected' ? null : (active.qr || dbSession?.qr_code || null);
@@ -74,7 +76,8 @@ router.get('/status/:userId', async (req, res) => {
         success: true,
         session: {
           ...(dbSession || {}),
-          user_id: userId,
+          id: dbSession?.id || (await getSessionUuid(validUserId)),
+          user_id: validUserId,
           status: finalStatus,
           qr_code: finalQr,
           phone_number: finalPhone,
@@ -87,7 +90,8 @@ router.get('/status/:userId', async (req, res) => {
       return res.json({ success: true, session: dbSession });
     }
 
-    res.json({ success: true, session: { status: 'disconnected', user_id: userId } });
+    const sessionUuid = await getSessionUuid(validUserId);
+    res.json({ success: true, session: { id: sessionUuid, status: 'disconnected', user_id: validUserId } });
   } catch (err) {
     res.json({ success: true, session: { status: 'disconnected', user_id: userId } });
   }
