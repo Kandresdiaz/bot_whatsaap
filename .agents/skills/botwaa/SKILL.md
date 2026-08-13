@@ -302,6 +302,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-13** | fix: mejorar fallback de SUPABASE_ANON_KEY en db/supabase.js (`4dcca69`) | Auto-deploy |
 
+| **2026-08-13** | fix: vincular session_id UUID para guardar y mostrar todas las conversaciones en el dashboard (`b597ab4`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
