@@ -5,7 +5,7 @@ const { createSession, disconnectSession, sendMessage, getSession } = require('.
 
 // Iniciar sesión (genera QR con Baileys)
 router.post('/start', async (req, res) => {
-  const { userId } = req.body;
+  const { userId, force } = req.body;
 
   if (!userId) {
     return res.status(400).json({ success: false, error: 'userId es requerido' });
@@ -37,8 +37,8 @@ router.post('/start', async (req, res) => {
       console.warn('DB upsert aviso (continuando con Baileys):', dbErr.message);
     }
 
-    // 3. Iniciar sesión de Baileys siempre
-    createSession(userId, businessId, global.io).catch(err => {
+    // 3. Iniciar sesión de Baileys siempre (con opción de forzar limpieza si viene force: true)
+    createSession(userId, businessId, global.io, !!force).catch(err => {
       console.error('Error en Baileys createSession:', err);
     });
 
@@ -46,7 +46,7 @@ router.post('/start', async (req, res) => {
   } catch (err) {
     console.error('Error iniciando sesión:', err);
     // Aunque haya un error de lectura, iniciamos Baileys de todas formas
-    createSession(userId, businessId, global.io).catch(e => console.error('Baileys fallback err:', e));
+    createSession(userId, businessId, global.io, !!force).catch(e => console.error('Baileys fallback err:', e));
     return res.json({ success: true, sessionId: userId });
   }
 });
@@ -56,31 +56,35 @@ router.get('/status/:userId', async (req, res) => {
   const { userId } = req.params;
 
   try {
-    const { data: session } = await supabase
+    const active = getSession(userId);
+
+    const { data: dbSession } = await supabase
       .from('whatsapp_sessions')
       .select('*')
       .eq('user_id', userId)
       .maybeSingle();
 
-    const active = getSession(userId);
-
-    if (session) {
-      if (!session.qr_code && active?.qr) {
-        session.qr_code = active.qr;
-        session.status = 'qr_ready';
-      }
-      return res.json({ success: true, session });
-    }
-
+    // Si la memoria RAM tiene sesión activa (Socket / QR), RAM MANDA (es la verdad en tiempo real)
     if (active) {
+      const finalStatus = active.status || (active.sock ? 'connecting' : 'disconnected');
+      const finalQr = finalStatus === 'connected' ? null : (active.qr || dbSession?.qr_code || null);
+      const finalPhone = active.phone || dbSession?.phone_number || null;
+
       return res.json({
         success: true,
         session: {
-          status: active.status || 'connecting',
+          ...(dbSession || {}),
           user_id: userId,
-          qr_code: active.qr || null
+          status: finalStatus,
+          qr_code: finalQr,
+          phone_number: finalPhone,
         }
       });
+    }
+
+    // Si no está en RAM pero sí en DB
+    if (dbSession) {
+      return res.json({ success: true, session: dbSession });
     }
 
     res.json({ success: true, session: { status: 'disconnected', user_id: userId } });

@@ -3,6 +3,7 @@ const {
   useMultiFileAuthState,
   DisconnectReason,
   makeCacheableSignalKeyStore,
+  fetchLatestBaileysVersion,
 } = require('@whiskeysockets/baileys');
 const { Boom } = require('@hapi/boom');
 const pino = require('pino');
@@ -20,13 +21,26 @@ try {
   handleIncomingMessage = require('./messageHandler').handleIncomingMessage;
 } catch (_) {}
 
-// Mapa de sesiones activas: userId → { sock, businessId }
+// Mapa de sesiones activas: userId → { sock, businessId, status, qr, phone }
 const sessions = new Map();
 
 const SESSIONS_DIR = path.join(__dirname, '../../sessions');
 if (!fs.existsSync(SESSIONS_DIR)) fs.mkdirSync(SESSIONS_DIR, { recursive: true });
 
 const logger = pino({ level: 'silent' });
+
+// Helper para eliminar la carpeta física de credenciales de un usuario
+const deleteSessionFolder = (userId) => {
+  const sessionDir = path.join(SESSIONS_DIR, userId);
+  if (fs.existsSync(sessionDir)) {
+    try {
+      fs.rmSync(sessionDir, { recursive: true, force: true });
+      console.log(`[Baileys] 🧹 Carpeta de credenciales eliminada para ${userId}`);
+    } catch (e) {
+      console.warn(`[Baileys] Error eliminando carpeta de ${userId}:`, e.message);
+    }
+  }
+};
 
 // Helper seguro para upsert a Supabase sin lanzar excepción
 const safeUpsert = async (table, data, conflict = 'user_id') => {
@@ -38,23 +52,35 @@ const safeUpsert = async (table, data, conflict = 'user_id') => {
   }
 };
 
-const createSession = async (userId, businessId, io) => {
-  // Si ya existe una sesión activa la retornamos
-  if (sessions.has(userId)) {
-    console.log(`[Baileys] Sesión ya activa para ${userId}`);
-    return sessions.get(userId).sock;
+const createSession = async (userId, businessId, io, forceClean = false) => {
+  const existingSession = sessions.get(userId);
+
+  // Si ya está conectada y no pedimos limpieza forzada, retornamos el socket
+  if (existingSession?.sock && existingSession?.status === 'connected' && !forceClean) {
+    console.log(`[Baileys] Sesión ya conectada para ${userId}`);
+    return existingSession.sock;
+  }
+
+  // Si pedimos limpieza forzada o la sesión anterior falló, cerramos socket previo y borramos credenciales viejas
+  if (forceClean || (existingSession && existingSession.status !== 'connecting')) {
+    if (existingSession?.sock) {
+      try { existingSession.sock.end(new Error('Reiniciando sesión')); } catch (_) {}
+    }
+    deleteSessionFolder(userId);
+    sessions.delete(userId);
   }
 
   const sessionDir = path.join(SESSIONS_DIR, userId);
   if (!fs.existsSync(sessionDir)) fs.mkdirSync(sessionDir, { recursive: true });
 
   // Guardar estado inicial en memoria inmediatamente
-  sessions.set(userId, { status: 'connecting', businessId, sock: null });
+  sessions.set(userId, { status: 'connecting', businessId, sock: null, qr: null });
 
   // Guardar estado inicial en DB inmediatamente al solicitar conexión
   await safeUpsert('whatsapp_sessions', {
     user_id: userId,
     status: 'connecting',
+    qr_code: null,
   });
 
   let state, saveCreds;
@@ -64,12 +90,21 @@ const createSession = async (userId, businessId, io) => {
     saveCreds = authResult.saveCreds;
   } catch (authErr) {
     console.error(`[Baileys] Error cargando credenciales de ${userId}:`, authErr);
+    deleteSessionFolder(userId);
     sessions.delete(userId);
     return;
   }
 
-  // Usar versión hardcodeada para no depender de fetch externo
-  const WA_VERSION = [2, 3000, 1015901307];
+  // Obtener versión latest de WhatsApp Web o usar fallback reciente
+  let WA_VERSION = [2, 3000, 1043857760];
+  try {
+    const latest = await fetchLatestBaileysVersion();
+    if (latest && latest.version) {
+      WA_VERSION = latest.version;
+    }
+  } catch (errVer) {
+    console.warn('[Baileys] Aviso al obtener versión Baileys (usando fallback):', errVer.message);
+  }
 
   const sock = makeWASocket({
     version: WA_VERSION,
@@ -92,7 +127,7 @@ const createSession = async (userId, businessId, io) => {
 
   // Guardar instancia de socket activa
   const currentS = sessions.get(userId) || {};
-  sessions.set(userId, { ...currentS, sock });
+  sessions.set(userId, { ...currentS, sock, status: 'connecting' });
 
   // Guardar credenciales al cambiar
   sock.ev.on('creds.update', saveCreds);
@@ -103,7 +138,7 @@ const createSession = async (userId, businessId, io) => {
 
     // ── QR generado ──────────────────────────────────────────────────────
     if (qr) {
-      console.log(`[QR] Generado para ${userId}`);
+      console.log(`[QR] Generado correctamente para ${userId}`);
       try {
         const QRCode = require('qrcode');
         const qrDataUrl = await QRCode.toDataURL(qr, { width: 300, margin: 2 });
@@ -134,7 +169,7 @@ const createSession = async (userId, businessId, io) => {
       const phone = sock.user?.id?.split(':')[0] || '';
       console.log(`[Baileys] ✅ Conectado: ${phone} (usuario: ${userId})`);
 
-      sessions.set(userId, { sock, businessId });
+      sessions.set(userId, { sock, businessId, status: 'connected', phone, qr: null });
 
       await safeUpsert('whatsapp_sessions', {
         user_id: userId,
@@ -159,14 +194,21 @@ const createSession = async (userId, businessId, io) => {
         ? lastDisconnect.error.output?.statusCode
         : 0;
 
-      const shouldReconnect = code !== DisconnectReason.loggedOut;
-      console.log(`[Baileys] Conexión cerrada para ${userId}. Código: ${code}. Reconectar: ${shouldReconnect}`);
+      const isLoggedOut = code === DisconnectReason.loggedOut || code === 401 || code === 403 || code === 405;
+      const shouldReconnect = !isLoggedOut;
+
+      console.log(`[Baileys] Conexión cerrada para ${userId}. Código: ${code}. LoggedOut: ${isLoggedOut}. Reconectar: ${shouldReconnect}`);
+
+      if (isLoggedOut) {
+        deleteSessionFolder(userId);
+      }
 
       sessions.delete(userId);
 
       await safeUpsert('whatsapp_sessions', {
         user_id: userId,
         status: shouldReconnect ? 'reconnecting' : 'disconnected',
+        qr_code: null,
       });
 
       if (io) {
@@ -204,23 +246,26 @@ const createSession = async (userId, businessId, io) => {
   });
 
   const existing = sessions.get(userId) || {};
-  sessions.set(userId, { ...existing, sock, businessId });
+  sessions.set(userId, { ...existing, sock, businessId, status: 'connecting' });
   return sock;
 };
 
 const disconnectSession = async (userId) => {
   const session = sessions.get(userId);
-  if (!session) return;
-  try {
-    await session.sock.logout();
-  } catch (e) {
-    console.error('[Baileys] Error haciendo logout:', e.message);
+  if (session?.sock) {
+    try {
+      await session.sock.logout();
+    } catch (e) {
+      console.error('[Baileys] Error haciendo logout:', e.message);
+    }
   }
+  deleteSessionFolder(userId);
   sessions.delete(userId);
   await safeUpsert('whatsapp_sessions', {
     user_id: userId,
     status: 'disconnected',
     phone_number: null,
+    qr_code: null,
   });
 };
 
@@ -255,9 +300,10 @@ const restoreSessions = async (io) => {
 
 const sendMessage = async (userId, to, text) => {
   const session = sessions.get(userId);
-  if (!session) throw new Error('Sesión no conectada');
+  if (!session || !session.sock) throw new Error('Sesión no conectada');
   const jid = to.includes('@') ? to : `${to}@s.whatsapp.net`;
   await session.sock.sendMessage(jid, { text });
 };
 
 module.exports = { createSession, disconnectSession, getSession, restoreSessions, sendMessage };
+

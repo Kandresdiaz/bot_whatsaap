@@ -112,7 +112,7 @@ export default function ConnectPage() {
   }, [user?.id]);
 
   // ── Iniciar sesión / pedir QR ─────────────────────────────────────────────
-  const startSession = useCallback(async () => {
+  const startSession = useCallback(async (force = false) => {
     if (!user?.id) return;
     setStatus('connecting');
     setError(null);
@@ -120,12 +120,12 @@ export default function ConnectPage() {
 
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 15000);
+      const timeout = setTimeout(() => controller.abort(), 30000);
 
       const res = await fetch(`${BACKEND}/api/sessions/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.id }),
+        body: JSON.stringify({ userId: user.id, force }),
         signal: controller.signal,
       });
       clearTimeout(timeout);
@@ -143,7 +143,7 @@ export default function ConnectPage() {
       }
     } catch (e: any) {
       if (e.name === 'AbortError') {
-        setError('⏱ El servidor tardó mucho. Puede estar iniciando, espera y vuelve a intentar.');
+        setError('⏱ El servidor tardó mucho en responder (~30s). Si Render estaba dormido, ya debería estar despertando. Haz clic en Reintentar.');
       } else {
         setError(`⚠️ No se pudo conectar al servidor: ${e.message}`);
       }
@@ -203,7 +203,7 @@ export default function ConnectPage() {
           <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>Acciones</div>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             {(status === 'disconnected' || status === 'error') && (
-              <button className="btn btn-primary" onClick={startSession}>
+              <button className="btn btn-primary" onClick={() => startSession(true)}>
                 🔌 Conectar WhatsApp
               </button>
             )}
@@ -220,7 +220,7 @@ export default function ConnectPage() {
             {(status === 'error' || status === 'connecting') && (
               <button
                 className="btn btn-ghost"
-                onClick={() => { setRetryCount(c => c + 1); setStatus('disconnected'); setError(null); }}
+                onClick={() => { setRetryCount(c => c + 1); startSession(true); }}
               >
                 🔄 Reintentar
               </button>
@@ -244,15 +244,7 @@ export default function ConnectPage() {
           <strong style={{ display: 'block', marginBottom: 6 }}>❌ Error de conexión</strong>
           {error}
           <div style={{ marginTop: 10, fontSize: 13, color: 'var(--text-muted)' }}>
-            💡 Si el error dice "startSession" o "Cannot read", el servidor en Render necesita redespliegue manual.{' '}
-            <a
-              href="https://dashboard.render.com"
-              target="_blank"
-              rel="noreferrer"
-              style={{ color: 'var(--accent-light)', textDecoration: 'underline' }}
-            >
-              Ir a Render →
-            </a>
+            💡 Si el servidor de Render está dormido, espera 15 segundos a que despierte y dale clic a "Reintentar".
           </div>
         </div>
       )}
@@ -274,7 +266,7 @@ export default function ConnectPage() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-muted)', fontSize: 13 }}>
             <span className="dot dot-yellow" /> Esperando escaneo... (expira en ~60s)
           </div>
-          <button className="btn btn-ghost" onClick={startSession} style={{ fontSize: 13 }}>
+          <button className="btn btn-ghost" onClick={() => startSession(true)} style={{ fontSize: 13 }}>
             🔄 Regenerar QR
           </button>
         </div>
