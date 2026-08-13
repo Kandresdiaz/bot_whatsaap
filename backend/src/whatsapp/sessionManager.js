@@ -468,6 +468,21 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
     await syncChatsAndMessagesToDb(userId, chats, contacts, messages, io);
   });
 
+  sock.ev.on('chats.set', async ({ chats }) => {
+    console.log(`[Baileys Sync] chats.set recibido para ${userId}: ${chats?.length || 0} chats`);
+    await syncChatsAndMessagesToDb(userId, chats, [], [], io);
+  });
+
+  sock.ev.on('contacts.set', async ({ contacts }) => {
+    console.log(`[Baileys Sync] contacts.set recibido para ${userId}: ${contacts?.length || 0} contactos`);
+    await syncChatsAndMessagesToDb(userId, [], contacts, [], io);
+  });
+
+  sock.ev.on('messages.set', async ({ messages }) => {
+    console.log(`[Baileys Sync] messages.set recibido para ${userId}: ${messages?.length || 0} msgs`);
+    await syncChatsAndMessagesToDb(userId, [], [], messages, io);
+  });
+
   sock.ev.on('chats.upsert', async (chats) => {
     console.log(`[Baileys Sync] ${chats?.length || 0} chats actualizados para ${userId}`);
     await syncChatsAndMessagesToDb(userId, chats, [], [], io);
