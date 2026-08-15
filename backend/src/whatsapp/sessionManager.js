@@ -593,7 +593,7 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
     },
     logger,
     printQRInTerminal: false,
-    browser: Browsers.ubuntu('Chrome'),
+    browser: Browsers.macOS('Desktop'),
     generateHighQualityLinkPreview: false,
     syncFullHistory: true,
     downloadHistory: true,
