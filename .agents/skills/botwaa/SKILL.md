@@ -328,6 +328,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-15** | fix: corregir restriccion sent_by SQL y asegurar sincronizacion de conversaciones en QR (`e218a69`) | Auto-deploy |
 
+| **2026-08-15** | fix: corregir orden de argumentos en emitToUserRooms y permitir consulta de conversaciones por multiples session_ids (`4eb5b6a`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
