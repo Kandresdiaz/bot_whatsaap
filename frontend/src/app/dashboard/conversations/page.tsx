@@ -68,9 +68,6 @@ export default function ConversationsPage() {
       .then(d => {
         const list = d.conversations || [];
         setConversations(list);
-        if (list.length === 0) {
-          fetch(`${BACKEND}/api/conversations/sync/${targetId}`, { method: 'POST' }).catch(() => {});
-        }
       })
       .catch(() => {});
   };
