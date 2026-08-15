@@ -330,6 +330,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-15** | fix: corregir orden de argumentos en emitToUserRooms y permitir consulta de conversaciones por multiples session_ids (`4eb5b6a`) | Auto-deploy |
 
+| **2026-08-15** | fix: usar Browsers.ubuntu('Chrome') para forzar la sincronizacion de historial de WhatsApp Multi-Device (`9918455`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
