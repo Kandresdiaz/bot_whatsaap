@@ -63,13 +63,23 @@ export default function ConversationsPage() {
   }, [user, BACKEND]);
 
   const loadConversations = (targetId: string) => {
-    fetch(`${BACKEND}/api/conversations/${targetId}`)
-      .then(r => r.json())
-      .then(d => {
-        const list = d.conversations || [];
-        setConversations(list);
-      })
-      .catch(() => {});
+    const ids = Array.from(new Set([targetId, sessionId, user?.id, 'admin', '00000000-0000-0000-0000-000000000001'])).filter(Boolean) as string[];
+    
+    let found = false;
+    for (const id of ids) {
+      fetch(`${BACKEND}/api/conversations/${id}`)
+        .then(r => r.json())
+        .then(d => {
+          const list = d.conversations || [];
+          if (list.length > 0) {
+            found = true;
+            setConversations(list);
+          } else if (!found && id === ids[ids.length - 1]) {
+            setConversations([]);
+          }
+        })
+        .catch(() => {});
+    }
   };
 
   // Cargar conversaciones y escuchar eventos socket
