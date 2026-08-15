@@ -338,6 +338,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-15** | fix: proteger endpoints de conversaciones contra 502 Bad Gateway y remover bloqueos (`ccb8227`) | Auto-deploy |
 
+| **2026-08-15** | fix: eliminar bucle infinito de peticiones HTTP en frontend que provocaba ERR_INSUFFICIENT_RESOURCES (`dc753f0`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
