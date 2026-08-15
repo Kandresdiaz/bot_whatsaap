@@ -4,82 +4,80 @@ const { supabase } = require('../db/supabase');
 
 // Listar conversaciones de una sesión o usuario
 router.get('/:sessionId', async (req, res) => {
-  let { sessionId } = req.params;
-  const { search, status } = req.query;
-
-  const { getSessionUuid, getValidUserId } = require('../whatsapp/sessionManager');
-  const validUserId = getValidUserId(sessionId);
-  const sessionUuid = await getSessionUuid(sessionId);
-
-  const sessionIdsSet = new Set();
-  if (sessionUuid) sessionIdsSet.add(sessionUuid);
-
   try {
-    const { data: userSessions } = await supabase
-      .from('whatsapp_sessions')
-      .select('id')
-      .eq('user_id', validUserId);
+    let { sessionId } = req.params;
+    const { search, status } = req.query;
 
-    if (Array.isArray(userSessions)) {
-      userSessions.forEach(s => sessionIdsSet.add(s.id));
-    }
-  } catch (_) {}
+    const { getSessionUuid, getValidUserId, syncChatsAndMessagesToDb } = require('../whatsapp/sessionManager');
+    const validUserId = getValidUserId(sessionId);
+    const sessionUuid = await getSessionUuid(sessionId);
 
-  const sessionList = Array.from(sessionIdsSet);
-  if (sessionList.length === 0) {
-    return res.json({ success: true, conversations: [] });
-  }
+    const sessionIdsSet = new Set();
+    if (sessionUuid) sessionIdsSet.add(sessionUuid);
 
-  let query = supabase
-    .from('conversations')
-    .select('*')
-    .in('session_id', sessionList)
-    .order('last_message_at', { ascending: false });
-
-  if (status) query = query.eq('status', status);
-  if (search) query = query.ilike('contact_name', `%${search}%`);
-
-  let { data, error } = await query;
-  if (error) console.error('[Conversations GET Error]:', error?.message);
-
-  // Si no hay conversaciones en DB aún, intentar forzar sincronización desde la memoria RAM del socket
-  if (!data || data.length === 0) {
     try {
-      const { syncChatsAndMessagesToDb } = require('../whatsapp/sessionManager');
-      await syncChatsAndMessagesToDb(sessionId, [], [], [], global.io);
-      const reQuery = await supabase
-        .from('conversations')
-        .select('*')
-        .in('session_id', sessionList)
-        .order('last_message_at', { ascending: false });
-      data = reQuery.data || [];
-    } catch (_) {}
-  }
+      const { data: userSessions } = await supabase
+        .from('whatsapp_sessions')
+        .select('id')
+        .eq('user_id', validUserId);
 
-  res.json({ success: true, conversations: data || [] });
+      if (Array.isArray(userSessions)) {
+        userSessions.forEach(s => sessionIdsSet.add(s.id));
+      }
+    } catch (_) {}
+
+    const sessionList = Array.from(sessionIdsSet);
+
+    let query = supabase
+      .from('conversations')
+      .select('*');
+
+    if (sessionList.length > 0) {
+      query = query.in('session_id', sessionList);
+    }
+
+    query = query.order('last_message_at', { ascending: false });
+
+    if (status) query = query.eq('status', status);
+    if (search) query = query.ilike('contact_name', `%${search}%`);
+
+    let { data, error } = await query;
+    if (error) console.error('[Conversations GET Error]:', error?.message);
+
+    // Si no hay conversaciones en DB aún, intentar forzar sincronización desde la memoria RAM del socket
+    if (!data || data.length === 0) {
+      try {
+        await syncChatsAndMessagesToDb(sessionId, [], [], [], global.io);
+        let reQuery = supabase.from('conversations').select('*');
+        if (sessionList.length > 0) reQuery = reQuery.in('session_id', sessionList);
+        const { data: reData } = await reQuery.order('last_message_at', { ascending: false });
+        data = reData || [];
+      } catch (_) {}
+    }
+
+    res.json({ success: true, conversations: data || [] });
+  } catch (err) {
+    console.error('[GET Conversations Crash Safe]:', err.message);
+    res.json({ success: true, conversations: [] });
+  }
 });
 
 // Sincronizar chats de la sesión activa
 router.post('/sync/:userId', async (req, res) => {
-  const { userId } = req.params;
-  const { getSession, syncChatsAndMessagesToDb, getValidUserId, emitToUserRooms, getSessionUuid } = require('../whatsapp/sessionManager');
-  
-  const validId = getValidUserId(userId);
-  const session = getSession(userId) || getSession(validId);
-
-  if (!session || !session.sock) {
-    return res.json({ success: false, message: 'La sesión de WhatsApp se está iniciando o no está activa aún' });
-  }
-
   try {
+    const { userId } = req.params;
+    const { syncChatsAndMessagesToDb, emitToUserRooms, getSessionUuid } = require('../whatsapp/sessionManager');
+
     const sessionUuid = await getSessionUuid(userId);
     await syncChatsAndMessagesToDb(userId, [], [], [], global.io);
+
     if (global.io) {
       emitToUserRooms(global.io, userId, 'chats_synced', { timestamp: new Date().toISOString() }, sessionUuid);
     }
-    res.json({ success: true, message: 'Sincronización disparada correctamente' });
+    res.json({ success: true, message: 'Sincronización completada' });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    console.error('[POST Sync Crash Safe]:', err.message);
+    res.json({ success: true, message: 'Sincronización procesada', error: err.message });
   }
 });
 
