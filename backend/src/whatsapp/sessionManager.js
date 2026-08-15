@@ -243,6 +243,21 @@ const extractText = (msg) => {
     || '';
 };
 
+// Convertidor seguro de timestamps Baileys/Protobuf (soporta Objetos Long {low, high}, BigInt, etc.)
+const safeToIsoString = (ts) => {
+  if (!ts) return new Date().toISOString();
+  try {
+    let num = typeof ts === 'object' && ts !== null && 'low' in ts ? ts.low : Number(ts);
+    if (typeof ts === 'bigint') num = Number(ts);
+    if (!isNaN(num) && num > 0) {
+      const ms = num > 100000000000 ? num : num * 1000;
+      const date = new Date(ms);
+      if (!isNaN(date.getTime())) return date.toISOString();
+    }
+  } catch (_) {}
+  return new Date().toISOString();
+};
+
 // Sincronizador optimizado en lote de chats, contactos e historial a Supabase
 const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts = [], inputMessages = [], io = null) => {
   if (!supabase) return;
@@ -321,9 +336,7 @@ const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts =
           if (msgPush?.pushName) contactName = msgPush.pushName;
         }
 
-        const ts = chat.conversationTimestamp
-          ? new Date(Number(chat.conversationTimestamp) * 1000).toISOString()
-          : new Date().toISOString();
+        const ts = safeToIsoString(chat.conversationTimestamp);
 
         if (convMap.has(contactPhone)) {
           const existing = convMap.get(contactPhone);
@@ -363,9 +376,7 @@ const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts =
 
         const isGroup = jid.endsWith('@g.us');
         const pushName = msg.pushName || contactsMap.get(jid) || contactsMap.get(contactPhone) || (isGroup ? 'Grupo WA' : contactPhone);
-        const msgTime = msg.messageTimestamp
-          ? new Date(Number(msg.messageTimestamp) * 1000).toISOString()
-          : new Date().toISOString();
+        const msgTime = safeToIsoString(msg.messageTimestamp);
 
         if (!convMap.has(contactPhone) && !newConvsToInsert.some(c => c.contact_phone === contactPhone)) {
           newConvsToInsert.push({
@@ -435,9 +446,7 @@ const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts =
         const text = extractText(msg);
         if (!text) continue;
 
-        const msgTime = msg.messageTimestamp
-          ? new Date(Number(msg.messageTimestamp) * 1000).toISOString()
-          : new Date().toISOString();
+        const msgTime = safeToIsoString(msg.messageTimestamp);
 
         const conv = convMap.get(contactPhone);
         if (conv?.id) {
