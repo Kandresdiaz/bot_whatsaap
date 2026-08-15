@@ -33,7 +33,7 @@ router.get('/:sessionId', async (req, res) => {
       .select('*');
 
     if (sessionList.length > 0) {
-      query = query.in('session_id', sessionList);
+      query = query.or(`session_id.in.(${sessionList.join(',')}),session_id.is.null`);
     }
 
     query = query.order('last_message_at', { ascending: false });
@@ -44,15 +44,17 @@ router.get('/:sessionId', async (req, res) => {
     let { data, error } = await query;
     if (error) console.error('[Conversations GET Error]:', error?.message);
 
-    // Si no hay conversaciones en DB aún, intentar forzar sincronización desde la memoria RAM del socket
+    // Si no hay conversaciones específicas, forzar sincronización y traer todas las conversaciones de la tabla
     if (!data || data.length === 0) {
       try {
         await syncChatsAndMessagesToDb(sessionId, [], [], [], global.io);
-        let reQuery = supabase.from('conversations').select('*');
-        if (sessionList.length > 0) reQuery = reQuery.in('session_id', sessionList);
-        const { data: reData } = await reQuery.order('last_message_at', { ascending: false });
-        data = reData || [];
       } catch (_) {}
+      const { data: allConvs } = await supabase
+        .from('conversations')
+        .select('*')
+        .order('last_message_at', { ascending: false })
+        .limit(200);
+      data = allConvs || [];
     }
 
     res.json({ success: true, conversations: data || [] });
