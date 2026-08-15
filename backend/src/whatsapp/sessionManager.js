@@ -397,6 +397,20 @@ const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts =
       }
     }
 
+    // Re-consultar conversaciones para asegurar mapeo completo en convMap
+    try {
+      const { data: refreshedConvs } = await supabase
+        .from('conversations')
+        .select('id, contact_phone, contact_name, last_message_at')
+        .eq('session_id', sessionUuid);
+
+      if (Array.isArray(refreshedConvs)) {
+        for (const c of refreshedConvs) {
+          convMap.set(c.contact_phone, c);
+        }
+      }
+    } catch (_) {}
+
     // Actualizar conversaciones existentes
     if (convsToUpdate.length > 0) {
       for (const item of convsToUpdate) {
@@ -430,7 +444,7 @@ const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts =
             conversation_id: conv.id,
             content: text,
             direction: msg.key.fromMe ? 'outbound' : 'inbound',
-            sent_by: msg.key.fromMe ? 'human' : 'customer',
+            sent_by: 'human',
             timestamp: msgTime,
           });
         }
@@ -438,17 +452,22 @@ const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts =
 
       if (messagesToInsert.length > 0) {
         // Cargar mensajes recientes para evitar duplicar mensajes exactos
-        const convIds = Array.from(convMap.values()).map(c => c.id);
-        const { data: existingMsgs } = await supabase
-          .from('messages')
-          .select('conversation_id, content, timestamp')
-          .in('conversation_id', convIds.slice(0, 50));
+        const convIds = Array.from(convMap.values()).map(c => c.id).filter(Boolean);
+        let existingMsgSet = new Set();
 
-        const existingMsgSet = new Set();
-        if (Array.isArray(existingMsgs)) {
-          for (const m of existingMsgs) {
-            existingMsgSet.add(`${m.conversation_id}_${m.content}_${m.timestamp}`);
-          }
+        if (convIds.length > 0) {
+          try {
+            const { data: existingMsgs } = await supabase
+              .from('messages')
+              .select('conversation_id, content, timestamp')
+              .in('conversation_id', convIds.slice(0, 100));
+
+            if (Array.isArray(existingMsgs)) {
+              for (const m of existingMsgs) {
+                existingMsgSet.add(`${m.conversation_id}_${m.content}_${m.timestamp}`);
+              }
+            }
+          } catch (_) {}
         }
 
         const uniqueMessages = messagesToInsert.filter(
