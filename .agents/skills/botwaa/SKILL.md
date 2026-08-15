@@ -344,6 +344,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-15** | build: forzar redespliegue de Render para sincronizacion WhatsApp (`017209f`) | Auto-deploy |
 
+| **2026-08-15** | build: forzar deploy en Render para sanidad de contactPhone (`cf909e4`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
