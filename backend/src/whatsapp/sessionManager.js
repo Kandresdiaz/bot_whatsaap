@@ -318,6 +318,7 @@ const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts =
 
     const newConvsToInsert = [];
     const convsToUpdate = [];
+    const addedPhones = new Set();
 
     // 1. Procesar chats de WhatsApp
     if (Array.isArray(chats) && chats.length > 0) {
@@ -352,7 +353,8 @@ const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts =
               convsToUpdate.push({ id: existing.id, ...updateData });
             }
           }
-        } else {
+        } else if (!addedPhones.has(contactPhone)) {
+          addedPhones.add(contactPhone);
           newConvsToInsert.push({
             session_id: sessionUuid,
             contact_phone: contactPhone,
@@ -378,7 +380,8 @@ const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts =
         const pushName = msg.pushName || contactsMap.get(jid) || contactsMap.get(contactPhone) || (isGroup ? 'Grupo WA' : contactPhone);
         const msgTime = safeToIsoString(msg.messageTimestamp);
 
-        if (!convMap.has(contactPhone) && !newConvsToInsert.some(c => c.contact_phone === contactPhone)) {
+        if (!convMap.has(contactPhone) && !addedPhones.has(contactPhone)) {
+          addedPhones.add(contactPhone);
           newConvsToInsert.push({
             session_id: sessionUuid,
             contact_phone: contactPhone,
@@ -394,10 +397,14 @@ const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts =
     // Guardar nuevas conversaciones en Supabase en lote
     if (newConvsToInsert.length > 0) {
       try {
-        const { data: inserted } = await supabase
+        const { data: inserted, error: insErr } = await supabase
           .from('conversations')
           .insert(newConvsToInsert)
           .select('id, contact_phone, contact_name, last_message_at');
+
+        if (insErr) {
+          console.warn('[Sync] Aviso insertando nuevas conversaciones:', insErr.message);
+        }
 
         if (Array.isArray(inserted)) {
           for (const c of inserted) {
@@ -405,7 +412,7 @@ const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts =
           }
         }
       } catch (err) {
-        console.warn('[Sync] Error insertando nuevas conversaciones:', err.message);
+        console.warn('[Sync] Excepción insertando conversaciones:', err.message);
       }
     }
 
@@ -796,15 +803,13 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
     }
   });
 
-  // ─── Mensajes procesados (Entrantes, Salientes e Historial append) ────────
+  // ─── Mensajes procesados (Entrantes, Salientes e Historial append/notify) ─
   sock.ev.on('messages.upsert', async ({ messages, type }) => {
     storeMessages(userId, messages);
 
-    // Si se están recibiendo paquetes del historial enviado por WhatsApp ('append')
-    if (type === 'append' && Array.isArray(messages) && messages.length > 0) {
-      console.log(`[Baileys Sync] Recibidos ${messages.length} mensajes del historial ('append') para ${userId}`);
+    if (Array.isArray(messages) && messages.length > 0) {
+      console.log(`[Baileys Sync] Recibidos ${messages.length} mensajes (type: ${type}) para ${userId}`);
       await syncChatsAndMessagesToDb(userId, [], [], messages, io);
-      return;
     }
 
     for (const msg of messages) {
