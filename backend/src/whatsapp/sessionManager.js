@@ -45,63 +45,76 @@ const getUserStore = (userId) => {
 };
 
 const storeChats = (userId, chats = []) => {
-  if (!Array.isArray(chats)) return;
+  const list = Array.isArray(chats) ? chats : (chats?.chats || []);
   const store = getUserStore(userId);
-  for (const c of chats) {
+  for (const c of list) {
     if (c && c.id && c.id !== 'status@broadcast') {
       const existing = store.chats.get(c.id) || {};
-      store.chats.set(c.id, { ...existing, ...c });
+      const updated = { ...existing, ...c };
+      store.chats.set(c.id, updated);
+      const cleanPhone = c.id.replace('@s.whatsapp.net', '').replace('@g.us', '').replace(/[^0-9]/g, '');
+      if (cleanPhone) store.chats.set(cleanPhone, updated);
     }
   }
 };
 
 const storeContacts = (userId, contacts = []) => {
-  if (!Array.isArray(contacts)) return;
+  const list = Array.isArray(contacts) ? contacts : (contacts?.contacts || []);
   const store = getUserStore(userId);
-  for (const c of contacts) {
+  for (const c of list) {
     if (c && c.id) {
       const existing = store.contacts.get(c.id) || {};
-      store.contacts.set(c.id, { ...existing, ...c });
+      const updated = { ...existing, ...c };
+      store.contacts.set(c.id, updated);
       const name = c.name || c.notify || c.verifiedName;
       if (name) {
         if (!userContacts.has(userId)) userContacts.set(userId, new Map());
         const contactsMap = userContacts.get(userId);
         contactsMap.set(c.id, name);
         const cleanPhone = c.id.replace('@s.whatsapp.net', '').replace('@g.us', '').replace(/[^0-9]/g, '');
-        if (cleanPhone) contactsMap.set(cleanPhone, name);
+        if (cleanPhone) {
+          contactsMap.set(cleanPhone, name);
+          store.contacts.set(cleanPhone, updated);
+        }
       }
     }
   }
 };
 
 const storeMessages = (userId, messages = []) => {
-  if (!Array.isArray(messages)) return;
+  const list = Array.isArray(messages) ? messages : (messages?.messages || []);
   const store = getUserStore(userId);
-  for (const m of messages) {
+  for (const m of list) {
     if (!m || !m.key || !m.key.remoteJid || m.key.remoteJid === 'status@broadcast') continue;
     const msgId = m.key.id || `${m.key.remoteJid}_${m.messageTimestamp}`;
     store.messages.set(msgId, m);
 
     const jid = m.key.remoteJid;
+    const cleanPhone = jid.replace('@s.whatsapp.net', '').replace('@g.us', '').replace(/[^0-9]/g, '');
+
     if (m.pushName) {
       storeContacts(userId, [{ id: jid, notify: m.pushName }]);
     }
+
+    const chatObj = {
+      id: jid,
+      name: m.pushName || (jid.endsWith('@g.us') ? 'Grupo WA' : cleanPhone),
+      conversationTimestamp: m.messageTimestamp || Math.floor(Date.now() / 1000),
+      unreadCount: 0,
+    };
+
     if (!store.chats.has(jid)) {
-      const isGroup = jid.endsWith('@g.us');
-      store.chats.set(jid, {
-        id: jid,
-        name: m.pushName || (isGroup ? 'Grupo WA' : jid.replace(/[^0-9]/g, '')),
-        conversationTimestamp: m.messageTimestamp || Math.floor(Date.now() / 1000),
-        unreadCount: 0,
-      });
+      store.chats.set(jid, chatObj);
+      if (cleanPhone) store.chats.set(cleanPhone, chatObj);
     } else {
       const existingChat = store.chats.get(jid);
-      if (m.pushName && (!existingChat.name || existingChat.name === jid.replace(/[^0-9]/g, ''))) {
+      if (m.pushName && (!existingChat.name || existingChat.name === cleanPhone)) {
         existingChat.name = m.pushName;
       }
       if (m.messageTimestamp) {
         existingChat.conversationTimestamp = m.messageTimestamp;
       }
+      if (cleanPhone) store.chats.set(cleanPhone, existingChat);
     }
   }
 };
