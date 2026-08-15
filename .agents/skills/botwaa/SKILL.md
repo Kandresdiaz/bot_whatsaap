@@ -346,6 +346,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-15** | build: forzar deploy en Render para sanidad de contactPhone (`cf909e4`) | Auto-deploy |
 
+| **2026-08-15** | fix: consulta de conversaciones amplia con fallback global para asegurar despliegue de chats (`f84f736`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
