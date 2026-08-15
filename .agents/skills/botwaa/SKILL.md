@@ -322,6 +322,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-13** | fix: capturar eventos chats.set, contacts.set y messages.set de Baileys para garantizar descarga de chats (`269b64c`) | Auto-deploy |
 
+| **2026-08-15** | feat: auto-sincronizar chats estilo WhatsApp Web, toggle por chat personal y boton maestro global de bot (`a6e0bee`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
