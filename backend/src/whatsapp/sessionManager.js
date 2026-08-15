@@ -4,6 +4,7 @@ const {
   DisconnectReason,
   makeCacheableSignalKeyStore,
   fetchLatestBaileysVersion,
+  Browsers,
 } = require('@whiskeysockets/baileys');
 const { Boom } = require('@hapi/boom');
 const pino = require('pino');
@@ -545,7 +546,7 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
   }
 
   // Obtener versión latest de WhatsApp Web o usar fallback reciente
-  let WA_VERSION = [2, 3000, 1043857760];
+  let WA_VERSION = [2, 3000, 1015901307];
   try {
     const latest = await fetchLatestBaileysVersion();
     if (latest && latest.version) {
@@ -563,7 +564,7 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
     },
     logger,
     printQRInTerminal: false,
-    browser: ['BotWA SaaS', 'Chrome', '120.0.0'],
+    browser: Browsers.ubuntu('Chrome'),
     generateHighQualityLinkPreview: false,
     syncFullHistory: true,
     downloadHistory: true,
