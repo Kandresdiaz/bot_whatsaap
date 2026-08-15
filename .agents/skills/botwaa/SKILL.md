@@ -326,6 +326,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-15** | fix: corregir flujo de desconexion manual y evitar auto-reconexion en bucle al pedir QR (`4a371c7`) | Auto-deploy |
 
+| **2026-08-15** | fix: corregir restriccion sent_by SQL y asegurar sincronizacion de conversaciones en QR (`e218a69`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
