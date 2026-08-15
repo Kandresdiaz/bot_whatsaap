@@ -334,6 +334,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-15** | fix: resolver RangeError Invalid time value en timestamps Long de Baileys al sincronizar historial (`b1d1807`) | Auto-deploy |
 
+| **2026-08-15** | fix: procesar y sincronizar a DB todos los lotes de mensajes entrantes e historial sin importar el tipo de evento (`621ebb8`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
