@@ -23,6 +23,7 @@ try {
 
 // Mapa de sesiones activas: userId → { sock, businessId, status, qr, phone }
 const sessions = new Map();
+const userDisconnectedMap = new Set();
 
 // Caché en memoria de contactos por usuario: userId → Map(jid → name)
 const userContacts = new Map();
@@ -478,7 +479,11 @@ const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts =
 };
 
 const createSession = async (userId, businessId, io, forceClean = false) => {
-  const existingSession = sessions.get(userId);
+  const validUserId = getValidUserId(userId);
+  userDisconnectedMap.delete(userId);
+  userDisconnectedMap.delete(validUserId);
+
+  const existingSession = sessions.get(userId) || sessions.get(validUserId);
 
   // Si ya está conectada y no pedimos limpieza forzada, retornamos el socket
   if (existingSession?.sock && existingSession?.status === 'connected' && !forceClean) {
@@ -713,18 +718,19 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
         errMsg.includes('unauthorized') ||
         errMsg.includes('bad session');
 
-      const shouldReconnect = !isLoggedOut;
-
-      console.log(`[Baileys] Conexión cerrada para ${userId}. Código: ${code}. LoggedOut: ${isLoggedOut}. Reconectar: ${shouldReconnect}`);
-
       const validId = getValidUserId(userId);
+      const isExplicitDisconnect = userDisconnectedMap.has(userId) || userDisconnectedMap.has(validId);
+
+      const shouldReconnect = !isLoggedOut && !isExplicitDisconnect;
+
+      console.log(`[Baileys] Conexión cerrada para ${userId}. Código: ${code}. LoggedOut: ${isLoggedOut}. Desconexión manual: ${isExplicitDisconnect}. Reconectar: ${shouldReconnect}`);
 
       // Eliminar de RAM todas las posibles referencias
       sessions.delete(userId);
       sessions.delete(validId);
       if (userId === ADMIN_UUID || validId === ADMIN_UUID) sessions.delete('admin');
 
-      if (isLoggedOut) {
+      if (isLoggedOut || isExplicitDisconnect) {
         // Limpiar carpetas físicas de credenciales invalidadas
         deleteSessionFolder(userId);
         deleteSessionFolder(validId);
@@ -856,12 +862,15 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
 
 const disconnectSession = async (userId) => {
   const validId = getValidUserId(userId);
+  userDisconnectedMap.add(userId);
+  userDisconnectedMap.add(validId);
+
   const session = getSession(userId) || getSession(validId);
   if (session?.sock) {
     try {
       await session.sock.logout();
     } catch (e) {
-      console.error('[Baileys] Error haciendo logout:', e.message);
+      try { session.sock.end(new Error('Desconexión manual')); } catch (_) {}
     }
   }
   deleteSessionFolder(userId);
