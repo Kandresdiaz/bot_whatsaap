@@ -340,6 +340,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-15** | fix: eliminar bucle infinito de peticiones HTTP en frontend que provocaba ERR_INSUFFICIENT_RESOURCES (`dc753f0`) | Auto-deploy |
 
+| **2026-08-15** | feat: agregar callback getMessage en Baileys v7 para descifrado completo de historial (`007706f`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
