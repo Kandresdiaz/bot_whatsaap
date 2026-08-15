@@ -332,6 +332,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-15** | fix: usar Browsers.ubuntu('Chrome') para forzar la sincronizacion de historial de WhatsApp Multi-Device (`9918455`) | Auto-deploy |
 
+| **2026-08-15** | fix: resolver RangeError Invalid time value en timestamps Long de Baileys al sincronizar historial (`b1d1807`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
