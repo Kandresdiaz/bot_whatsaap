@@ -72,8 +72,9 @@ router.get('/status/:userId', async (req, res) => {
     // Si la memoria RAM tiene sesión activa (Socket / QR), RAM MANDA
     if (active) {
       const finalStatus = active.status || (active.sock ? 'connecting' : 'disconnected');
-      const finalQr = finalStatus === 'connected' ? null : (active.qr || dbSession?.qr_code || null);
-      const finalPhone = active.phone || dbSession?.phone_number || null;
+      const isConn = finalStatus === 'connected';
+      const finalQr = isConn ? null : (active.qr || (finalStatus === 'qr_ready' ? dbSession?.qr_code : null));
+      const finalPhone = isConn ? (active.phone || dbSession?.phone_number || null) : null;
 
       return res.json({
         success: true,
@@ -84,19 +85,56 @@ router.get('/status/:userId', async (req, res) => {
           status: finalStatus,
           qr_code: finalQr,
           phone_number: finalPhone,
+          bot_enabled: active.bot_enabled !== undefined ? active.bot_enabled : (dbSession?.bot_enabled ?? true),
         }
       });
     }
 
     // Si no está en RAM pero sí en DB
     if (dbSession) {
-      return res.json({ success: true, session: dbSession });
+      const isConn = dbSession.status === 'connected';
+      return res.json({
+        success: true,
+        session: {
+          ...dbSession,
+          status: isConn ? 'disconnected' : dbSession.status,
+          phone_number: isConn ? null : dbSession.phone_number,
+          qr_code: isConn ? null : dbSession.qr_code,
+          bot_enabled: dbSession.bot_enabled ?? true,
+        }
+      });
     }
 
     const sessionUuid = await getSessionUuid(validUserId);
-    res.json({ success: true, session: { id: sessionUuid, status: 'disconnected', user_id: validUserId } });
+    res.json({ success: true, session: { id: sessionUuid, status: 'disconnected', user_id: validUserId, phone_number: null, qr_code: null } });
   } catch (err) {
-    res.json({ success: true, session: { status: 'disconnected', user_id: userId } });
+    res.json({ success: true, session: { status: 'disconnected', user_id: userId, phone_number: null, qr_code: null } });
+  }
+});
+
+// Obtener estado del Bot Global
+router.get('/global-bot/:userId', async (req, res) => {
+  const { userId } = req.params;
+  const { getGlobalBotStatus } = require('../whatsapp/sessionManager');
+  try {
+    const bot_enabled = await getGlobalBotStatus(userId);
+    res.json({ success: true, bot_enabled });
+  } catch (e) {
+    res.json({ success: true, bot_enabled: true });
+  }
+});
+
+// Cambiar estado del Bot Global (Activar / Pausar)
+router.patch('/global-bot/:userId', async (req, res) => {
+  const { userId } = req.params;
+  const { bot_enabled } = req.body;
+  const { setGlobalBotStatus } = require('../whatsapp/sessionManager');
+
+  try {
+    const updatedStatus = await setGlobalBotStatus(userId, bot_enabled, global.io);
+    res.json({ success: true, bot_enabled: updatedStatus });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
   }
 });
 

@@ -133,19 +133,26 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
     }
   }
 
-  // ── 3. Bot desactivado o blacklist ────────────────────────────────────────
-  if (conversation?.is_blacklisted || (conversation && !conversation.bot_active)) {
+  // ── 3. Bot desactivado (Global o por Conversación) o Blacklist ──────────────
+  let isGlobalBotEnabled = true;
+  try {
+    const { getGlobalBotStatus } = require('./sessionManager');
+    isGlobalBotEnabled = await getGlobalBotStatus(userId);
+  } catch (_) {}
+
+  if (!isGlobalBotEnabled || conversation?.is_blacklisted || (conversation && !conversation.bot_active)) {
+    console.log(`[MSG] Bot no responde (Global ON: ${isGlobalBotEnabled}, Chat Bot ON: ${conversation?.bot_active}, Blacklist: ${conversation?.is_blacklisted}) para ${contactPhone}`);
     if (global.io) {
       try {
         const { emitToUserRooms, getSessionUuid } = require('./sessionManager');
         getSessionUuid(userId).then(sessionUuid => {
-          emitToUserRooms(global.io, userId, sessionUuid, 'manual_needed', {
-            conversationId: conversation.id, contactName, message: text,
-          });
+          emitToUserRooms(global.io, userId, 'manual_needed', {
+            conversationId: conversation?.id, contactName, message: text,
+          }, sessionUuid);
         });
       } catch (_) {
         global.io.to(`user_${userId}`).emit('manual_needed', {
-          conversationId: conversation.id, contactName, message: text,
+          conversationId: conversation?.id, contactName, message: text,
         });
       }
     }

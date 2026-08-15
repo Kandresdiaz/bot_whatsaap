@@ -23,8 +23,23 @@ router.get('/:sessionId', async (req, res) => {
   if (status) query = query.eq('status', status);
   if (search) query = query.ilike('contact_name', `%${search}%`);
 
-  const { data, error } = await query;
+  let { data, error } = await query;
   if (error) console.error('[Conversations GET Error]:', error?.message);
+
+  // Si no hay conversaciones en DB aún, intentar forzar sincronización desde la memoria RAM del socket
+  if (!data || data.length === 0) {
+    try {
+      const { syncChatsAndMessagesToDb } = require('../whatsapp/sessionManager');
+      await syncChatsAndMessagesToDb(sessionId, [], [], [], global.io);
+      const reQuery = await supabase
+        .from('conversations')
+        .select('*')
+        .eq('session_id', sessionUuid)
+        .order('last_message_at', { ascending: false });
+      data = reQuery.data || [];
+    } catch (_) {}
+  }
+
   res.json({ success: true, conversations: data || [] });
 });
 

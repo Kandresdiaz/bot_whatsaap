@@ -27,6 +27,83 @@ const sessions = new Map();
 // Caché en memoria de contactos por usuario: userId → Map(jid → name)
 const userContacts = new Map();
 
+// Store en memoria RAM para acumular chats, contactos y mensajes por usuario
+const userStores = new Map();
+
+const getUserStore = (userId) => {
+  const validId = getValidUserId(userId);
+  if (!userStores.has(validId)) {
+    userStores.set(validId, {
+      chats: new Map(),     // jid -> chatObj
+      contacts: new Map(),  // jid -> contactObj
+      messages: new Map(),  // msgId -> msgObj
+    });
+  }
+  return userStores.get(validId);
+};
+
+const storeChats = (userId, chats = []) => {
+  if (!Array.isArray(chats)) return;
+  const store = getUserStore(userId);
+  for (const c of chats) {
+    if (c && c.id && c.id !== 'status@broadcast') {
+      const existing = store.chats.get(c.id) || {};
+      store.chats.set(c.id, { ...existing, ...c });
+    }
+  }
+};
+
+const storeContacts = (userId, contacts = []) => {
+  if (!Array.isArray(contacts)) return;
+  const store = getUserStore(userId);
+  for (const c of contacts) {
+    if (c && c.id) {
+      const existing = store.contacts.get(c.id) || {};
+      store.contacts.set(c.id, { ...existing, ...c });
+      const name = c.name || c.notify || c.verifiedName;
+      if (name) {
+        if (!userContacts.has(userId)) userContacts.set(userId, new Map());
+        const contactsMap = userContacts.get(userId);
+        contactsMap.set(c.id, name);
+        const cleanPhone = c.id.replace('@s.whatsapp.net', '').replace('@g.us', '').replace(/[^0-9]/g, '');
+        if (cleanPhone) contactsMap.set(cleanPhone, name);
+      }
+    }
+  }
+};
+
+const storeMessages = (userId, messages = []) => {
+  if (!Array.isArray(messages)) return;
+  const store = getUserStore(userId);
+  for (const m of messages) {
+    if (!m || !m.key || !m.key.remoteJid || m.key.remoteJid === 'status@broadcast') continue;
+    const msgId = m.key.id || `${m.key.remoteJid}_${m.messageTimestamp}`;
+    store.messages.set(msgId, m);
+
+    const jid = m.key.remoteJid;
+    if (m.pushName) {
+      storeContacts(userId, [{ id: jid, notify: m.pushName }]);
+    }
+    if (!store.chats.has(jid)) {
+      const isGroup = jid.endsWith('@g.us');
+      store.chats.set(jid, {
+        id: jid,
+        name: m.pushName || (isGroup ? 'Grupo WA' : jid.replace(/[^0-9]/g, '')),
+        conversationTimestamp: m.messageTimestamp || Math.floor(Date.now() / 1000),
+        unreadCount: 0,
+      });
+    } else {
+      const existingChat = store.chats.get(jid);
+      if (m.pushName && (!existingChat.name || existingChat.name === jid.replace(/[^0-9]/g, ''))) {
+        existingChat.name = m.pushName;
+      }
+      if (m.messageTimestamp) {
+        existingChat.conversationTimestamp = m.messageTimestamp;
+      }
+    }
+  }
+};
+
 const SESSIONS_DIR = path.join(__dirname, '../../sessions');
 if (!fs.existsSync(SESSIONS_DIR)) fs.mkdirSync(SESSIONS_DIR, { recursive: true });
 
@@ -34,13 +111,18 @@ const logger = pino({ level: 'silent' });
 
 // Helper para eliminar la carpeta física de credenciales de un usuario
 const deleteSessionFolder = (userId) => {
-  const sessionDir = path.join(SESSIONS_DIR, userId);
-  if (fs.existsSync(sessionDir)) {
-    try {
-      fs.rmSync(sessionDir, { recursive: true, force: true });
-      console.log(`[Baileys] 🧹 Carpeta de credenciales eliminada para ${userId}`);
-    } catch (e) {
-      console.warn(`[Baileys] Error eliminando carpeta de ${userId}:`, e.message);
+  if (!userId) return;
+  const validId = getValidUserId(userId);
+  const targets = new Set([userId, validId]);
+  for (const id of targets) {
+    const sessionDir = path.join(SESSIONS_DIR, id);
+    if (fs.existsSync(sessionDir)) {
+      try {
+        fs.rmSync(sessionDir, { recursive: true, force: true });
+        console.log(`[Baileys] 🧹 Carpeta de credenciales eliminada para ${id}`);
+      } catch (e) {
+        console.warn(`[Baileys] Error eliminando carpeta de ${id}:`, e.message);
+      }
     }
   }
 };
@@ -160,7 +242,7 @@ const extractText = (msg) => {
 };
 
 // Sincronizador optimizado en lote de chats, contactos e historial a Supabase
-const syncChatsAndMessagesToDb = async (userId, chats = [], contacts = [], messages = [], io = null) => {
+const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts = [], inputMessages = [], io = null) => {
   if (!supabase) return;
 
   let sessionUuid = null;
@@ -172,6 +254,19 @@ const syncChatsAndMessagesToDb = async (userId, chats = [], contacts = [], messa
   if (!sessionUuid) return;
 
   try {
+    // 1. Guardar cualquier nuevo dato en el store en memoria RAM
+    if (Array.isArray(inputChats) && inputChats.length > 0) storeChats(userId, inputChats);
+    if (Array.isArray(inputContacts) && inputContacts.length > 0) storeContacts(userId, inputContacts);
+    if (Array.isArray(inputMessages) && inputMessages.length > 0) storeMessages(userId, inputMessages);
+
+    // 2. Extraer todo lo acumulado en memoria para sincronización garantizada
+    const store = getUserStore(userId);
+    const chats = Array.from(store.chats.values());
+    const contacts = Array.from(store.contacts.values());
+    const messages = Array.from(store.messages.values());
+
+    console.log(`[Sync DB] Sincronizando para ${userId} (${sessionUuid}): ${chats.length} chats, ${contacts.length} contactos, ${messages.length} msgs`);
+
     // Obtener/actualizar caché de contactos
     if (!userContacts.has(userId)) {
       userContacts.set(userId, new Map());
@@ -465,42 +560,59 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
   // ─── Sincronización del historial enviado por WhatsApp al conectar ─────────
   sock.ev.on('messaging-history.set', async ({ chats, contacts, messages, syncType }) => {
     console.log(`[Baileys Sync] messaging-history.set para ${userId}: ${chats?.length || 0} chats, ${contacts?.length || 0} contactos, ${messages?.length || 0} msgs (type: ${syncType})`);
+    storeChats(userId, chats);
+    storeContacts(userId, contacts);
+    storeMessages(userId, messages);
     await syncChatsAndMessagesToDb(userId, chats, contacts, messages, io);
   });
 
-  sock.ev.on('chats.set', async ({ chats }) => {
-    console.log(`[Baileys Sync] chats.set recibido para ${userId}: ${chats?.length || 0} chats`);
-    await syncChatsAndMessagesToDb(userId, chats, [], [], io);
+  sock.ev.on('chats.set', async (data) => {
+    const list = Array.isArray(data) ? data : (data?.chats || []);
+    console.log(`[Baileys Sync] chats.set recibido para ${userId}: ${list.length} chats`);
+    storeChats(userId, list);
+    await syncChatsAndMessagesToDb(userId, list, [], [], io);
   });
 
-  sock.ev.on('contacts.set', async ({ contacts }) => {
-    console.log(`[Baileys Sync] contacts.set recibido para ${userId}: ${contacts?.length || 0} contactos`);
-    await syncChatsAndMessagesToDb(userId, [], contacts, [], io);
+  sock.ev.on('contacts.set', async (data) => {
+    const list = Array.isArray(data) ? data : (data?.contacts || []);
+    console.log(`[Baileys Sync] contacts.set recibido para ${userId}: ${list.length} contactos`);
+    storeContacts(userId, list);
+    await syncChatsAndMessagesToDb(userId, [], list, [], io);
   });
 
-  sock.ev.on('messages.set', async ({ messages }) => {
-    console.log(`[Baileys Sync] messages.set recibido para ${userId}: ${messages?.length || 0} msgs`);
-    await syncChatsAndMessagesToDb(userId, [], [], messages, io);
+  sock.ev.on('messages.set', async (data) => {
+    const list = Array.isArray(data) ? data : (data?.messages || []);
+    console.log(`[Baileys Sync] messages.set recibido para ${userId}: ${list.length} msgs`);
+    storeMessages(userId, list);
+    await syncChatsAndMessagesToDb(userId, [], [], list, io);
   });
 
-  sock.ev.on('chats.upsert', async (chats) => {
-    console.log(`[Baileys Sync] ${chats?.length || 0} chats actualizados para ${userId}`);
-    await syncChatsAndMessagesToDb(userId, chats, [], [], io);
+  sock.ev.on('chats.upsert', async (data) => {
+    const list = Array.isArray(data) ? data : (data?.chats || []);
+    console.log(`[Baileys Sync] ${list.length} chats actualizados para ${userId}`);
+    storeChats(userId, list);
+    await syncChatsAndMessagesToDb(userId, list, [], [], io);
   });
 
-  sock.ev.on('chats.update', async (chats) => {
-    console.log(`[Baileys Sync] ${chats?.length || 0} chats modificados para ${userId}`);
-    await syncChatsAndMessagesToDb(userId, chats, [], [], io);
+  sock.ev.on('chats.update', async (data) => {
+    const list = Array.isArray(data) ? data : (data?.chats || []);
+    console.log(`[Baileys Sync] ${list.length} chats modificados para ${userId}`);
+    storeChats(userId, list);
+    await syncChatsAndMessagesToDb(userId, list, [], [], io);
   });
 
-  sock.ev.on('contacts.upsert', async (contacts) => {
-    console.log(`[Baileys Sync] ${contacts?.length || 0} contactos recibidos para ${userId}`);
-    await syncChatsAndMessagesToDb(userId, [], contacts, [], io);
+  sock.ev.on('contacts.upsert', async (data) => {
+    const list = Array.isArray(data) ? data : (data?.contacts || []);
+    console.log(`[Baileys Sync] ${list.length} contactos recibidos para ${userId}`);
+    storeContacts(userId, list);
+    await syncChatsAndMessagesToDb(userId, [], list, [], io);
   });
 
-  sock.ev.on('contacts.update', async (contacts) => {
-    console.log(`[Baileys Sync] ${contacts?.length || 0} contactos modificados para ${userId}`);
-    await syncChatsAndMessagesToDb(userId, [], contacts, [], io);
+  sock.ev.on('contacts.update', async (data) => {
+    const list = Array.isArray(data) ? data : (data?.contacts || []);
+    console.log(`[Baileys Sync] ${list.length} contactos modificados para ${userId}`);
+    storeContacts(userId, list);
+    await syncChatsAndMessagesToDb(userId, [], list, [], io);
   });
 
   // ─── Eventos de conexión ─────────────────────────────────────────────────
@@ -538,7 +650,8 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
       console.log(`[Baileys] ✅ Conectado: ${phone} (usuario: ${userId})`);
 
       // 1. Actualizar memoria RAM INMEDIATAMENTE
-      sessions.set(userId, { sock, businessId, status: 'connected', phone, qr: null });
+      const prevS = sessions.get(userId) || {};
+      sessions.set(userId, { ...prevS, sock, businessId, status: 'connected', phone, qr: null });
 
       // 2. Emitir por Socket.io INMEDIATAMENTE a todas las salas
       if (io) {
@@ -581,33 +694,67 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
 
     // ── Conexión cerrada ──────────────────────────────────────────────────
     if (connection === 'close') {
-      const code = (lastDisconnect?.error instanceof Boom)
-        ? lastDisconnect.error.output?.statusCode
-        : 0;
+      const errOutput = lastDisconnect?.error?.output;
+      const code = errOutput?.statusCode
+        || lastDisconnect?.error?.statusCode
+        || (lastDisconnect?.error instanceof Boom ? lastDisconnect.error.output?.statusCode : 0)
+        || 0;
 
-      const isLoggedOut = code === DisconnectReason.loggedOut || code === 401 || code === 403 || code === 405;
+      const errMsg = (lastDisconnect?.error?.message || '').toLowerCase();
+
+      const isLoggedOut =
+        code === DisconnectReason.loggedOut ||
+        code === DisconnectReason.badSession ||
+        code === 401 ||
+        code === 403 ||
+        code === 405 ||
+        code === 428 ||
+        errMsg.includes('logged out') ||
+        errMsg.includes('unauthorized') ||
+        errMsg.includes('bad session');
+
       const shouldReconnect = !isLoggedOut;
 
       console.log(`[Baileys] Conexión cerrada para ${userId}. Código: ${code}. LoggedOut: ${isLoggedOut}. Reconectar: ${shouldReconnect}`);
 
-      if (isLoggedOut) {
-        deleteSessionFolder(userId);
-      }
+      const validId = getValidUserId(userId);
 
+      // Eliminar de RAM todas las posibles referencias
       sessions.delete(userId);
+      sessions.delete(validId);
+      if (userId === ADMIN_UUID || validId === ADMIN_UUID) sessions.delete('admin');
 
-      safeUpsert('whatsapp_sessions', {
-        user_id: userId,
-        status: shouldReconnect ? 'reconnecting' : 'disconnected',
-        qr_code: null,
-      }).catch(() => {});
+      if (isLoggedOut) {
+        // Limpiar carpetas físicas de credenciales invalidadas
+        deleteSessionFolder(userId);
+        deleteSessionFolder(validId);
 
-      if (io) {
-        const payload = { shouldReconnect };
-        emitToUserRooms(io, userId, 'disconnected', payload);
-      }
+        safeUpsert('whatsapp_sessions', {
+          user_id: validId,
+          status: 'disconnected',
+          phone_number: null,
+          qr_code: null,
+          connected_at: null,
+        }).catch(e => console.warn('[DB] Error guardando desconexión:', e.message));
 
-      if (shouldReconnect) {
+        if (io) {
+          const payload = { shouldReconnect: false, isLoggedOut: true, status: 'disconnected' };
+          emitToUserRooms(io, userId, 'disconnected', payload);
+          emitToUserRooms(io, validId, 'disconnected', payload);
+        }
+      } else {
+        safeUpsert('whatsapp_sessions', {
+          user_id: validId,
+          status: 'reconnecting',
+          qr_code: null,
+        }).catch(() => {});
+
+        if (io) {
+          const payload = { shouldReconnect: true, isLoggedOut: false, status: 'reconnecting' };
+          emitToUserRooms(io, userId, 'disconnected', payload);
+          emitToUserRooms(io, validId, 'disconnected', payload);
+        }
+
         console.log(`[Baileys] Reconectando ${userId} en 5s...`);
         setTimeout(() => createSession(userId, businessId, io).catch(console.error), 5000);
       }
@@ -616,6 +763,8 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
 
   // ─── Mensajes procesados (Entrantes, Salientes e Historial append) ────────
   sock.ev.on('messages.upsert', async ({ messages, type }) => {
+    storeMessages(userId, messages);
+
     // Si se están recibiendo paquetes del historial enviado por WhatsApp ('append')
     if (type === 'append' && Array.isArray(messages) && messages.length > 0) {
       console.log(`[Baileys Sync] Recibidos ${messages.length} mensajes del historial ('append') para ${userId}`);
@@ -706,7 +855,8 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
 };
 
 const disconnectSession = async (userId) => {
-  const session = sessions.get(userId);
+  const validId = getValidUserId(userId);
+  const session = getSession(userId) || getSession(validId);
   if (session?.sock) {
     try {
       await session.sock.logout();
@@ -715,13 +865,24 @@ const disconnectSession = async (userId) => {
     }
   }
   deleteSessionFolder(userId);
+  deleteSessionFolder(validId);
   sessions.delete(userId);
+  sessions.delete(validId);
+  if (userId === ADMIN_UUID || validId === ADMIN_UUID) sessions.delete('admin');
+
   await safeUpsert('whatsapp_sessions', {
-    user_id: userId,
+    user_id: validId,
     status: 'disconnected',
     phone_number: null,
     qr_code: null,
+    connected_at: null,
   });
+
+  if (global.io) {
+    const payload = { shouldReconnect: false, isLoggedOut: true, status: 'disconnected' };
+    emitToUserRooms(global.io, userId, 'disconnected', payload);
+    emitToUserRooms(global.io, validId, 'disconnected', payload);
+  }
 };
 
 const getSession = (userId) => {
@@ -783,7 +944,86 @@ const sendMessage = async (userId, to, text) => {
   await session.sock.sendMessage(jid, { text });
 };
 
-module.exports = { createSession, disconnectSession, getSession, restoreSessions, sendMessage, syncChatsAndMessagesToDb, getSessionUuid, getValidUserId, emitToUserRooms };
+const getGlobalBotStatus = async (userId) => {
+  const session = getSession(userId);
+  if (session && typeof session.bot_enabled === 'boolean') {
+    return session.bot_enabled;
+  }
+  if (!supabase) return true;
+
+  try {
+    const validUserId = getValidUserId(userId);
+    const { data: sess } = await supabase
+      .from('whatsapp_sessions')
+      .select('bot_enabled')
+      .eq('user_id', validUserId)
+      .maybeSingle();
+
+    let enabled = true;
+    if (sess && typeof sess.bot_enabled === 'boolean') {
+      enabled = sess.bot_enabled;
+    } else {
+      const { data: bus } = await supabase
+        .from('businesses')
+        .select('bot_enabled')
+        .eq('user_id', validUserId)
+        .maybeSingle();
+      if (bus && typeof bus.bot_enabled === 'boolean') {
+        enabled = bus.bot_enabled;
+      }
+    }
+
+    const currentS = getSession(userId);
+    if (currentS) currentS.bot_enabled = enabled;
+    return enabled;
+  } catch (e) {
+    return true;
+  }
+};
+
+const setGlobalBotStatus = async (userId, bot_enabled, io = null) => {
+  const validUserId = getValidUserId(userId);
+  const targetSession = getSession(userId) || getSession(validUserId);
+  if (targetSession) {
+    targetSession.bot_enabled = bot_enabled;
+  }
+
+  await safeUpsert('whatsapp_sessions', {
+    user_id: validUserId,
+    bot_enabled: bot_enabled,
+  });
+
+  if (supabase) {
+    try {
+      await supabase
+        .from('businesses')
+        .update({ bot_enabled: bot_enabled })
+        .eq('user_id', validUserId);
+    } catch (_) {}
+  }
+
+  const sessionUuid = await getSessionUuid(validUserId);
+  const activeIo = io || global.io;
+  if (activeIo) {
+    emitToUserRooms(activeIo, userId, 'global_bot_updated', { userId, bot_enabled, sessionUuid }, sessionUuid);
+  }
+
+  return bot_enabled;
+};
+
+module.exports = {
+  createSession,
+  disconnectSession,
+  getSession,
+  restoreSessions,
+  sendMessage,
+  syncChatsAndMessagesToDb,
+  getSessionUuid,
+  getValidUserId,
+  emitToUserRooms,
+  getGlobalBotStatus,
+  setGlobalBotStatus,
+};
 
 
 

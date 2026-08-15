@@ -1,7 +1,7 @@
 'use client';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter, usePathname } from 'next/navigation';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 
 const navItems = [
@@ -18,9 +18,40 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const router = useRouter();
   const pathname = usePathname();
 
+  const [globalBotEnabled, setGlobalBotEnabled] = useState<boolean>(true);
+  const [togglingGlobal, setTogglingGlobal] = useState<boolean>(false);
+  const BACKEND = 'https://bot-whatsaap-tkjd.onrender.com';
+
   useEffect(() => {
-    if (!loading && !user) router.push('/login');
-  }, [user, loading, router]);
+    if (!user?.id) return;
+    fetch(`${BACKEND}/api/sessions/global-bot/${user.id}`)
+      .then(r => r.json())
+      .then(d => {
+        if (d.success && typeof d.bot_enabled === 'boolean') {
+          setGlobalBotEnabled(d.bot_enabled);
+        }
+      })
+      .catch(() => {});
+  }, [user?.id]);
+
+  const toggleGlobalBot = async () => {
+    if (!user?.id || togglingGlobal) return;
+    const nextVal = !globalBotEnabled;
+    setTogglingGlobal(true);
+    setGlobalBotEnabled(nextVal);
+    try {
+      await fetch(`${BACKEND}/api/sessions/global-bot/${user.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bot_enabled: nextVal }),
+      });
+    } catch (e) {
+      console.error('Error al cambiar bot global:', e);
+      setGlobalBotEnabled(!nextVal);
+    } finally {
+      setTogglingGlobal(false);
+    }
+  };
 
   if (loading || !user) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}>
@@ -61,6 +92,34 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </Link>
           ))}
         </nav>
+
+        {/* Global Bot Toggle Widget */}
+        <div style={{
+          margin: '12px 12px 0 12px',
+          padding: '12px',
+          borderRadius: 12,
+          background: globalBotEnabled ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)',
+          border: `1px solid ${globalBotEnabled ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`,
+          transition: 'all 0.2s',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 16 }}>{globalBotEnabled ? '🤖' : '⏸️'}</span>
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: globalBotEnabled ? '#4ade80' : '#f87171' }}>
+                  {globalBotEnabled ? 'Bot Global ON' : 'Bot PAUSADO'}
+                </div>
+                <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+                  {globalBotEnabled ? 'Responde 24/7' : 'IA congelada'}
+                </div>
+              </div>
+            </div>
+            <label className="toggle" style={{ transform: 'scale(0.85)' }}>
+              <input type="checkbox" checked={globalBotEnabled} onChange={toggleGlobalBot} disabled={togglingGlobal} />
+              <span className="toggle-slider" />
+            </label>
+          </div>
+        </div>
 
         <div style={{ padding: '16px 12px', borderTop: '1px solid var(--border)' }}>
           <div style={{ padding: '10px 14px', marginBottom: 8 }}>
