@@ -348,6 +348,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-15** | fix: consulta de conversaciones amplia con fallback global para asegurar despliegue de chats (`f84f736`) | Auto-deploy |
 
+| **2026-08-15** | build: forzar redespliegue en Render para indizacion limpia (`8d88a64`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
