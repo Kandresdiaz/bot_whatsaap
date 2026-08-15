@@ -324,6 +324,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-15** | feat: auto-sincronizar chats estilo WhatsApp Web, toggle por chat personal y boton maestro global de bot (`a6e0bee`) | Auto-deploy |
 
+| **2026-08-15** | fix: corregir flujo de desconexion manual y evitar auto-reconexion en bucle al pedir QR (`4a371c7`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
