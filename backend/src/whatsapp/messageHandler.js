@@ -53,7 +53,8 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
   const isGroup = jid.endsWith('@g.us');
   if (isGroup) return;
 
-  const contactPhone = jid.replace('@s.whatsapp.net', '');
+  const contactPhone = jid.replace('@s.whatsapp.net', '').replace('@c.us', '').replace('@g.us', '').replace(/[^0-9]/g, '');
+  if (!contactPhone) return;
   const contactName = msg.pushName || contactPhone;
   const text = extractText(msg).trim();
   if (!text) return;
@@ -82,7 +83,7 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
           unread_count: (existing.unread_count || 0) + 1,
         }).eq('id', existing.id);
       } else {
-        const { data: newConv } = await supabase
+        const { data: newConv, error: insErr } = await supabase
           .from('conversations')
           .insert({
             session_id: sessionUuid,
@@ -94,7 +95,18 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
           })
           .select()
           .maybeSingle();
+
+        if (insErr) console.warn('[MSG] Aviso insertando conversación:', insErr.message);
         conversation = newConv;
+
+        if (!conversation) {
+          const { data: fallback } = await supabase
+            .from('conversations')
+            .select('*')
+            .eq('contact_phone', contactPhone)
+            .maybeSingle();
+          conversation = fallback;
+        }
       }
     }
   } catch (e) {
