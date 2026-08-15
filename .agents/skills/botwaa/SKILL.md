@@ -352,6 +352,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-15** | fix: consultar de forma exhaustiva los IDs de sesion del usuario en el frontend para desplegar chats inmediatamente (`bea7abd`) | Auto-deploy |
 
+| **2026-08-15** | build: forzar deploy de Render con huella Desktop (`7bd0065`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
