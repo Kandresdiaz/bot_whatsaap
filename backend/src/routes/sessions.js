@@ -37,7 +37,7 @@ router.post('/start', async (req, res) => {
       console.warn('DB upsert aviso (continuando con Baileys):', dbErr.message);
     }
 
-    // 3. Iniciar sesión de Baileys (forzando limpieza si la sesión no estaba conectada o se pide force)
+    // 3. Iniciar sesión de Baileys (forzando limpieza si la sesión no estaba lista o se pide force)
     const active = getSession(userId);
     const forceClean = !!force || !active || active.status !== 'connected';
 

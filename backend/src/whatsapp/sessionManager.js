@@ -586,6 +586,15 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
     downloadHistory: true,
     markOnlineOnConnect: false,
     shouldSyncHistoryMessage: () => true,
+    getMessage: async (key) => {
+      try {
+        const store = getUserStore(userId);
+        const msgId = key.id || `${key.remoteJid}_${key.messageTimestamp}`;
+        const found = store.messages.get(msgId) || store.messages.get(key.id);
+        if (found) return found.message;
+      } catch (_) {}
+      return undefined;
+    },
     connectTimeoutMs: 30000,
     keepAliveIntervalMs: 15000,
     retryRequestDelayMs: 3000,
