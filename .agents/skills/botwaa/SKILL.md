@@ -342,6 +342,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-15** | feat: agregar callback getMessage en Baileys v7 para descifrado completo de historial (`007706f`) | Auto-deploy |
 
+| **2026-08-15** | build: forzar redespliegue de Render para sincronizacion WhatsApp (`017209f`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
