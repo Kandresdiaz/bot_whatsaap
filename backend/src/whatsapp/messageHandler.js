@@ -116,13 +116,13 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
       try {
         const { emitToUserRooms, getSessionUuid } = require('./sessionManager');
         getSessionUuid(userId).then(sessionUuid => {
-          emitToUserRooms(global.io, userId, sessionUuid, 'new_message', {
+          emitToUserRooms(global.io, userId, 'new_message', {
             conversationId: conversation.id,
             message: { content: text, direction: 'inbound', sent_by: 'human', timestamp: new Date() },
-          });
-          emitToUserRooms(global.io, userId, sessionUuid, 'conversation_updated', {
+          }, sessionUuid);
+          emitToUserRooms(global.io, userId, 'conversation_updated', {
             conversationId: conversation.id, contactName, lastMessage: text,
-          });
+          }, sessionUuid);
         });
       } catch (_) {
         global.io.to(`user_${userId}`).emit('new_message', {

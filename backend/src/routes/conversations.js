@@ -7,17 +7,33 @@ router.get('/:sessionId', async (req, res) => {
   let { sessionId } = req.params;
   const { search, status } = req.query;
 
-  const { getSessionUuid } = require('../whatsapp/sessionManager');
+  const { getSessionUuid, getValidUserId } = require('../whatsapp/sessionManager');
+  const validUserId = getValidUserId(sessionId);
   const sessionUuid = await getSessionUuid(sessionId);
 
-  if (!sessionUuid) {
+  const sessionIdsSet = new Set();
+  if (sessionUuid) sessionIdsSet.add(sessionUuid);
+
+  try {
+    const { data: userSessions } = await supabase
+      .from('whatsapp_sessions')
+      .select('id')
+      .eq('user_id', validUserId);
+
+    if (Array.isArray(userSessions)) {
+      userSessions.forEach(s => sessionIdsSet.add(s.id));
+    }
+  } catch (_) {}
+
+  const sessionList = Array.from(sessionIdsSet);
+  if (sessionList.length === 0) {
     return res.json({ success: true, conversations: [] });
   }
 
   let query = supabase
     .from('conversations')
     .select('*')
-    .eq('session_id', sessionUuid)
+    .in('session_id', sessionList)
     .order('last_message_at', { ascending: false });
 
   if (status) query = query.eq('status', status);
@@ -34,7 +50,7 @@ router.get('/:sessionId', async (req, res) => {
       const reQuery = await supabase
         .from('conversations')
         .select('*')
-        .eq('session_id', sessionUuid)
+        .in('session_id', sessionList)
         .order('last_message_at', { ascending: false });
       data = reQuery.data || [];
     } catch (_) {}
@@ -59,7 +75,7 @@ router.post('/sync/:userId', async (req, res) => {
     const sessionUuid = await getSessionUuid(userId);
     await syncChatsAndMessagesToDb(userId, [], [], [], global.io);
     if (global.io) {
-      emitToUserRooms(global.io, userId, sessionUuid, 'chats_synced', { timestamp: new Date().toISOString() });
+      emitToUserRooms(global.io, userId, 'chats_synced', { timestamp: new Date().toISOString() }, sessionUuid);
     }
     res.json({ success: true, message: 'Sincronización disparada correctamente' });
   } catch (err) {
