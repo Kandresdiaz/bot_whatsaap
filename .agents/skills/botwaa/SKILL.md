@@ -366,6 +366,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-16** | fix: asegurar sincronizacion y despliegue instantaneo de chats al escanear QR y eliminar consultas UUID invalidas (`c16f52c`) | Auto-deploy |
 
+| **2026-08-16** | fix: auto-restaurar credenciales Baileys en disco y mejorar experiencia de sincronizacion de chats (`6d9a5ac`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
