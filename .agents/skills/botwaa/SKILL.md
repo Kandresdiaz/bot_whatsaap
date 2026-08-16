@@ -382,6 +382,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-16** | fix: asegurar ejecucion incondicional de loadConversations y sondeo continuo de chats en frontend (`f2b7c51`) | Auto-deploy |
 
+| **2026-08-16** | perf: hacer que /api/sessions/start espere el QR generado y lo retorne directamente en la respuesta HTTP para renderizado instantaneo (`9770497`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
