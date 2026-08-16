@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const { supabase } = require('../db/supabase');
 
+const isUuid = (str) => typeof str === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+
 // Listar conversaciones de una sesión o usuario
 router.get('/:sessionId', async (req, res) => {
   try {
@@ -13,7 +15,9 @@ router.get('/:sessionId', async (req, res) => {
     const sessionUuid = await getSessionUuid(sessionId);
 
     const sessionIdsSet = new Set();
-    if (sessionUuid) sessionIdsSet.add(sessionUuid);
+    if (isUuid(sessionUuid)) sessionIdsSet.add(sessionUuid);
+    if (isUuid(sessionId)) sessionIdsSet.add(sessionId);
+    if (isUuid(validUserId)) sessionIdsSet.add(validUserId);
 
     try {
       const { data: userSessions } = await supabase
@@ -22,7 +26,9 @@ router.get('/:sessionId', async (req, res) => {
         .eq('user_id', validUserId);
 
       if (Array.isArray(userSessions)) {
-        userSessions.forEach(s => sessionIdsSet.add(s.id));
+        userSessions.forEach(s => {
+          if (isUuid(s?.id)) sessionIdsSet.add(s.id);
+        });
       }
     } catch (_) {}
 
