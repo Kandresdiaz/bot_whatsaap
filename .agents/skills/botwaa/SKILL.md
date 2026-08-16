@@ -358,6 +358,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-16** | build: forzar deploy en Render para sincronizacion de contactos automatica (`ba94dc8`) | Auto-deploy |
 
+| **2026-08-16** | build: forzar deploy de Render para restauracion de QR (`8c18ee0`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
