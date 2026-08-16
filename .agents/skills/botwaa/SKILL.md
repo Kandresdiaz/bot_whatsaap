@@ -386,6 +386,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-16** | fix: prevenir restauracion involuntaria de credenciales caducadas de Supabase cuando se solicita nuevo QR y usar fingerprint Ubuntu Chrome (`90a05e0`) | Auto-deploy |
 
+| **2026-08-16** | fix: asegurar persistencia inmediata de nuevas conversaciones en Supabase y envio seguro de mensajes con UUIDs reales (`9b5ac6d`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
