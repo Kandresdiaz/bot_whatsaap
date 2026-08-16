@@ -111,13 +111,10 @@ export default function ConversationsPage() {
 
     loadConversations(targetId);
 
-    // Sondeo automático continuo
+    // Sondeo automático acelerado cada 2s para desplegar chats de inmediato
     const interval = setInterval(() => {
       loadConversations(targetId);
-      if (user?.id && user.id !== targetId) {
-        loadConversations(user.id);
-      }
-    }, 4000);
+    }, 2000);
 
     // Socket para mensajes en tiempo real
     const socket = io(BACKEND!);
