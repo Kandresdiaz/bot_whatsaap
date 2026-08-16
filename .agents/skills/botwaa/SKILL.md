@@ -356,6 +356,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-16** | feat: agregar funcion de Abrir Nuevo Chat por numero y optimizar boton de sincronizacion forzada (`0c699d7`) | Auto-deploy |
 
+| **2026-08-16** | build: forzar deploy en Render para sincronizacion de contactos automatica (`ba94dc8`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
