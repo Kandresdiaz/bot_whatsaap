@@ -144,7 +144,13 @@ export default function ConnectPage() {
       try { data = await res.json(); } catch (_) {}
 
       if (res.ok && data.success) {
-        // Éxito — el QR llegará por Socket.io o polling
+        if (data.qr) {
+          setQr(data.qr);
+          setStatus('qr_ready');
+        } else if (data.status === 'connected') {
+          setStatus('connected');
+          setPhone(data.phone || null);
+        }
         setError(null);
       } else {
         const msg = data.error || `Error del servidor (HTTP ${res.status})`;

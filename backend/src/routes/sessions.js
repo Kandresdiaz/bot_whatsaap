@@ -15,11 +15,13 @@ router.post('/start', async (req, res) => {
   let sessionId = userId;
 
   try {
+    const validUserId = (!userId || userId === 'admin') ? '00000000-0000-0000-0000-000000000001' : userId;
+
     // 1. Obtener el business_id del usuario si existe
     const { data: business } = await supabase
       .from('businesses')
       .select('id')
-      .eq('user_id', userId)
+      .eq('user_id', validUserId)
       .maybeSingle();
 
     businessId = business?.id || null;
@@ -28,7 +30,7 @@ router.post('/start', async (req, res) => {
     try {
       const { data: session } = await supabase
         .from('whatsapp_sessions')
-        .upsert({ user_id: userId, business_id: businessId, status: 'connecting' }, { onConflict: 'user_id' })
+        .upsert({ user_id: validUserId, business_id: businessId, status: 'connecting' }, { onConflict: 'user_id' })
         .select()
         .maybeSingle();
 
@@ -37,20 +39,45 @@ router.post('/start', async (req, res) => {
       console.warn('DB upsert aviso (continuando con Baileys):', dbErr.message);
     }
 
-    // 3. Iniciar sesión de Baileys (forzando limpieza si la sesión no estaba lista o se pide force)
-    const active = getSession(userId);
+    // 3. Iniciar sesión de Baileys (forzando limpieza si no estaba conectada)
+    const active = getSession(userId) || getSession(validUserId);
     const forceClean = !!force || !active || active.status !== 'connected';
 
-    createSession(userId, businessId, global.io, forceClean).catch(err => {
+    createSession(validUserId, businessId, global.io, forceClean).catch(err => {
       console.error('Error en Baileys createSession:', err);
     });
 
-    return res.json({ success: true, sessionId });
+    // 4. Esperar hasta 5 segundos a que Baileys genere el QR en RAM para retornos ultrarrápidos
+    let qrReady = null;
+    let currentStatus = 'connecting';
+    let phoneNum = null;
+
+    for (let i = 0; i < 10; i++) {
+      await new Promise(r => setTimeout(r, 500));
+      const currentActive = getSession(userId) || getSession(validUserId);
+      if (currentActive?.qr) {
+        qrReady = currentActive.qr;
+        currentStatus = 'qr_ready';
+        break;
+      }
+      if (currentActive?.status === 'connected') {
+        currentStatus = 'connected';
+        phoneNum = currentActive.phone;
+        break;
+      }
+    }
+
+    return res.json({
+      success: true,
+      sessionId,
+      status: currentStatus,
+      qr: qrReady,
+      phone: phoneNum
+    });
   } catch (err) {
     console.error('Error iniciando sesión:', err);
-    // Aunque haya un error de lectura, iniciamos Baileys de todas formas
     createSession(userId, businessId, global.io, !!force).catch(e => console.error('Baileys fallback err:', e));
-    return res.json({ success: true, sessionId: userId });
+    return res.json({ success: true, sessionId: userId, status: 'connecting', qr: null });
   }
 });
 
