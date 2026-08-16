@@ -584,13 +584,19 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
     return existingSession.sock;
   }
 
-  // Si pedimos limpieza forzada o la sesión anterior falló, cerramos socket previo y borramos credenciales viejas
+  // Si pedimos limpieza forzada o la sesión anterior falló, cerramos socket previo y borramos credenciales viejas en disco y DB
   if (forceClean || (existingSession && existingSession.status !== 'connecting')) {
     if (existingSession?.sock) {
       try { existingSession.sock.end(new Error('Reiniciando sesión')); } catch (_) {}
     }
     deleteSessionFolder(userId);
     sessions.delete(userId);
+    safeUpsert('whatsapp_sessions', {
+      user_id: validUserId,
+      session_data: null,
+      qr_code: null,
+      status: 'connecting',
+    }).catch(() => {});
   }
 
   const sessionDir = path.join(SESSIONS_DIR, userId);
@@ -608,7 +614,7 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
   }).catch(() => {});
 
   const credsFilePath = path.join(sessionDir, 'creds.json');
-  if (!fs.existsSync(credsFilePath) && supabase) {
+  if (!forceClean && !fs.existsSync(credsFilePath) && supabase) {
     try {
       const { data: dbSess } = await supabase
         .from('whatsapp_sessions')
@@ -654,7 +660,7 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
     },
     logger,
     printQRInTerminal: false,
-    browser: Browsers.macOS('Desktop'),
+    browser: Browsers.ubuntu('Chrome'),
     generateHighQualityLinkPreview: false,
     syncFullHistory: true,
     downloadHistory: true,
