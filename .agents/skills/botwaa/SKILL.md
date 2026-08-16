@@ -378,6 +378,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-16** | fix: cambiar huella Baileys a macOS Desktop para forzar envio del historial completo de chats de WhatsApp Multi-Device al escanear QR (`9d74507`) | Auto-deploy |
 
+| **2026-08-16** | feat: implementar respaldo y auto-restauracion de credenciales Baileys en Supabase session_data (`a9ce99a`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
