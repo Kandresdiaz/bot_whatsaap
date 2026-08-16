@@ -607,6 +607,22 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
     qr_code: null,
   }).catch(() => {});
 
+  const credsFilePath = path.join(sessionDir, 'creds.json');
+  if (!fs.existsSync(credsFilePath) && supabase) {
+    try {
+      const { data: dbSess } = await supabase
+        .from('whatsapp_sessions')
+        .select('session_data')
+        .eq('user_id', validUserId)
+        .maybeSingle();
+
+      if (dbSess?.session_data) {
+        fs.writeFileSync(credsFilePath, dbSess.session_data, 'utf8');
+        console.log(`[Baileys Auth] Credenciales restauradas desde Supabase para ${validUserId}`);
+      }
+    } catch (_) {}
+  }
+
   let state, saveCreds;
   try {
     const authResult = await useMultiFileAuthState(sessionDir);
@@ -662,8 +678,21 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
   const currentS = sessions.get(userId) || {};
   sessions.set(userId, { ...currentS, sock, status: 'connecting' });
 
-  // Guardar credenciales al cambiar
-  sock.ev.on('creds.update', saveCreds);
+  // Guardar credenciales al cambiar (en disco y en Supabase)
+  sock.ev.on('creds.update', async () => {
+    try {
+      await saveCreds();
+      if (fs.existsSync(credsFilePath) && supabase) {
+        const rawCreds = fs.readFileSync(credsFilePath, 'utf8');
+        if (rawCreds) {
+          safeUpsert('whatsapp_sessions', {
+            user_id: userId,
+            session_data: rawCreds,
+          }).catch(() => {});
+        }
+      }
+    } catch (_) {}
+  });
 
   // ─── Sincronización del historial enviado por WhatsApp al conectar ─────────
   sock.ev.on('messaging-history.set', async ({ chats, contacts, messages, syncType }) => {
