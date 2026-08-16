@@ -93,13 +93,17 @@ router.get('/status/:userId', async (req, res) => {
     // Si no está en RAM pero sí en DB
     if (dbSession) {
       const isConn = dbSession.status === 'connected';
+      if (isConn && !active) {
+        // Auto-restaurar sesión Baileys en segundo plano si estaba conectada en DB
+        createSession(validUserId, dbSession.business_id, global.io).catch(() => {});
+      }
       return res.json({
         success: true,
         session: {
           ...dbSession,
-          status: isConn ? 'disconnected' : dbSession.status,
-          phone_number: isConn ? null : dbSession.phone_number,
-          qr_code: isConn ? null : dbSession.qr_code,
+          status: dbSession.status || 'disconnected',
+          phone_number: dbSession.phone_number || null,
+          qr_code: dbSession.status === 'qr_ready' ? dbSession.qr_code : null,
           bot_enabled: dbSession.bot_enabled ?? true,
         }
       });
