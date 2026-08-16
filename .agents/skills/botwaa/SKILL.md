@@ -370,6 +370,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-16** | fix: insercion individual indestructible de historial Baileys y retries secuenciales al conectar QR (`5c954a5`) | Auto-deploy |
 
+| **2026-08-16** | feat: tiempo real 100% automatico en lista de conversaciones al conectar QR y recibir mensajes estilo WhatsApp Web (`61e165f`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
