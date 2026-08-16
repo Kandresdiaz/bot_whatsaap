@@ -85,7 +85,7 @@ router.get('/status/:userId', async (req, res) => {
           status: finalStatus,
           qr_code: finalQr,
           phone_number: finalPhone,
-          bot_enabled: active.bot_enabled !== undefined ? active.bot_enabled : (dbSession?.bot_enabled ?? true),
+          bot_enabled: active.bot_enabled !== undefined ? active.bot_enabled : (dbSession?.bot_enabled ?? false),
         }
       });
     }
@@ -104,7 +104,7 @@ router.get('/status/:userId', async (req, res) => {
           status: dbSession.status || 'disconnected',
           phone_number: dbSession.phone_number || null,
           qr_code: dbSession.status === 'qr_ready' ? dbSession.qr_code : null,
-          bot_enabled: dbSession.bot_enabled ?? true,
+          bot_enabled: dbSession.bot_enabled ?? false,
         }
       });
     }
@@ -124,7 +124,7 @@ router.get('/global-bot/:userId', async (req, res) => {
     const bot_enabled = await getGlobalBotStatus(userId);
     res.json({ success: true, bot_enabled });
   } catch (e) {
-    res.json({ success: true, bot_enabled: true });
+    res.json({ success: true, bot_enabled: false });
   }
 });
 

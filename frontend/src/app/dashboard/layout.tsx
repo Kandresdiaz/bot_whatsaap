@@ -18,7 +18,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const router = useRouter();
   const pathname = usePathname();
 
-  const [globalBotEnabled, setGlobalBotEnabled] = useState<boolean>(true);
+  const [globalBotEnabled, setGlobalBotEnabled] = useState<boolean>(false);
   const [togglingGlobal, setTogglingGlobal] = useState<boolean>(false);
   const BACKEND = 'https://bot-whatsaap-tkjd.onrender.com';
 
@@ -29,9 +29,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       .then(d => {
         if (d.success && typeof d.bot_enabled === 'boolean') {
           setGlobalBotEnabled(d.bot_enabled);
+        } else {
+          setGlobalBotEnabled(false);
         }
       })
-      .catch(() => {});
+      .catch(() => setGlobalBotEnabled(false));
   }, [user?.id]);
 
   const toggleGlobalBot = async () => {

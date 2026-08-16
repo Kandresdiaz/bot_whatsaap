@@ -597,7 +597,8 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
   if (!fs.existsSync(sessionDir)) fs.mkdirSync(sessionDir, { recursive: true });
 
   // Guardar estado inicial en memoria inmediatamente
-  sessions.set(userId, { status: 'connecting', businessId, sock: null, qr: null });
+  const prevSession = sessions.get(userId) || {};
+  sessions.set(userId, { status: 'connecting', businessId, sock: null, qr: null, bot_enabled: prevSession.bot_enabled !== undefined ? prevSession.bot_enabled : false });
 
   // Guardar estado inicial en DB inmediatamente al solicitar conexión
   safeUpsert('whatsapp_sessions', {
@@ -1071,7 +1072,7 @@ const getGlobalBotStatus = async (userId) => {
   if (session && typeof session.bot_enabled === 'boolean') {
     return session.bot_enabled;
   }
-  if (!supabase) return true;
+  if (!supabase) return false;
 
   try {
     const validUserId = getValidUserId(userId);
@@ -1081,7 +1082,7 @@ const getGlobalBotStatus = async (userId) => {
       .eq('user_id', validUserId)
       .maybeSingle();
 
-    let enabled = true;
+    let enabled = false;
     if (sess && typeof sess.bot_enabled === 'boolean') {
       enabled = sess.bot_enabled;
     } else {
@@ -1099,7 +1100,7 @@ const getGlobalBotStatus = async (userId) => {
     if (currentS) currentS.bot_enabled = enabled;
     return enabled;
   } catch (e) {
-    return true;
+    return false;
   }
 };
 

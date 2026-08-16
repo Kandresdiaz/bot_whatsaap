@@ -31,7 +31,7 @@ export default function ConversationsPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [reply, setReply] = useState('');
   const [search, setSearch] = useState('');
-  const [globalBotEnabled, setGlobalBotEnabled] = useState<boolean>(true);
+  const [globalBotEnabled, setGlobalBotEnabled] = useState<boolean>(false);
   const [togglingGlobal, setTogglingGlobal] = useState<boolean>(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const socketRef = useRef<Socket | null>(null);
@@ -79,9 +79,11 @@ export default function ConversationsPage() {
       .then(d => {
         if (d.success && typeof d.bot_enabled === 'boolean') {
           setGlobalBotEnabled(d.bot_enabled);
+        } else {
+          setGlobalBotEnabled(false);
         }
       })
-      .catch(() => {});
+      .catch(() => setGlobalBotEnabled(false));
   }, [user, BACKEND]);
 
   const loadConversations = async (targetId: string) => {

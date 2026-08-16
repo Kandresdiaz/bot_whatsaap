@@ -146,7 +146,7 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
   }
 
   // ── 3. Bot desactivado (Global o por Conversación) o Blacklist ──────────────
-  let isGlobalBotEnabled = true;
+  let isGlobalBotEnabled = false;
   try {
     const { getGlobalBotStatus } = require('./sessionManager');
     isGlobalBotEnabled = await getGlobalBotStatus(userId);
