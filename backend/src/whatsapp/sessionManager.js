@@ -433,7 +433,7 @@ const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts =
       }
     }
 
-    // Guardar nuevas conversaciones en Supabase en lote
+    // Guardar nuevas conversaciones en Supabase (lote + fallback individual indestructible)
     if (newConvsToInsert.length > 0) {
       try {
         const { data: inserted, error: insErr } = await supabase
@@ -442,16 +442,34 @@ const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts =
           .select('id, contact_phone, contact_name, last_message_at');
 
         if (insErr) {
-          console.warn('[Sync] Aviso insertando nuevas conversaciones:', insErr.message);
-        }
-
-        if (Array.isArray(inserted)) {
+          console.warn('[Sync] Aviso insertando lote de conversaciones, ejecutando inserción individual:', insErr.message);
+          for (const convItem of newConvsToInsert) {
+            try {
+              const { data: singleIns } = await supabase
+                .from('conversations')
+                .insert(convItem)
+                .select('id, contact_phone, contact_name, last_message_at')
+                .maybeSingle();
+              if (singleIns) convMap.set(singleIns.contact_phone, singleIns);
+            } catch (_) {}
+          }
+        } else if (Array.isArray(inserted)) {
           for (const c of inserted) {
             convMap.set(c.contact_phone, c);
           }
         }
       } catch (err) {
-        console.warn('[Sync] Excepción insertando conversaciones:', err.message);
+        console.warn('[Sync] Excepción insertando conversaciones, aplicando inserción uno a uno:', err.message);
+        for (const convItem of newConvsToInsert) {
+          try {
+            const { data: singleIns } = await supabase
+              .from('conversations')
+              .insert(convItem)
+              .select('id, contact_phone, contact_name, last_message_at')
+              .maybeSingle();
+            if (singleIns) convMap.set(singleIns.contact_phone, singleIns);
+          } catch (_) {}
+        }
       }
     }
 
@@ -758,8 +776,8 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
         connected_at: new Date().toISOString(),
       }).catch(e => console.warn('[DB] Error guardando sesión en DB:', e.message));
 
-      // 4. Disparar sincronización inicial de chats y grupos en segundo plano
-      setTimeout(async () => {
+      // 4. Disparar sincronizaciones secuenciales iniciales de chats y grupos
+      const triggerInitialSync = async () => {
         try {
           await syncChatsAndMessagesToDb(userId, [], [], [], io);
           if (sock.groupFetchAllParticipating) {
@@ -771,14 +789,17 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
                 conversationTimestamp: g.creation || Math.floor(Date.now() / 1000),
                 unreadCount: 0,
               }));
-              console.log(`[Baileys Sync] ${groupChats.length} grupos recuperados para ${userId}`);
               await syncChatsAndMessagesToDb(userId, groupChats, [], [], io);
             }
           }
         } catch (errSync) {
           console.warn('[Sync open] Aviso en sync inicial:', errSync.message);
         }
-      }, 1000);
+      };
+
+      setTimeout(triggerInitialSync, 1000);
+      setTimeout(triggerInitialSync, 4000);
+      setTimeout(triggerInitialSync, 8000);
     }
 
     // ── Conexión cerrada ──────────────────────────────────────────────────
