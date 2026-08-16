@@ -368,6 +368,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-16** | fix: auto-restaurar credenciales Baileys en disco y mejorar experiencia de sincronizacion de chats (`6d9a5ac`) | Auto-deploy |
 
+| **2026-08-16** | fix: insercion individual indestructible de historial Baileys y retries secuenciales al conectar QR (`5c954a5`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
