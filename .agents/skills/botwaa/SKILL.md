@@ -372,6 +372,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-16** | feat: tiempo real 100% automatico en lista de conversaciones al conectar QR y recibir mensajes estilo WhatsApp Web (`61e165f`) | Auto-deploy |
 
+| **2026-08-16** | fix: resolver anulacion falsa de estado conectado en sessions status y auto-iniciar Baileys al consultar conversaciones (`af64df9`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
