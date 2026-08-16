@@ -333,15 +333,32 @@ export default function ConversationsPage() {
                 <div style={{ fontSize: 32, marginBottom: 8 }}>📲</div>
                 <strong style={{ display: 'block', color: 'var(--text)', marginBottom: 6 }}>Sin conversaciones cargadas</strong>
                 <p style={{ fontSize: 12, marginBottom: 12 }}>
-                  Para traer tus chats anteriores, es necesario escanear un <strong>QR fresco</strong>. Haz clic abajo para generar el QR y descargar tu historial de WhatsApp:
+                  Si recién conectaste tu WhatsApp o quieres descargar tus chats recientes, presiona <strong>Sincronizar</strong> abajo. Si deseas chatear con un número en específico, usa <strong>Nuevo Chat</strong>.
                 </p>
-                <a
-                  href="/dashboard/connect"
-                  className="btn btn-primary"
-                  style={{ fontSize: 12, display: 'block', width: '100%', textAlign: 'center', textDecoration: 'none' }}
-                >
-                  🔌 Ir a Conectar / Re-vincular QR
-                </a>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <button
+                    className="btn btn-ghost"
+                    style={{ fontSize: 12, width: '100%' }}
+                    onClick={handleManualSync}
+                    disabled={syncing}
+                  >
+                    {syncing ? '🔄 Sincronizando...' : '🔄 Sincronizar Chats'}
+                  </button>
+                  <button
+                    className="btn btn-ghost"
+                    style={{ fontSize: 12, width: '100%' }}
+                    onClick={() => setNewPhoneModal(true)}
+                  >
+                    ➕ Abrir Nuevo Chat por Número
+                  </button>
+                  <a
+                    href="/dashboard/connect"
+                    className="btn btn-primary"
+                    style={{ fontSize: 12, display: 'block', width: '100%', textAlign: 'center', textDecoration: 'none', marginTop: 4 }}
+                  >
+                    🔌 Ir a Conectar / Re-vincular QR
+                  </a>
+                </div>
               </div>
             )}
             {filtered.map(conv => (

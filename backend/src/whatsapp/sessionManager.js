@@ -1010,16 +1010,22 @@ const restoreSessions = async (io) => {
   try {
     const { data: activeSessions } = await supabase
       .from('whatsapp_sessions')
-      .select('user_id, business_id')
-      .eq('status', 'connected');
+      .select('user_id, business_id, status');
+
+    const adminDir = path.join(SESSIONS_DIR, ADMIN_UUID);
+    if (fs.existsSync(adminDir)) {
+      console.log(`[Restore] Restaurando credenciales encontradas en disco (${ADMIN_UUID})...`);
+      createSession(ADMIN_UUID, null, io).catch(() => {});
+    }
 
     if (!activeSessions?.length) return;
-    console.log(`[Restore] Restaurando ${activeSessions.length} sesión(es)...`);
 
     for (const session of activeSessions) {
       try {
+        if (session.user_id === ADMIN_UUID) continue;
         const sessionDir = path.join(SESSIONS_DIR, session.user_id);
-        if (fs.existsSync(sessionDir)) {
+        if (fs.existsSync(sessionDir) && session.status !== 'disconnected') {
+          console.log(`[Restore] Restaurando sesión para ${session.user_id}...`);
           await createSession(session.user_id, session.business_id, io);
           await new Promise(r => setTimeout(r, 2000));
         }
