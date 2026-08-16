@@ -362,6 +362,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-16** | fix: redireccion automatica acelerada y sondeo a 2s para despliegue instantaneo de chats sin tocar nada (`9653360`) | Auto-deploy |
 
+| **2026-08-16** | fix: corregir fingerprint de browser Baileys a Ubuntu Chrome para evitar error 428 y asegurar generacion limpia de QR (`b250b50`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
