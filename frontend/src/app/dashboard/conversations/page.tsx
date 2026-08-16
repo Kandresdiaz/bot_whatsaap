@@ -41,24 +41,27 @@ export default function ConversationsPage() {
   const [newPhoneModal, setNewPhoneModal] = useState(false);
   const [newPhoneInput, setNewPhoneInput] = useState('');
 
-  const handleCreateNewChat = () => {
+  const handleCreateNewChat = async () => {
     const clean = newPhoneInput.replace(/[^0-9]/g, '');
     if (!clean) return;
-    const newConv: Conversation = {
-      id: `custom_${clean}`,
-      contact_phone: clean,
-      contact_name: clean,
-      bot_active: true,
-      is_blacklisted: false,
-      is_lead: false,
-      last_message_at: new Date().toISOString(),
-      unread_count: 0,
-      status: 'open',
-    };
-    setConversations(prev => [newConv, ...prev.filter(c => c.contact_phone !== clean)]);
-    setActive(newConv);
-    setNewPhoneInput('');
-    setNewPhoneModal(false);
+    const targetId = sessionId || user?.id || 'admin';
+    try {
+      const res = await fetch(`${BACKEND}/api/conversations/create`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: targetId, phone: clean, contactName: clean }),
+      });
+      const data = await res.json();
+      if (data.success && data.conversation) {
+        setConversations(prev => [data.conversation, ...prev.filter(c => c.id !== data.conversation.id)]);
+        setActive(data.conversation);
+      }
+    } catch (e) {
+      console.error('Error creando nuevo chat:', e);
+    } finally {
+      setNewPhoneInput('');
+      setNewPhoneModal(false);
+    }
   };
 
   // Cargar sesión del usuario y Bot Global

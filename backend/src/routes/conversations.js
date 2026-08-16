@@ -44,13 +44,8 @@ router.get('/:sessionId', async (req, res) => {
 
     let query = supabase
       .from('conversations')
-      .select('*');
-
-    if (sessionList.length > 0) {
-      query = query.or(`session_id.in.(${sessionList.join(',')}),session_id.is.null`);
-    }
-
-    query = query.order('last_message_at', { ascending: false });
+      .select('*')
+      .order('last_message_at', { ascending: false });
 
     if (status) query = query.eq('status', status);
     if (search) query = query.ilike('contact_name', `%${search}%`);
@@ -58,23 +53,66 @@ router.get('/:sessionId', async (req, res) => {
     let { data, error } = await query;
     if (error) console.error('[Conversations GET Error]:', error?.message);
 
-    // Si no hay conversaciones específicas, forzar sincronización y traer todas las conversaciones de la tabla
-    if (!data || data.length === 0) {
-      try {
-        await syncChatsAndMessagesToDb(sessionId, [], [], [], global.io);
-      } catch (_) {}
-      const { data: allConvs } = await supabase
-        .from('conversations')
-        .select('*')
-        .order('last_message_at', { ascending: false })
-        .limit(200);
-      data = allConvs || [];
-    }
-
     res.json({ success: true, conversations: data || [] });
   } catch (err) {
     console.error('[GET Conversations Crash Safe]:', err.message);
     res.json({ success: true, conversations: [] });
+  }
+});
+
+// Crear o buscar conversación para un número de teléfono
+router.post('/create', async (req, res) => {
+  try {
+    const { userId, phone, contactName } = req.body;
+    if (!phone) {
+      return res.status(400).json({ success: false, error: 'phone es requerido' });
+    }
+
+    const { getSessionUuid, getValidUserId } = require('../whatsapp/sessionManager');
+    const validUserId = getValidUserId(userId || 'admin');
+    const sessionUuid = await getSessionUuid(validUserId);
+    const cleanPhone = phone.replace(/[^0-9]/g, '');
+
+    if (!cleanPhone) {
+      return res.status(400).json({ success: false, error: 'Número de teléfono inválido' });
+    }
+
+    // Buscar si ya existe
+    let { data: existing } = await supabase
+      .from('conversations')
+      .select('*')
+      .eq('contact_phone', cleanPhone)
+      .maybeSingle();
+
+    if (existing) {
+      return res.json({ success: true, conversation: existing });
+    }
+
+    // Crear conversación nueva en Supabase
+    const { data: newConv, error: insErr } = await supabase
+      .from('conversations')
+      .insert({
+        session_id: sessionUuid,
+        contact_phone: cleanPhone,
+        contact_name: contactName || cleanPhone,
+        bot_active: true,
+        is_blacklisted: false,
+        last_message_at: new Date().toISOString(),
+        unread_count: 0,
+        status: 'open',
+      })
+      .select()
+      .maybeSingle();
+
+    if (insErr) {
+      console.error('[Conversations Create Error]:', insErr.message);
+      return res.status(500).json({ success: false, error: insErr.message });
+    }
+
+    return res.json({ success: true, conversation: newConv });
+  } catch (err) {
+    console.error('[Conversations Create Crash Safe]:', err.message);
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 

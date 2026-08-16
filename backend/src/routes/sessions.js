@@ -185,22 +185,75 @@ router.post('/stop', async (req, res) => {
 // Enviar mensaje manual (intervención del dueño)
 router.post('/send', async (req, res) => {
   const { userId, phone, message, conversationId } = req.body;
+  const isUuid = (str) => typeof str === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
 
   try {
+    const { getSessionUuid, getValidUserId } = require('../whatsapp/sessionManager');
+    const validUserId = getValidUserId(userId || 'admin');
+    const cleanPhone = (phone || '').replace(/[^0-9]/g, '');
+
     await sendMessage(userId, phone, message);
 
-    if (conversationId) {
+    let targetConvId = isUuid(conversationId) ? conversationId : null;
+
+    if (!targetConvId && cleanPhone) {
+      const sessionUuid = await getSessionUuid(validUserId);
+      const { data: existing } = await supabase
+        .from('conversations')
+        .select('id')
+        .eq('contact_phone', cleanPhone)
+        .maybeSingle();
+
+      if (existing?.id) {
+        targetConvId = existing.id;
+      } else {
+        const { data: newConv } = await supabase
+          .from('conversations')
+          .insert({
+            session_id: sessionUuid,
+            contact_phone: cleanPhone,
+            contact_name: cleanPhone,
+            bot_active: true,
+            is_blacklisted: false,
+            last_message_at: new Date().toISOString(),
+            unread_count: 0,
+            status: 'open',
+          })
+          .select('id')
+          .maybeSingle();
+        targetConvId = newConv?.id || null;
+      }
+    }
+
+    if (targetConvId) {
+      await supabase.from('conversations').update({
+        last_message_at: new Date().toISOString(),
+      }).eq('id', targetConvId);
+
       await supabase.from('messages').insert({
-        conversation_id: conversationId,
+        conversation_id: targetConvId,
         content: message,
         direction: 'outbound',
         sent_by: 'human',
         timestamp: new Date().toISOString(),
       });
+
+      if (global.io) {
+        const { emitToUserRooms } = require('../whatsapp/sessionManager');
+        const sessionUuid = await getSessionUuid(validUserId);
+        emitToUserRooms(global.io, validUserId, 'new_message', {
+          conversationId: targetConvId,
+          message: { content: message, direction: 'outbound', sent_by: 'human', timestamp: new Date().toISOString() },
+        }, sessionUuid);
+        emitToUserRooms(global.io, validUserId, 'conversation_updated', {
+          conversationId: targetConvId, contactPhone: cleanPhone, lastMessage: message,
+        }, sessionUuid);
+      }
     }
 
-    res.json({ success: true });
+    res.json({ success: true, conversationId: targetConvId });
   } catch (err) {
+    console.error('[Send Message Error]:', err.message);
     res.status(500).json({ success: false, error: err.message });
   }
 });
