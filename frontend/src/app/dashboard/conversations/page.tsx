@@ -38,6 +38,28 @@ export default function ConversationsPage() {
   const BACKEND = 'https://bot-whatsaap-tkjd.onrender.com';
 
   const [syncing, setSyncing] = useState(false);
+  const [newPhoneModal, setNewPhoneModal] = useState(false);
+  const [newPhoneInput, setNewPhoneInput] = useState('');
+
+  const handleCreateNewChat = () => {
+    const clean = newPhoneInput.replace(/[^0-9]/g, '');
+    if (!clean) return;
+    const newConv: Conversation = {
+      id: `custom_${clean}`,
+      contact_phone: clean,
+      contact_name: clean,
+      bot_active: true,
+      is_blacklisted: false,
+      is_lead: false,
+      last_message_at: new Date().toISOString(),
+      unread_count: 0,
+      status: 'open',
+    };
+    setConversations(prev => [newConv, ...prev.filter(c => c.contact_phone !== clean)]);
+    setActive(newConv);
+    setNewPhoneInput('');
+    setNewPhoneModal(false);
+  };
 
   // Cargar sesión del usuario y Bot Global
   useEffect(() => {
@@ -267,15 +289,25 @@ export default function ConversationsPage() {
           <div style={{ padding: '16px', borderBottom: '1px solid var(--border)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
               <h2 style={{ fontWeight: 700, margin: 0, fontSize: 18 }}>💬 Conversaciones</h2>
-              <button
-                className="btn btn-ghost"
-                style={{ fontSize: 12, padding: '4px 8px' }}
-                onClick={handleManualSync}
-                disabled={syncing}
-                title="Sincronizar chats de WhatsApp"
-              >
-                {syncing ? '🔄 Sincronizando...' : '🔄 Sincronizar'}
-              </button>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button
+                  className="btn btn-primary"
+                  style={{ fontSize: 11, padding: '4px 8px' }}
+                  onClick={() => setNewPhoneModal(true)}
+                  title="Abrir conversación con un número"
+                >
+                  ➕ Nuevo Chat
+                </button>
+                <button
+                  className="btn btn-ghost"
+                  style={{ fontSize: 11, padding: '4px 8px' }}
+                  onClick={handleManualSync}
+                  disabled={syncing}
+                  title="Sincronizar chats de WhatsApp"
+                >
+                  {syncing ? '🔄 Sync...' : '🔄 Sincronizar'}
+                </button>
+              </div>
             </div>
 
             {/* Switch de Bot Global en cabecera de lista */}
@@ -438,6 +470,42 @@ export default function ConversationsPage() {
           )}
         </div>
       </div>
+
+      {/* Modal para Abrir Nuevo Chat por Número */}
+      {newPhoneModal && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(0,0,0,0.6)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 9999,
+        }}>
+          <div className="card" style={{ width: 380, padding: 24, borderRadius: 16 }}>
+            <h3 style={{ margin: '0 0 8px 0', fontSize: 18, fontWeight: 700 }}>📱 Abrir Nuevo Chat</h3>
+            <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16 }}>
+              Ingresa el número de teléfono con código de país (ej. 573001234567) para iniciar o chatear directamente:
+            </p>
+            <input
+              className="input"
+              placeholder="Ej: 573001234567"
+              value={newPhoneInput}
+              onChange={e => setNewPhoneInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleCreateNewChat()}
+              style={{ width: '100%', marginBottom: 16, fontSize: 14 }}
+              autoFocus
+            />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button className="btn btn-ghost" onClick={() => setNewPhoneModal(false)}>Cancelar</button>
+              <button className="btn btn-primary" onClick={handleCreateNewChat} disabled={!newPhoneInput.trim()}>
+                Abrir Chat
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

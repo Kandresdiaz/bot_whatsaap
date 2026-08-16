@@ -68,9 +68,30 @@ router.get('/:sessionId', async (req, res) => {
 router.post('/sync/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
-    const { syncChatsAndMessagesToDb, emitToUserRooms, getSessionUuid } = require('../whatsapp/sessionManager');
+    const { getSession, syncChatsAndMessagesToDb, emitToUserRooms, getSessionUuid, storeChats } = require('../whatsapp/sessionManager');
 
     const sessionUuid = await getSessionUuid(userId);
+    const session = getSession(userId);
+
+    if (session?.sock) {
+      try {
+        if (session.sock.groupFetchAllParticipating) {
+          const groups = await session.sock.groupFetchAllParticipating();
+          if (groups) {
+            const groupChats = Object.values(groups).map(g => ({
+              id: g.id,
+              name: g.subject || g.name,
+              conversationTimestamp: g.creation || Math.floor(Date.now() / 1000),
+              unreadCount: 0,
+            }));
+            storeChats(userId, groupChats);
+          }
+        }
+      } catch (e) {
+        console.warn('[Sync groups warning]:', e.message);
+      }
+    }
+
     await syncChatsAndMessagesToDb(userId, [], [], [], global.io);
 
     if (global.io) {
