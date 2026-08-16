@@ -360,6 +360,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-16** | build: forzar deploy de Render para restauracion de QR (`8c18ee0`) | Auto-deploy |
 
+| **2026-08-16** | fix: redireccion automatica acelerada y sondeo a 2s para despliegue instantaneo de chats sin tocar nada (`9653360`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
