@@ -100,8 +100,7 @@ export default function ConversationsPage() {
 
   // Cargar conversaciones y escuchar eventos socket
   useEffect(() => {
-    const targetId = sessionId || user?.id;
-    if (!targetId) return;
+    const targetId = sessionId || user?.id || 'admin';
 
     loadConversations(targetId);
 
@@ -154,8 +153,7 @@ export default function ConversationsPage() {
   }, [sessionId, user, BACKEND, active?.id]);
 
   const handleManualSync = async () => {
-    const targetId = sessionId || user?.id;
-    if (!targetId) return;
+    const targetId = sessionId || user?.id || 'admin';
     setSyncing(true);
     try {
       await fetch(`${BACKEND}/api/conversations/sync/${targetId}`, { method: 'POST' });

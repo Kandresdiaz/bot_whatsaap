@@ -212,21 +212,25 @@ export default function ConnectPage() {
         <div className="card" style={{ flex: 1, minWidth: 200 }}>
           <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>Acciones</div>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            {(status === 'disconnected' || status === 'error') && (
+            {status !== 'connected' && (
               <button className="btn btn-primary" onClick={() => startSession(true)}>
-                🔌 Conectar WhatsApp
+                {status === 'connecting' ? (
+                  <>
+                    <span className="spinner" style={{ width: 16, height: 16, marginRight: 6 }} />
+                    Iniciando... (Clic para forzar nuevo QR)
+                  </>
+                ) : (
+                  '🔌 Conectar WhatsApp / Obtener QR'
+                )}
               </button>
             )}
-            {status === 'connecting' && (
-              <button className="btn btn-primary" disabled>
-                <span className="spinner" style={{ width: 16, height: 16 }} /> Iniciando...
-              </button>
-            )}
+
             {(status === 'qr_ready' || status === 'connected') && (
               <button className="btn btn-danger" onClick={stopSession}>
                 ⏹ Desconectar
               </button>
             )}
+
             {status === 'connected' && (
               <button
                 className="btn btn-ghost"
@@ -238,14 +242,6 @@ export default function ConnectPage() {
                 title="Genera un QR limpio para descargar todo el historial antiguo de WhatsApp"
               >
                 🔄 Re-vincular con nuevo QR (Historial)
-              </button>
-            )}
-            {(status === 'error' || status === 'connecting') && (
-              <button
-                className="btn btn-ghost"
-                onClick={() => { setRetryCount(c => c + 1); startSession(true); }}
-              >
-                🔄 Reintentar
               </button>
             )}
           </div>
