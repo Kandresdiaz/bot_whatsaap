@@ -118,17 +118,18 @@ export default function ConversationsPage() {
 
     socket.on('chats_synced', () => {
       loadConversations(targetId);
-      if (user?.id && user.id !== targetId) loadConversations(user.id);
     });
 
     socket.on('conversation_updated', () => {
       loadConversations(targetId);
-      if (user?.id && user.id !== targetId) loadConversations(user.id);
+    });
+
+    socket.on('manual_needed', () => {
+      loadConversations(targetId);
     });
 
     socket.on('connected', () => {
       loadConversations(targetId);
-      if (user?.id && user.id !== targetId) loadConversations(user.id);
     });
 
     socket.on('global_bot_updated', ({ bot_enabled }: { bot_enabled: boolean }) => {
@@ -141,18 +142,14 @@ export default function ConversationsPage() {
       if (active?.id === conversationId) {
         setMessages(prev => [...prev, message]);
       }
-      setConversations(prev => prev.map(c =>
-        c.id === conversationId
-          ? { ...c, last_message_at: message.timestamp, unread_count: active?.id === conversationId ? 0 : c.unread_count + 1 }
-          : c
-      ).sort((a, b) => new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime()));
+      loadConversations(targetId);
     });
 
     return () => {
       clearInterval(interval);
       socket.disconnect();
     };
-  }, [sessionId, user, BACKEND]);
+  }, [sessionId, user, BACKEND, active?.id]);
 
   const handleManualSync = async () => {
     const targetId = sessionId || user?.id;
