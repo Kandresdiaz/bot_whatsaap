@@ -795,9 +795,6 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
         code === DisconnectReason.loggedOut ||
         code === DisconnectReason.badSession ||
         code === 401 ||
-        code === 403 ||
-        code === 405 ||
-        code === 428 ||
         errMsg.includes('logged out') ||
         errMsg.includes('unauthorized') ||
         errMsg.includes('bad session');
