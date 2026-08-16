@@ -384,6 +384,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-16** | perf: hacer que /api/sessions/start espere el QR generado y lo retorne directamente en la respuesta HTTP para renderizado instantaneo (`9770497`) | Auto-deploy |
 
+| **2026-08-16** | fix: prevenir restauracion involuntaria de credenciales caducadas de Supabase cuando se solicita nuevo QR y usar fingerprint Ubuntu Chrome (`90a05e0`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
