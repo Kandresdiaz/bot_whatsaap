@@ -354,6 +354,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-15** | build: forzar deploy de Render con huella Desktop (`7bd0065`) | Auto-deploy |
 
+| **2026-08-16** | feat: agregar funcion de Abrir Nuevo Chat por numero y optimizar boton de sincronizacion forzada (`0c699d7`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
