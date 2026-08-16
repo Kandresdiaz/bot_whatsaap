@@ -374,6 +374,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-16** | fix: resolver anulacion falsa de estado conectado en sessions status y auto-iniciar Baileys al consultar conversaciones (`af64df9`) | Auto-deploy |
 
+| **2026-08-16** | feat: desactivar bot global por defecto al conectar (desactivado en pruebas) (`e398711`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
