@@ -601,7 +601,7 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
   }
 
   // Obtener versión latest de WhatsApp Web o usar fallback reciente
-  let WA_VERSION = [2, 3000, 1015901307];
+  let WA_VERSION = [2, 3000, 1043857760];
   try {
     const latest = await fetchLatestBaileysVersion();
     if (latest && latest.version) {
@@ -619,7 +619,7 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
     },
     logger,
     printQRInTerminal: false,
-    browser: Browsers.macOS('Desktop'),
+    browser: Browsers.ubuntu('Chrome'),
     generateHighQualityLinkPreview: false,
     syncFullHistory: true,
     downloadHistory: true,
@@ -806,12 +806,12 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
 
       console.log(`[Baileys] Conexión cerrada para ${userId}. Código: ${code}. LoggedOut: ${isLoggedOut}. Desconexión manual: ${isExplicitDisconnect}. Reconectar: ${shouldReconnect}`);
 
-      // Eliminar de RAM todas las posibles referencias
-      sessions.delete(userId);
-      sessions.delete(validId);
-      if (userId === ADMIN_UUID || validId === ADMIN_UUID) sessions.delete('admin');
-
       if (isLoggedOut || isExplicitDisconnect) {
+        // Eliminar de RAM solo si está desconectado definitivamente o es logout
+        sessions.delete(userId);
+        sessions.delete(validId);
+        if (userId === ADMIN_UUID || validId === ADMIN_UUID) sessions.delete('admin');
+
         // Limpiar carpetas físicas de credenciales invalidadas
         deleteSessionFolder(userId);
         deleteSessionFolder(validId);
@@ -830,6 +830,13 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
           emitToUserRooms(io, validId, 'disconnected', payload);
         }
       } else {
+        // Si va a reconectar, mantener la estructura en RAM para que las lecturas no fallen
+        const prevS = sessions.get(userId) || sessions.get(validId) || {};
+        const sData = { ...prevS, sock: null, status: 'connecting' };
+        sessions.set(userId, sData);
+        sessions.set(validId, sData);
+        if (userId === ADMIN_UUID || validId === ADMIN_UUID) sessions.set('admin', sData);
+
         safeUpsert('whatsapp_sessions', {
           user_id: validId,
           status: 'reconnecting',
