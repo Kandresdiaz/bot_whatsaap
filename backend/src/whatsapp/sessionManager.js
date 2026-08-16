@@ -381,6 +381,32 @@ const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts =
       }
     }
 
+    // 1.5. Procesar contactos de WhatsApp para crear conversaciones automáticas
+    if (Array.isArray(contacts) && contacts.length > 0) {
+      for (const c of contacts) {
+        if (!c || !c.id || c.id === 'status@broadcast') continue;
+        const jid = c.id;
+        const contactPhone = jid.replace('@s.whatsapp.net', '').replace('@g.us', '').replace(/[^0-9]/g, '');
+        if (!contactPhone) continue;
+
+        const isGroup = jid.endsWith('@g.us');
+        const contactName = c.name || c.notify || c.verifiedName || contactsMap.get(contactPhone) || (isGroup ? 'Grupo WA' : contactPhone);
+
+        if (!convMap.has(contactPhone) && !addedPhones.has(contactPhone)) {
+          addedPhones.add(contactPhone);
+          newConvsToInsert.push({
+            session_id: sessionUuid,
+            contact_phone: contactPhone,
+            contact_name: contactName || contactPhone,
+            bot_active: true,
+            is_blacklisted: false,
+            unread_count: 0,
+            last_message_at: new Date().toISOString(),
+          });
+        }
+      }
+    }
+
     // 2. Procesar mensajes del historial para asegurar que sus chats existan
     if (Array.isArray(messages) && messages.length > 0) {
       for (const msg of messages) {
