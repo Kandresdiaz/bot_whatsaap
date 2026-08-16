@@ -380,6 +380,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-16** | feat: implementar respaldo y auto-restauracion de credenciales Baileys en Supabase session_data (`a9ce99a`) | Auto-deploy |
 
+| **2026-08-16** | fix: asegurar ejecucion incondicional de loadConversations y sondeo continuo de chats en frontend (`f2b7c51`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
