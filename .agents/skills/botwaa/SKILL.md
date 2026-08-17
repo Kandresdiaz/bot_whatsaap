@@ -392,6 +392,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-17** | fix: decodificar timestamps de Baileys con precision y ordenar chats exactamente como WhatsApp Web con el ultimo mensaje arriba (`c36890b`) | Auto-deploy |
 
+| **2026-08-17** | feat: incluir vista previa del ultimo mensaje y sincronizar fecha real del chat mas reciente estilo WhatsApp Web (`8eeb2dc`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
