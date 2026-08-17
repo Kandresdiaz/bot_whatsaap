@@ -394,6 +394,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-17** | feat: incluir vista previa del ultimo mensaje y sincronizar fecha real del chat mas reciente estilo WhatsApp Web (`8eeb2dc`) | Auto-deploy |
 
+| **2026-08-17** | fix: eliminar saltos de la lista de conversaciones y garantizar despliegue completo de mensajes al hacer clic (`1d61c2e`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
