@@ -398,6 +398,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-17** | fix: corregir envio de mensajes por WhatsApp en todos los chats y agregar notificacion de enviado correctamente (`818b431`) | Auto-deploy |
 
+| **2026-08-17** | fix: prevenir auto-reconexion e inicio automatico no deseado de sesion al hacer clic en Desconectar (`03b338e`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
