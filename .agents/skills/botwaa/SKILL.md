@@ -400,6 +400,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-17** | fix: prevenir auto-reconexion e inicio automatico no deseado de sesion al hacer clic en Desconectar (`03b338e`) | Auto-deploy |
 
+| **2026-08-17** | fix: asegurar deteccion instantanea de sesion conectada al enviar mensajes y eliminar banner falso de QR (`97062cb`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
