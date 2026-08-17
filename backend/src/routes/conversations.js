@@ -114,6 +114,63 @@ router.get('/:sessionId', async (req, res) => {
       console.warn('[Merge RAM Chats Error]:', e.message);
     }
 
+    // Obtener los últimos mensajes de la BD Supabase
+    try {
+      const convIds = merged.map(c => c.id).filter(id => isUuid(id));
+      if (convIds.length > 0) {
+        const { data: recentMsgs } = await supabase
+          .from('messages')
+          .select('conversation_id, content, timestamp')
+          .in('conversation_id', convIds)
+          .order('timestamp', { ascending: false });
+
+        if (Array.isArray(recentMsgs)) {
+          const lastMsgMap = new Map();
+          for (const m of recentMsgs) {
+            if (!lastMsgMap.has(m.conversation_id)) {
+              lastMsgMap.set(m.conversation_id, m);
+            }
+          }
+          for (const conv of merged) {
+            if (lastMsgMap.has(conv.id)) {
+              const m = lastMsgMap.get(conv.id);
+              conv.last_message = m.content;
+              if (m.timestamp && new Date(m.timestamp) > new Date(conv.last_message_at || 0)) {
+                conv.last_message_at = m.timestamp;
+              }
+            }
+          }
+        }
+      }
+    } catch (_) {}
+
+    // Obtener los últimos mensajes de la memoria RAM de Baileys
+    try {
+      const { getUserStore, extractText, safeToIsoString } = require('../whatsapp/sessionManager');
+      const store = getUserStore(validUserId);
+
+      if (store && store.messages && store.messages.size > 0) {
+        for (const [key, msg] of store.messages.entries()) {
+          if (!msg || !msg.key || !msg.key.remoteJid) continue;
+          const jid = msg.key.remoteJid;
+          const phone = jid.replace('@s.whatsapp.net', '').replace('@g.us', '').replace(/[^0-9]/g, '');
+          const text = extractText ? extractText(msg) : '';
+          const msgTs = safeToIsoString(msg.messageTimestamp);
+
+          if (phone && text) {
+            const foundConv = merged.find(c => c.contact_phone === phone);
+            if (foundConv) {
+              if (!foundConv.last_message || new Date(msgTs) > new Date(foundConv.last_message_at || 0)) {
+                foundConv.last_message = text;
+                foundConv.last_message_at = msgTs;
+              }
+            }
+          }
+        }
+      }
+    } catch (_) {}
+
+    // Ordenar estrictamente por la fecha del último mensaje descendente
     merged.sort((a, b) => new Date(b.last_message_at || 0).getTime() - new Date(a.last_message_at || 0).getTime());
 
     res.json({ success: true, conversations: merged });

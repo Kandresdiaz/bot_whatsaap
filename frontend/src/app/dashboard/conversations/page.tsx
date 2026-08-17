@@ -13,6 +13,7 @@ type Conversation = {
   last_message_at: string;
   unread_count: number;
   status: string;
+  last_message?: string;
 };
 
 type Message = {
@@ -390,6 +391,10 @@ export default function ConversationsPage() {
                       {conv.contact_name || conv.contact_phone}
                     </span>
                     <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{formatWhatsAppTime(conv.last_message_at)}</span>
+                  </div>
+                  {/* Vista previa del último mensaje */}
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 2 }}>
+                    {conv.last_message || (conv.contact_name ? `+${conv.contact_phone}` : 'Chat de WhatsApp')}
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
                     <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>

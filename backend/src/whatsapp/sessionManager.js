@@ -1197,6 +1197,7 @@ module.exports = {
   getUserStore,
   safeToIsoString,
   storeChats,
+  extractText,
 };
 
 
