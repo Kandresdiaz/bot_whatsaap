@@ -13,15 +13,6 @@ router.get('/:sessionId', async (req, res) => {
     const { getSessionUuid, getValidUserId, syncChatsAndMessagesToDb, getSession, createSession } = require('../whatsapp/sessionManager');
     const validUserId = getValidUserId(sessionId);
     const sessionUuid = await getSessionUuid(sessionId);
-
-    // Si no hay sesión activa en RAM, auto-iniciar en segundo plano
-    try {
-      const activeS = getSession(sessionId) || getSession(validUserId);
-      if (!activeS) {
-        createSession(validUserId, null, global.io).catch(() => {});
-      }
-    } catch (_) {}
-
     const sessionIdsSet = new Set();
     if (isUuid(sessionUuid)) sessionIdsSet.add(sessionUuid);
     if (isUuid(sessionId)) sessionIdsSet.add(sessionId);

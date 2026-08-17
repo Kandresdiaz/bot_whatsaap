@@ -1196,6 +1196,11 @@ const setGlobalBotStatus = async (userId, bot_enabled, io = null) => {
   return bot_enabled;
 };
 
+const isExplicitlyDisconnected = (userId) => {
+  const validId = getValidUserId(userId);
+  return userDisconnectedMap.has(userId) || userDisconnectedMap.has(validId);
+};
+
 module.exports = {
   createSession,
   disconnectSession,
@@ -1212,6 +1217,7 @@ module.exports = {
   safeToIsoString,
   storeChats,
   extractText,
+  isExplicitlyDisconnected,
 };
 
 

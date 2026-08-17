@@ -84,7 +84,7 @@ router.post('/start', async (req, res) => {
 // Estado de la sesión
 router.get('/status/:userId', async (req, res) => {
   const { userId } = req.params;
-  const { getSession, getSessionUuid } = require('../whatsapp/sessionManager');
+  const { getSession, getSessionUuid, isExplicitlyDisconnected } = require('../whatsapp/sessionManager');
 
   try {
     const validUserId = (!userId || userId === 'admin') ? '00000000-0000-0000-0000-000000000001' : userId;
@@ -120,8 +120,8 @@ router.get('/status/:userId', async (req, res) => {
     // Si no está en RAM pero sí en DB
     if (dbSession) {
       const isConn = dbSession.status === 'connected';
-      if (isConn && !active) {
-        // Auto-restaurar sesión Baileys en segundo plano si estaba conectada en DB
+      if (isConn && !active && !isExplicitlyDisconnected(validUserId)) {
+        // Auto-restaurar sesión Baileys en segundo plano si estaba conectada en DB y no fue desconectada manualmente
         createSession(validUserId, dbSession.business_id, global.io).catch(() => {});
       }
       return res.json({
