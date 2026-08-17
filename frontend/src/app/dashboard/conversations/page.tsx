@@ -41,6 +41,10 @@ export default function ConversationsPage() {
   const [syncing, setSyncing] = useState(false);
   const [newPhoneModal, setNewPhoneModal] = useState(false);
   const [newPhoneInput, setNewPhoneInput] = useState('');
+  const [sending, setSending] = useState(false);
+  const [sendSuccessToast, setSendSuccessToast] = useState(false);
+  const [sendErrorToast, setSendErrorToast] = useState<string | null>(null);
+  const [sessionStatus, setSessionStatus] = useState<string>('unknown');
 
   const handleCreateNewChat = async () => {
     const clean = newPhoneInput.replace(/[^0-9]/g, '');
@@ -73,6 +77,7 @@ export default function ConversationsPage() {
       .then(r => r.json())
       .then(d => {
         if (d.session?.id) setSessionId(d.session.id);
+        if (d.session?.status) setSessionStatus(d.session.status);
         if (d.session && typeof d.session.bot_enabled === 'boolean') {
           setGlobalBotEnabled(d.session.bot_enabled);
         }
@@ -134,7 +139,12 @@ export default function ConversationsPage() {
     });
 
     socket.on('connected', () => {
+      setSessionStatus('connected');
       loadConversations(targetId);
+    });
+
+    socket.on('disconnected', () => {
+      setSessionStatus('disconnected');
     });
 
     socket.on('global_bot_updated', ({ bot_enabled }: { bot_enabled: boolean }) => {
@@ -224,14 +234,55 @@ export default function ConversationsPage() {
   };
 
   const sendMessage = async () => {
-    if (!reply.trim() || !active || !sessionId) return;
-    await fetch(`${BACKEND}/api/sessions/send`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessionId, phone: active.contact_phone, message: reply, conversationId: active.id }),
-    });
-    setMessages(prev => [...prev, { id: Date.now().toString(), content: reply, direction: 'outbound', sent_by: 'human', timestamp: new Date().toISOString() }]);
-    setReply('');
+    if (!reply.trim() || !active || sending) return;
+    const targetId = sessionId || user?.id || 'admin';
+    const messageText = reply.trim();
+    setSending(true);
+    setSendErrorToast(null);
+
+    try {
+      const res = await fetch(`${BACKEND}/api/sessions/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: targetId,
+          sessionId: targetId,
+          phone: active.contact_phone,
+          message: messageText,
+          conversationId: active.id,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'No se pudo enviar el mensaje por WhatsApp. Verifica que tu WhatsApp esté conectado.');
+      }
+
+      setReply('');
+      setSendSuccessToast(true);
+      setTimeout(() => setSendSuccessToast(false), 4000);
+
+      setMessages(prev => {
+        const exists = prev.some(m => m.content === messageText && m.direction === 'outbound');
+        if (exists) return prev;
+        return [...prev, {
+          id: Date.now().toString(),
+          content: messageText,
+          direction: 'outbound',
+          sent_by: 'human',
+          timestamp: new Date().toISOString()
+        }];
+      });
+
+      loadConversations(targetId);
+    } catch (e: any) {
+      console.error('Error enviando mensaje:', e);
+      setSendErrorToast(e.message || 'Error al enviar el mensaje por WhatsApp');
+      setTimeout(() => setSendErrorToast(null), 6000);
+    } finally {
+      setSending(false);
+    }
   };
 
   const filtered = conversations
@@ -479,18 +530,41 @@ export default function ConversationsPage() {
                 <div ref={messagesEndRef} />
               </div>
 
+              {/* Banners de estado de envío */}
+              {sendErrorToast && (
+                <div style={{ background: 'rgba(239,68,68,0.15)', borderTop: '1px solid rgba(239,68,68,0.3)', borderBottom: '1px solid rgba(239,68,68,0.3)', padding: '8px 20px', fontSize: 13, color: '#f87171', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span>⚠️ <strong>Error al enviar:</strong> {sendErrorToast}</span>
+                  <a href="/dashboard/connect" style={{ color: '#00CFFF', textDecoration: 'underline', fontWeight: 600, fontSize: 12 }}>Ir a Conectar QR</a>
+                </div>
+              )}
+
+              {sendSuccessToast && (
+                <div style={{ background: 'rgba(34,197,94,0.15)', borderTop: '1px solid rgba(34,197,94,0.3)', borderBottom: '1px solid rgba(34,197,94,0.3)', padding: '8px 20px', fontSize: 13, color: '#4ade80', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span>✅</span>
+                  <span><strong>¡Mensaje enviado correctamente por WhatsApp!</strong></span>
+                </div>
+              )}
+
+              {sessionStatus === 'disconnected' && !sendErrorToast && (
+                <div style={{ background: 'rgba(234,179,8,0.15)', borderTop: '1px solid rgba(234,179,8,0.3)', borderBottom: '1px solid rgba(234,179,8,0.3)', padding: '8px 20px', fontSize: 12, color: '#eab308', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span>⚠️ <strong>WhatsApp desconectado:</strong> Escanea el código QR en Conectar para enviar mensajes.</span>
+                  <a href="/dashboard/connect" className="btn btn-primary" style={{ fontSize: 11, padding: '4px 10px' }}>Conectar WA</a>
+                </div>
+              )}
+
               {/* Input para responder */}
               <div style={{ padding: '16px 20px', borderTop: '1px solid var(--border)', display: 'flex', gap: 12 }}>
                 <input
                   className="input"
-                  placeholder="Escribe tu respuesta (intervención manual)..."
+                  placeholder={sending ? "Enviando por WhatsApp..." : "Escribe tu respuesta (intervención manual)..."}
                   value={reply}
                   onChange={e => setReply(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && sendMessage()}
+                  onKeyDown={e => e.key === 'Enter' && !sending && sendMessage()}
+                  disabled={sending}
                   style={{ flex: 1 }}
                 />
-                <button className="btn btn-primary" onClick={sendMessage} disabled={!reply.trim()}>
-                  Enviar
+                <button className="btn btn-primary" onClick={sendMessage} disabled={!reply.trim() || sending}>
+                  {sending ? '⏳ Enviando...' : 'Enviar'}
                 </button>
               </div>
             </>

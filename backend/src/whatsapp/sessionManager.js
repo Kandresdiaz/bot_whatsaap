@@ -1109,9 +1109,23 @@ const restoreSessions = async (io) => {
 };
 
 const sendMessage = async (userId, to, text) => {
-  const session = sessions.get(userId);
-  if (!session || !session.sock) throw new Error('Sesión no conectada');
-  const jid = to.includes('@') ? to : `${to}@s.whatsapp.net`;
+  const session = getSession(userId);
+  if (!session || !session.sock || session.status !== 'connected') {
+    throw new Error('Sesión de WhatsApp no conectada. Ve a Conectar para escanear el QR.');
+  }
+
+  const rawTo = (to || '').trim();
+  let jid = rawTo;
+  if (!rawTo.includes('@')) {
+    const cleanDigits = rawTo.replace(/[^0-9]/g, '');
+    if (cleanDigits.length > 15 && cleanDigits.startsWith('1203')) {
+      jid = `${cleanDigits}@g.us`;
+    } else {
+      jid = `${cleanDigits}@s.whatsapp.net`;
+    }
+  }
+
+  console.log(`[Baileys Outbound] Enviando mensaje a ${jid} (usuario: ${userId}): "${text.slice(0, 50)}"`);
   await session.sock.sendMessage(jid, { text });
 };
 

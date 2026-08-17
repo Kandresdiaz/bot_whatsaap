@@ -184,15 +184,25 @@ router.post('/stop', async (req, res) => {
 
 // Enviar mensaje manual (intervención del dueño)
 router.post('/send', async (req, res) => {
-  const { userId, phone, message, conversationId } = req.body;
+  const { userId, sessionId, phone, message, conversationId } = req.body;
   const isUuid = (str) => typeof str === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
 
   try {
-    const { getSessionUuid, getValidUserId } = require('../whatsapp/sessionManager');
-    const validUserId = getValidUserId(userId || 'admin');
+    const { getSessionUuid, getValidUserId, sendMessage: sendBaileysMessage } = require('../whatsapp/sessionManager');
+    const targetUserId = userId || sessionId || 'admin';
+    const validUserId = getValidUserId(targetUserId);
     const cleanPhone = (phone || '').replace(/[^0-9]/g, '');
 
-    await sendMessage(userId, phone, message);
+    if (!cleanPhone) {
+      return res.status(400).json({ success: false, error: 'El número de teléfono es requerido' });
+    }
+
+    if (!message || !message.trim()) {
+      return res.status(400).json({ success: false, error: 'El mensaje no puede estar vacío' });
+    }
+
+    // Intentar envío real a WhatsApp via Baileys
+    await sendBaileysMessage(targetUserId, cleanPhone, message);
 
     let targetConvId = isUuid(conversationId) ? conversationId : null;
 
@@ -251,10 +261,10 @@ router.post('/send', async (req, res) => {
       }
     }
 
-    res.json({ success: true, conversationId: targetConvId });
+    res.json({ success: true, conversationId: targetConvId, message: 'Mensaje enviado correctamente' });
   } catch (err) {
     console.error('[Send Message Error]:', err.message);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: err.message || 'Error al enviar mensaje por WhatsApp' });
   }
 });
 
