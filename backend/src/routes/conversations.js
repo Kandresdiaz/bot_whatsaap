@@ -105,7 +105,7 @@ router.get('/:sessionId', async (req, res) => {
             is_lead: false,
             unread_count: 0,
             status: 'open',
-            last_message_at: new Date().toISOString(),
+            last_message_at: '1970-01-01T00:00:00.000Z',
             created_at: new Date().toISOString(),
           });
         }
@@ -177,6 +177,86 @@ router.get('/:sessionId', async (req, res) => {
   } catch (err) {
     console.error('[GET Conversations Crash Safe]:', err.message);
     res.json({ success: true, conversations: [] });
+  }
+});
+
+// Mensajes de una conversación
+router.get('/:conversationId/messages', async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const cleanPhone = conversationId.replace(/[^0-9]/g, '');
+    let realConvId = isUuid(conversationId) ? conversationId : null;
+
+    // Si es un ID de RAM o número de teléfono, buscar el UUID real en Supabase por contact_phone
+    if (!realConvId && cleanPhone) {
+      const { data: conv } = await supabase
+        .from('conversations')
+        .select('id')
+        .eq('contact_phone', cleanPhone)
+        .maybeSingle();
+
+      if (conv?.id) realConvId = conv.id;
+    }
+
+    let dbMsgs = [];
+    if (realConvId) {
+      const { data } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('conversation_id', realConvId)
+        .order('timestamp', { ascending: true });
+
+      dbMsgs = data || [];
+      await supabase.from('conversations').update({ unread_count: 0 }).eq('id', realConvId).catch(() => {});
+    }
+
+    // Fusionar mensajes en RAM de Baileys para este número
+    const ramMsgs = [];
+    if (cleanPhone) {
+      try {
+        const { getUserStore, extractText, safeToIsoString, getValidUserId } = require('../whatsapp/sessionManager');
+        const validId = getValidUserId('admin');
+        const store = getUserStore(validId);
+        if (store && store.messages) {
+          for (const [mId, m] of store.messages.entries()) {
+            if (!m || !m.key || !m.key.remoteJid) continue;
+            const jid = m.key.remoteJid;
+            const p = jid.replace('@s.whatsapp.net', '').replace('@g.us', '').replace(/[^0-9]/g, '');
+            if (p === cleanPhone) {
+              const text = extractText ? extractText(m) : '';
+              if (text) {
+                ramMsgs.push({
+                  id: m.key.id || mId,
+                  conversation_id: realConvId || conversationId,
+                  content: text,
+                  direction: m.key.fromMe ? 'outbound' : 'inbound',
+                  sent_by: m.key.fromMe ? 'human' : 'client',
+                  timestamp: safeToIsoString(m.messageTimestamp),
+                });
+              }
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
+    // Fusionar y eliminar duplicados por id/content
+    const msgMap = new Map();
+    dbMsgs.forEach(m => msgMap.set(m.id || `${m.timestamp}_${m.content}`, m));
+    ramMsgs.forEach(m => {
+      const key = `${m.timestamp}_${m.content}`;
+      if (!msgMap.has(key) && !msgMap.has(m.id)) {
+        msgMap.set(m.id, m);
+      }
+    });
+
+    const allMsgs = Array.from(msgMap.values());
+    allMsgs.sort((a, b) => new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime());
+
+    res.json({ success: true, messages: allMsgs });
+  } catch (err) {
+    console.error('[GET Messages Error]:', err.message);
+    res.json({ success: true, messages: [] });
   }
 });
 
