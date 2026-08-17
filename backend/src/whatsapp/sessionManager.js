@@ -260,8 +260,21 @@ const extractText = (msg) => {
 const safeToIsoString = (ts) => {
   if (!ts) return new Date().toISOString();
   try {
-    let num = typeof ts === 'object' && ts !== null && 'low' in ts ? ts.low : Number(ts);
-    if (typeof ts === 'bigint') num = Number(ts);
+    let num = 0;
+    if (typeof ts === 'object' && ts !== null) {
+      if (typeof ts.toNumber === 'function') {
+        num = ts.toNumber();
+      } else if ('low' in ts && 'high' in ts) {
+        num = (ts.high * 4294967296) + (ts.low >>> 0);
+      } else if ('low' in ts) {
+        num = ts.low >>> 0;
+      }
+    } else if (typeof ts === 'bigint') {
+      num = Number(ts);
+    } else {
+      num = Number(ts);
+    }
+
     if (!isNaN(num) && num > 0) {
       const ms = num > 100000000000 ? num : num * 1000;
       const date = new Date(ms);

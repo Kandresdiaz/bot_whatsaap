@@ -233,18 +233,34 @@ export default function ConversationsPage() {
     setReply('');
   };
 
-  const filtered = conversations.filter(c =>
-    c.contact_name?.toLowerCase().includes(search.toLowerCase()) ||
-    c.contact_phone.includes(search)
-  );
+  const filtered = conversations
+    .filter(c =>
+      c.contact_name?.toLowerCase().includes(search.toLowerCase()) ||
+      c.contact_phone.includes(search)
+    )
+    .sort((a, b) => new Date(b.last_message_at || 0).getTime() - new Date(a.last_message_at || 0).getTime());
 
   const initials = (name: string) => name ? name.slice(0, 2).toUpperCase() : '?';
-  const timeAgo = (ts: string) => {
-    const diff = (Date.now() - new Date(ts).getTime()) / 1000;
-    if (diff < 60) return 'ahora';
-    if (diff < 3600) return `${Math.floor(diff / 60)}m`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
-    return `${Math.floor(diff / 86400)}d`;
+
+  const formatWhatsAppTime = (ts: string) => {
+    if (!ts) return '';
+    const date = new Date(ts);
+    if (isNaN(date.getTime())) return '';
+
+    const now = new Date();
+    const isToday = date.toDateString() === now.toDateString();
+
+    const yesterday = new Date();
+    yesterday.setDate(now.getDate() - 1);
+    const isYesterday = date.toDateString() === yesterday.toDateString();
+
+    if (isToday) {
+      return date.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: false });
+    }
+    if (isYesterday) {
+      return 'Ayer';
+    }
+    return date.toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit' });
   };
 
   return (
@@ -373,7 +389,7 @@ export default function ConversationsPage() {
                     <span style={{ fontWeight: 600, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 140 }}>
                       {conv.contact_name || conv.contact_phone}
                     </span>
-                    <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{timeAgo(conv.last_message_at)}</span>
+                    <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{formatWhatsAppTime(conv.last_message_at)}</span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
                     <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
