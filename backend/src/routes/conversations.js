@@ -53,7 +53,70 @@ router.get('/:sessionId', async (req, res) => {
     let { data, error } = await query;
     if (error) console.error('[Conversations GET Error]:', error?.message);
 
-    res.json({ success: true, conversations: data || [] });
+    const dbConvs = data || [];
+    const phoneSet = new Set(dbConvs.map(c => c.contact_phone));
+    const merged = [...dbConvs];
+
+    // Fusionar chats acumulados en memoria RAM de Baileys
+    try {
+      const { getUserStore, safeToIsoString } = require('../whatsapp/sessionManager');
+      const store = getUserStore(validUserId);
+
+      if (store && store.chats) {
+        for (const [key, chat] of store.chats.entries()) {
+          if (!chat || !chat.id || chat.id === 'status@broadcast') continue;
+          const jid = chat.id;
+          const phone = jid.replace('@s.whatsapp.net', '').replace('@g.us', '').replace(/[^0-9]/g, '');
+          if (!phone || phoneSet.has(phone)) continue;
+
+          phoneSet.add(phone);
+          merged.push({
+            id: `ram_${phone}`,
+            session_id: sessionUuid || validUserId,
+            contact_phone: phone,
+            contact_name: chat.name || phone,
+            bot_active: true,
+            is_blacklisted: false,
+            is_lead: false,
+            unread_count: chat.unreadCount || 0,
+            status: 'open',
+            last_message_at: safeToIsoString ? safeToIsoString(chat.conversationTimestamp) : new Date().toISOString(),
+            created_at: new Date().toISOString(),
+          });
+        }
+      }
+
+      if (store && store.contacts) {
+        for (const [key, c] of store.contacts.entries()) {
+          if (!c || !c.id || c.id === 'status@broadcast') continue;
+          const jid = c.id;
+          const phone = jid.replace('@s.whatsapp.net', '').replace('@g.us', '').replace(/[^0-9]/g, '');
+          if (!phone || phoneSet.has(phone)) continue;
+
+          const name = c.name || c.notify || c.verifiedName || phone;
+          phoneSet.add(phone);
+          merged.push({
+            id: `ram_c_${phone}`,
+            session_id: sessionUuid || validUserId,
+            contact_phone: phone,
+            contact_name: name,
+            bot_active: true,
+            is_blacklisted: false,
+            is_lead: false,
+            unread_count: 0,
+            status: 'open',
+            last_message_at: new Date().toISOString(),
+            created_at: new Date().toISOString(),
+          });
+        }
+      }
+    } catch (e) {
+      console.warn('[Merge RAM Chats Error]:', e.message);
+    }
+
+    merged.sort((a, b) => new Date(b.last_message_at || 0).getTime() - new Date(a.last_message_at || 0).getTime());
+
+    res.json({ success: true, conversations: merged });
   } catch (err) {
     console.error('[GET Conversations Crash Safe]:', err.message);
     res.json({ success: true, conversations: [] });

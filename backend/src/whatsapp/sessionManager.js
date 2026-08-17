@@ -1181,6 +1181,9 @@ module.exports = {
   emitToUserRooms,
   getGlobalBotStatus,
   setGlobalBotStatus,
+  getUserStore,
+  safeToIsoString,
+  storeChats,
 };
 
 
