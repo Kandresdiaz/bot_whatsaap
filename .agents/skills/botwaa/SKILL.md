@@ -396,6 +396,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-17** | fix: eliminar saltos de la lista de conversaciones y garantizar despliegue completo de mensajes al hacer clic (`1d61c2e`) | Auto-deploy |
 
+| **2026-08-17** | fix: corregir envio de mensajes por WhatsApp en todos los chats y agregar notificacion de enviado correctamente (`818b431`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
