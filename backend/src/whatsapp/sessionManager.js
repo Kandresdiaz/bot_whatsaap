@@ -1051,7 +1051,12 @@ const disconnectSession = async (userId) => {
 };
 
 const getSession = (userId) => {
-  if (!userId) return null;
+  if (!userId) {
+    for (const s of sessions.values()) {
+      if (s && (s.status === 'connected' || s.sock)) return s;
+    }
+    return sessions.values().next().value || null;
+  }
 
   // 1. Coincidencia exacta de clave
   if (sessions.has(userId)) return sessions.get(userId);
@@ -1067,8 +1072,15 @@ const getSession = (userId) => {
     if (getValidUserId(key) === validId) return s;
   }
 
-  // 4. Fallback: Si existe una única sesión activa en memoria RAM, retornarla
-  if (sessions.size === 1) {
+  // 4. Buscar CUALQUIER sesión conectada en memoria RAM (RAM MANDA)
+  for (const s of sessions.values()) {
+    if (s && (s.status === 'connected' || s.sock)) {
+      return s;
+    }
+  }
+
+  // 5. Fallback a cualquier sesión en RAM
+  if (sessions.size > 0) {
     return sessions.values().next().value;
   }
 
