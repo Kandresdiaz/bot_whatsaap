@@ -388,6 +388,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-16** | fix: asegurar persistencia inmediata de nuevas conversaciones en Supabase y envio seguro de mensajes con UUIDs reales (`9b5ac6d`) | Auto-deploy |
 
+| **2026-08-17** | feat: fusionar memoria RAM de Baileys con DB para desplegar chats inmediatamente en vivo en la interfaz (`7383653`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
