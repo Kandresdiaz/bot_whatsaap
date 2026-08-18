@@ -418,6 +418,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-18** | fix: eliminar lag en input con useMemo y usar activeSock directamente en sendMessage con ventana de 10s (`3773346`) | Auto-deploy |
 
+| **2026-08-18** | perf: optimizar tiempo de respuesta al cargar chats y persistir last_message (`52d0499`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
