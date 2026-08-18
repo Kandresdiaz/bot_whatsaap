@@ -414,6 +414,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-18** | fix: corregir eliminacion accidental de credenciales en createSession e ignorar columnas inexistentes en safeUpsert (`3149b67`) | Auto-deploy |
 
+| **2026-08-18** | fix: actualizar burbujas del chat activo instantaneamente sin requerir hacer clic a otra conversacion (`20bfbde`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
