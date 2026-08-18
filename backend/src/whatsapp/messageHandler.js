@@ -53,7 +53,8 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
   const isGroup = jid.endsWith('@g.us');
   if (isGroup) return;
 
-  const contactPhone = jid.replace('@s.whatsapp.net', '').replace('@c.us', '').replace('@g.us', '').replace(/[^0-9]/g, '');
+  const { cleanPhoneFromJid } = require('./sessionManager');
+  const contactPhone = cleanPhoneFromJid(jid);
   if (!contactPhone) return;
   const contactName = msg.pushName || contactPhone;
   const text = extractText(msg).trim();

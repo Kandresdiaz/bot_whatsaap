@@ -1010,7 +1010,7 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
       }
 
       // Si es mensaje entrante del cliente
-      if (type === 'notify' && handleIncomingMessage) {
+      if (handleIncomingMessage && !msg.key.fromMe) {
         try {
           await handleIncomingMessage(sock, msg, userId, businessId);
         } catch (err) {
