@@ -593,6 +593,66 @@ const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts =
   }
 };
 
+// Persistencia y restauración indestructible de la carpeta completa de credenciales y claves de Baileys
+const saveFullSessionToDb = async (userId, sessionDir) => {
+  if (!supabase || !fs.existsSync(sessionDir)) return;
+  try {
+    const validUserId = getValidUserId(userId);
+    const files = fs.readdirSync(sessionDir);
+    const sessionObj = {};
+    for (const file of files) {
+      if (file.endsWith('.json')) {
+        sessionObj[file] = fs.readFileSync(path.join(sessionDir, file), 'utf8');
+      }
+    }
+    const jsonStr = JSON.stringify(sessionObj);
+    await safeUpsert('whatsapp_sessions', {
+      user_id: validUserId,
+      session_data: jsonStr,
+    });
+  } catch (e) {
+    console.warn('[Baileys Auth] Error guardando sesión completa:', e.message);
+  }
+};
+
+const restoreFullSessionFromDb = async (userId, sessionDir) => {
+  if (!supabase) return false;
+  try {
+    const validUserId = getValidUserId(userId);
+    const { data: dbSess } = await supabase
+      .from('whatsapp_sessions')
+      .select('session_data')
+      .eq('user_id', validUserId)
+      .maybeSingle();
+
+    if (dbSess?.session_data) {
+      if (!fs.existsSync(sessionDir)) fs.mkdirSync(sessionDir, { recursive: true });
+
+      let parsed = null;
+      try {
+        parsed = JSON.parse(dbSess.session_data);
+      } catch (_) {}
+
+      if (parsed && typeof parsed === 'object' && parsed['creds.json']) {
+        for (const [filename, content] of Object.entries(parsed)) {
+          if (filename.endsWith('.json') && typeof content === 'string') {
+            fs.writeFileSync(path.join(sessionDir, filename), content, 'utf8');
+          }
+        }
+        console.log(`[Baileys Auth] 🔄 Restaurada sesión completa de Baileys desde Supabase para ${validUserId}`);
+        return true;
+      } else if (typeof dbSess.session_data === 'string') {
+        fs.writeFileSync(path.join(sessionDir, 'creds.json'), dbSess.session_data, 'utf8');
+        console.log(`[Baileys Auth] 🔄 Restaurado creds.json desde Supabase para ${validUserId}`);
+        return true;
+      }
+    }
+  } catch (e) {
+    console.warn('[Baileys Auth] Error restaurando sesión:', e.message);
+  }
+  return false;
+};
+
 const createSession = async (userId, businessId, io, forceClean = false) => {
   const validUserId = getValidUserId(userId);
   userDisconnectedMap.delete(userId);
@@ -637,18 +697,7 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
 
   const credsFilePath = path.join(sessionDir, 'creds.json');
   if (!forceClean && !fs.existsSync(credsFilePath) && supabase) {
-    try {
-      const { data: dbSess } = await supabase
-        .from('whatsapp_sessions')
-        .select('session_data')
-        .eq('user_id', validUserId)
-        .maybeSingle();
-
-      if (dbSess?.session_data) {
-        fs.writeFileSync(credsFilePath, dbSess.session_data, 'utf8');
-        console.log(`[Baileys Auth] Credenciales restauradas desde Supabase para ${validUserId}`);
-      }
-    } catch (_) {}
+    await restoreFullSessionFromDb(validUserId, sessionDir);
   }
 
   let state, saveCreds;
@@ -710,15 +759,7 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
   sock.ev.on('creds.update', async () => {
     try {
       await saveCreds();
-      if (fs.existsSync(credsFilePath) && supabase) {
-        const rawCreds = fs.readFileSync(credsFilePath, 'utf8');
-        if (rawCreds) {
-          safeUpsert('whatsapp_sessions', {
-            user_id: userId,
-            session_data: rawCreds,
-          }).catch(() => {});
-        }
-      }
+      await saveFullSessionToDb(userId, sessionDir);
     } catch (_) {}
   });
 
@@ -833,6 +874,8 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
         qr_code: null,
         connected_at: new Date().toISOString(),
       }).catch(e => console.warn('[DB] Error guardando sesión en DB:', e.message));
+
+      saveFullSessionToDb(userId, sessionDir).catch(() => {});
 
       // 4. Disparar sincronizaciones secuenciales iniciales de chats y grupos
       const triggerInitialSync = async () => {
