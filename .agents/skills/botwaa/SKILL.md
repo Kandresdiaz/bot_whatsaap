@@ -412,6 +412,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-18** | fix: persistencia 100% indestructible de claves de sesion Baileys en Supabase para evitar perdida de sesion en Render (`6b24151`) | Auto-deploy |
 
+| **2026-08-18** | fix: corregir eliminacion accidental de credenciales en createSession e ignorar columnas inexistentes en safeUpsert (`3149b67`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
