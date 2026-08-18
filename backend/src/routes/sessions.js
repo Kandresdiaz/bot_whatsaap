@@ -191,9 +191,9 @@ router.post('/send', async (req, res) => {
     const { getSessionUuid, getValidUserId, sendMessage: sendBaileysMessage } = require('../whatsapp/sessionManager');
     const targetUserId = userId || sessionId || 'admin';
     const validUserId = getValidUserId(targetUserId);
-    const cleanPhone = (phone || '').replace(/[^0-9]/g, '');
+    const rawPhone = (phone || '').trim();
 
-    if (!cleanPhone) {
+    if (!rawPhone) {
       return res.status(400).json({ success: false, error: 'El número de teléfono es requerido' });
     }
 
@@ -201,70 +201,76 @@ router.post('/send', async (req, res) => {
       return res.status(400).json({ success: false, error: 'El mensaje no puede estar vacío' });
     }
 
-    // Intentar envío real a WhatsApp via Baileys
-    await sendBaileysMessage(targetUserId, cleanPhone, message);
+    // 1. PASO CLAVE: Transmitir a WhatsApp vía Baileys socket primero
+    await sendBaileysMessage(targetUserId, rawPhone, message);
 
+    // 2. PASO SECUNDARIO: Persistencia en base de datos (si la BD pestañea, no bloquea la confirmación al usuario)
     let targetConvId = isUuid(conversationId) ? conversationId : null;
+    const cleanDigits = rawPhone.replace(/[^0-9]/g, '');
 
-    if (!targetConvId && cleanPhone) {
-      const sessionUuid = await getSessionUuid(validUserId);
-      const { data: existing } = await supabase
-        .from('conversations')
-        .select('id')
-        .eq('contact_phone', cleanPhone)
-        .maybeSingle();
-
-      if (existing?.id) {
-        targetConvId = existing.id;
-      } else {
-        const { data: newConv } = await supabase
-          .from('conversations')
-          .insert({
-            session_id: sessionUuid,
-            contact_phone: cleanPhone,
-            contact_name: cleanPhone,
-            bot_active: true,
-            is_blacklisted: false,
-            last_message_at: new Date().toISOString(),
-            unread_count: 0,
-            status: 'open',
-          })
-          .select('id')
-          .maybeSingle();
-        targetConvId = newConv?.id || null;
-      }
-    }
-
-    if (targetConvId) {
-      await supabase.from('conversations').update({
-        last_message_at: new Date().toISOString(),
-      }).eq('id', targetConvId);
-
-      await supabase.from('messages').insert({
-        conversation_id: targetConvId,
-        content: message,
-        direction: 'outbound',
-        sent_by: 'human',
-        timestamp: new Date().toISOString(),
-      });
-
-      if (global.io) {
-        const { emitToUserRooms } = require('../whatsapp/sessionManager');
+    try {
+      if (!targetConvId && cleanDigits) {
         const sessionUuid = await getSessionUuid(validUserId);
-        emitToUserRooms(global.io, validUserId, 'new_message', {
-          conversationId: targetConvId,
-          message: { content: message, direction: 'outbound', sent_by: 'human', timestamp: new Date().toISOString() },
-        }, sessionUuid);
-        emitToUserRooms(global.io, validUserId, 'conversation_updated', {
-          conversationId: targetConvId, contactPhone: cleanPhone, lastMessage: message,
-        }, sessionUuid);
+        const { data: existing } = await supabase
+          .from('conversations')
+          .select('id')
+          .eq('contact_phone', cleanDigits)
+          .maybeSingle();
+
+        if (existing?.id) {
+          targetConvId = existing.id;
+        } else {
+          const { data: newConv } = await supabase
+            .from('conversations')
+            .insert({
+              session_id: sessionUuid,
+              contact_phone: cleanDigits,
+              contact_name: cleanDigits,
+              bot_active: true,
+              is_blacklisted: false,
+              last_message_at: new Date().toISOString(),
+              unread_count: 0,
+              status: 'open',
+            })
+            .select('id')
+            .maybeSingle();
+          targetConvId = newConv?.id || null;
+        }
       }
+
+      if (targetConvId) {
+        await supabase.from('conversations').update({
+          last_message_at: new Date().toISOString(),
+        }).eq('id', targetConvId);
+
+        await supabase.from('messages').insert({
+          conversation_id: targetConvId,
+          content: message,
+          direction: 'outbound',
+          sent_by: 'human',
+          timestamp: new Date().toISOString(),
+        });
+
+        if (global.io) {
+          const { emitToUserRooms } = require('../whatsapp/sessionManager');
+          const sessionUuid = await getSessionUuid(validUserId);
+          emitToUserRooms(global.io, validUserId, 'new_message', {
+            conversationId: targetConvId,
+            message: { content: message, direction: 'outbound', sent_by: 'human', timestamp: new Date().toISOString() },
+          }, sessionUuid);
+          emitToUserRooms(global.io, validUserId, 'conversation_updated', {
+            conversationId: targetConvId, contactPhone: cleanDigits, lastMessage: message,
+          }, sessionUuid);
+        }
+      }
+    } catch (dbErr) {
+      console.warn('[Send DB Persist Warning]:', dbErr.message);
     }
 
-    res.json({ success: true, conversationId: targetConvId, message: 'Mensaje enviado correctamente' });
+    return res.json({ success: true, conversationId: targetConvId, message: 'Mensaje enviado correctamente' });
   } catch (err) {
     console.error('[Send Message Error]:', err.message);
-    res.status(500).json({ success: false, error: err.message || 'Error al enviar mensaje por WhatsApp' });
+    return res.status(500).json({ success: false, error: err.message || 'Error al enviar mensaje por WhatsApp' });
   }
 });
 
