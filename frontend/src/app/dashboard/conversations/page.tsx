@@ -294,6 +294,28 @@ export default function ConversationsPage() {
 
   const initials = (name: string) => name ? name.slice(0, 2).toUpperCase() : '?';
 
+  const formatPhoneNumber = (phone: string) => {
+    if (!phone) return '';
+    const clean = phone.replace(/[^0-9]/g, '');
+    if (clean.length === 12 && clean.startsWith('57')) {
+      return `+57 ${clean.slice(2, 5)} ${clean.slice(5, 8)} ${clean.slice(8)}`;
+    }
+    if (clean.length > 8) {
+      return `+${clean}`;
+    }
+    return clean;
+  };
+
+  const getContactDisplayTitle = (conv: Conversation) => {
+    if (!conv) return '';
+    const cleanPhone = conv.contact_phone ? conv.contact_phone.replace(/[^0-9]/g, '') : '';
+    const cleanName = conv.contact_name ? conv.contact_name.replace(/[^0-9]/g, '') : '';
+    if (conv.contact_name && cleanName !== cleanPhone && conv.contact_name.trim() !== '') {
+      return conv.contact_name;
+    }
+    return formatPhoneNumber(conv.contact_phone);
+  };
+
   const formatWhatsAppTime = (ts: string) => {
     if (!ts) return '';
     const date = new Date(ts);
@@ -435,17 +457,17 @@ export default function ConversationsPage() {
                 className={`chat-item ${active?.id === conv.id ? 'active' : ''}`}
                 onClick={() => openConversation(conv)}
               >
-                <div className="avatar">{initials(conv.contact_name || conv.contact_phone)}</div>
+                <div className="avatar">{initials(getContactDisplayTitle(conv))}</div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontWeight: 600, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 140 }}>
-                      {conv.contact_name || conv.contact_phone}
+                    <span style={{ fontWeight: 600, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 160 }}>
+                      {getContactDisplayTitle(conv)}
                     </span>
                     <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{formatWhatsAppTime(conv.last_message_at)}</span>
                   </div>
                   {/* Vista previa del último mensaje */}
                   <div style={{ fontSize: 12, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 2 }}>
-                    {conv.last_message || (conv.contact_name ? `+${conv.contact_phone}` : 'Chat de WhatsApp')}
+                    {conv.last_message || formatPhoneNumber(conv.contact_phone)}
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
                     <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
@@ -479,10 +501,10 @@ export default function ConversationsPage() {
             <>
               {/* Header del chat */}
               <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 14, background: 'var(--bg-card)' }}>
-                <div className="avatar">{initials(active.contact_name || active.contact_phone)}</div>
+                <div className="avatar">{initials(getContactDisplayTitle(active))}</div>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 700 }}>{active.contact_name || active.contact_phone}</div>
-                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>+{active.contact_phone}</div>
+                  <div style={{ fontWeight: 700 }}>{getContactDisplayTitle(active)}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{formatPhoneNumber(active.contact_phone)}</div>
                 </div>
                 {/* Controles del chat */}
                 <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>

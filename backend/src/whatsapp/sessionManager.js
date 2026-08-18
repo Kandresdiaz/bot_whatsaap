@@ -44,6 +44,13 @@ const getUserStore = (userId) => {
   return userStores.get(validId);
 };
 
+const cleanPhoneFromJid = (jid) => {
+  if (!jid || typeof jid !== 'string') return '';
+  const withoutDomain = jid.split('@')[0];
+  const withoutDevice = withoutDomain.split(':')[0].split('.')[0];
+  return withoutDevice.replace(/[^0-9]/g, '');
+};
+
 const storeChats = (userId, chats = []) => {
   const list = Array.isArray(chats) ? chats : (chats?.chats || []);
   const store = getUserStore(userId);
@@ -52,7 +59,7 @@ const storeChats = (userId, chats = []) => {
       const existing = store.chats.get(c.id) || {};
       const updated = { ...existing, ...c };
       store.chats.set(c.id, updated);
-      const cleanPhone = c.id.replace('@s.whatsapp.net', '').replace('@g.us', '').replace(/[^0-9]/g, '');
+      const cleanPhone = cleanPhoneFromJid(c.id);
       if (cleanPhone) store.chats.set(cleanPhone, updated);
     }
   }
@@ -67,14 +74,16 @@ const storeContacts = (userId, contacts = []) => {
       const updated = { ...existing, ...c };
       store.contacts.set(c.id, updated);
       const name = c.name || c.notify || c.verifiedName;
+      const cleanPhone = cleanPhoneFromJid(c.id);
+      if (cleanPhone) {
+        store.contacts.set(cleanPhone, updated);
+      }
       if (name) {
         if (!userContacts.has(userId)) userContacts.set(userId, new Map());
         const contactsMap = userContacts.get(userId);
         contactsMap.set(c.id, name);
-        const cleanPhone = c.id.replace('@s.whatsapp.net', '').replace('@g.us', '').replace(/[^0-9]/g, '');
         if (cleanPhone) {
           contactsMap.set(cleanPhone, name);
-          store.contacts.set(cleanPhone, updated);
         }
       }
     }
@@ -90,7 +99,7 @@ const storeMessages = (userId, messages = []) => {
     store.messages.set(msgId, m);
 
     const jid = m.key.remoteJid;
-    const cleanPhone = jid.replace('@s.whatsapp.net', '').replace('@g.us', '').replace(/[^0-9]/g, '');
+    const cleanPhone = cleanPhoneFromJid(jid);
 
     if (m.pushName) {
       storeContacts(userId, [{ id: jid, notify: m.pushName }]);
