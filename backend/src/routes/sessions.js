@@ -254,12 +254,14 @@ router.post('/send', async (req, res) => {
         if (global.io) {
           const { emitToUserRooms } = require('../whatsapp/sessionManager');
           const sessionUuid = await getSessionUuid(validUserId);
+          const msgObj = { id: Date.now().toString(), content: message, direction: 'outbound', sent_by: 'human', timestamp: new Date().toISOString() };
           emitToUserRooms(global.io, validUserId, 'new_message', {
             conversationId: targetConvId,
-            message: { content: message, direction: 'outbound', sent_by: 'human', timestamp: new Date().toISOString() },
+            contactPhone: cleanDigits,
+            message: msgObj,
           }, sessionUuid);
           emitToUserRooms(global.io, validUserId, 'conversation_updated', {
-            conversationId: targetConvId, contactPhone: cleanDigits, lastMessage: message,
+            conversationId: targetConvId, contactPhone: cleanDigits, lastMessage: message, timestamp: new Date().toISOString(),
           }, sessionUuid);
         }
       }

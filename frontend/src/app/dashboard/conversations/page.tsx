@@ -107,6 +107,11 @@ export default function ConversationsPage() {
     } catch (_) {}
   };
 
+  const activeRef = useRef<Conversation | null>(null);
+  useEffect(() => {
+    activeRef.current = active;
+  }, [active]);
+
   // Cargar conversaciones y escuchar eventos socket
   useEffect(() => {
     const targetId = sessionId || user?.id || 'admin';
@@ -173,15 +178,16 @@ export default function ConversationsPage() {
       const { conversationId, contactPhone, message } = payload || {};
       if (!message || !message.content) return;
 
+      const currentActive = activeRef.current;
       const cleanIncomingPhone = contactPhone ? contactPhone.replace(/[^0-9]/g, '') : '';
 
       // 1. Agregar mensaje a la pantalla de chat si la conversación está abierta
-      setActive(prevActive => {
-        if (!prevActive) return prevActive;
-        const cleanActivePhone = prevActive.contact_phone ? prevActive.contact_phone.replace(/[^0-9]/g, '') : '';
+      if (currentActive) {
+        const cleanActivePhone = currentActive.contact_phone ? currentActive.contact_phone.replace(/[^0-9]/g, '') : '';
         const isMatch = (
-          prevActive.id === conversationId ||
-          (cleanActivePhone && cleanIncomingPhone && cleanActivePhone === cleanIncomingPhone)
+          currentActive.id === conversationId ||
+          (cleanActivePhone && cleanIncomingPhone && cleanActivePhone === cleanIncomingPhone) ||
+          (cleanActivePhone && cleanIncomingPhone && (cleanActivePhone.includes(cleanIncomingPhone) || cleanIncomingPhone.includes(cleanActivePhone)))
         );
 
         if (isMatch) {
@@ -191,8 +197,7 @@ export default function ConversationsPage() {
             return [...prevMsgs, message];
           });
         }
-        return prevActive;
-      });
+      }
 
       // 2. Mover la conversación al inicio de la lista de la izquierda
       setConversations(prevConvs => {
@@ -230,7 +235,7 @@ export default function ConversationsPage() {
       clearInterval(interval);
       socket.disconnect();
     };
-  }, [sessionId, user, BACKEND, active?.id]);
+  }, [sessionId, user, BACKEND]);
 
   const handleManualSync = async () => {
     const targetId = sessionId || user?.id || 'admin';
