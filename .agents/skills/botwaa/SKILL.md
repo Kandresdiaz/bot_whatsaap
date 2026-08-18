@@ -416,6 +416,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-18** | fix: actualizar burbujas del chat activo instantaneamente sin requerir hacer clic a otra conversacion (`20bfbde`) | Auto-deploy |
 
+| **2026-08-18** | fix: eliminar lag en input con useMemo y usar activeSock directamente en sendMessage con ventana de 10s (`3773346`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
