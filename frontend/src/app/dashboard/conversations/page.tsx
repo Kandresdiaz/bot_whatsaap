@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useMemo } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { io, Socket } from 'socket.io-client';
 
@@ -356,12 +356,14 @@ export default function ConversationsPage() {
     }
   };
 
-  const filtered = conversations
-    .filter(c =>
-      c.contact_name?.toLowerCase().includes(search.toLowerCase()) ||
-      c.contact_phone.includes(search)
-    )
-    .sort((a, b) => new Date(b.last_message_at || 0).getTime() - new Date(a.last_message_at || 0).getTime());
+  const filtered = useMemo(() => {
+    return conversations
+      .filter(c =>
+        c.contact_name?.toLowerCase().includes(search.toLowerCase()) ||
+        c.contact_phone.includes(search)
+      )
+      .sort((a, b) => new Date(b.last_message_at || 0).getTime() - new Date(a.last_message_at || 0).getTime());
+  }, [conversations, search]);
 
   const initials = (name: string) => name ? name.slice(0, 2).toUpperCase() : '?';
 

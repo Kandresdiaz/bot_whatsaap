@@ -1178,25 +1178,27 @@ const sendMessage = async (userId, to, text) => {
   const validUserId = getValidUserId(userId);
   let session = getSession(userId) || getSession(validUserId);
 
-  // Auto-restaurar sesión si el servidor acaba de despertar o reconectar
-  if (!session || !session.sock || session.status !== 'connected') {
-    console.log(`[SendMessage] Sesión no conectada inmediatamente para ${userId}. Intentando auto-restauración...`);
+  // Auto-restaurar sesión si el servidor acaba de despertar o no hay socket activo
+  if (!session || !session.sock) {
+    console.log(`[SendMessage] No hay socket activo para ${userId}. Intentando auto-restauración...`);
     try {
       createSession(validUserId, null, global.io).catch(() => {});
     } catch (_) {}
 
-    // Esperar hasta 6 segundos a que se establezca la conexión
-    for (let i = 0; i < 12; i++) {
+    // Esperar hasta 10 segundos a que se inicialice el socket de Baileys
+    for (let i = 0; i < 20; i++) {
       await new Promise(r => setTimeout(r, 500));
       session = getSession(userId) || getSession(validUserId);
-      if (session?.sock && session?.status === 'connected') {
+      if (session?.sock) {
         break;
       }
     }
   }
 
-  if (!session || !session.sock || session.status !== 'connected') {
-    throw new Error('WhatsApp no está conectado actualmente. Por favor ve a la pestaña "Conectar" y vincula tu código QR.');
+  const activeSock = session?.sock;
+
+  if (!activeSock) {
+    throw new Error('WhatsApp no está conectado actualmente. Por favor ve a la pestaña "Conectar WhatsApp" y escanea el código QR.');
   }
 
   const rawTo = (to || '').trim();
@@ -1222,8 +1224,9 @@ const sendMessage = async (userId, to, text) => {
   let lastErr = null;
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      await session.sock.sendMessage(jid, { text });
+      await activeSock.sendMessage(jid, { text });
       console.log(`[Baileys Outbound] ✅ Mensaje entregado con éxito a ${jid} (intento ${attempt})`);
+      if (session) session.status = 'connected';
       return { success: true, jid };
     } catch (err) {
       lastErr = err;
