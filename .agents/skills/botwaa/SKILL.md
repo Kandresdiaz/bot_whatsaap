@@ -410,6 +410,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-18** | fix: procesar incondicionalmente todos los mensajes entrantes de clientes y limpiar JID con cleanPhoneFromJid (`9e7d9cf`) | Auto-deploy |
 
+| **2026-08-18** | fix: persistencia 100% indestructible de claves de sesion Baileys en Supabase para evitar perdida de sesion en Render (`6b24151`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
