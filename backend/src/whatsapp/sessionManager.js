@@ -666,8 +666,8 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
     return existingSession.sock;
   }
 
-  // Si pedimos limpieza forzada o la sesión anterior falló, cerramos socket previo y borramos credenciales viejas en disco y DB
-  if (forceClean || (existingSession && existingSession.status !== 'connecting')) {
+  // Solo si se solicita limpieza forzada explícita (ej. escanear nuevo QR o desconexión manual) borramos credenciales
+  if (forceClean) {
     if (existingSession?.sock) {
       try { existingSession.sock.end(new Error('Reiniciando sesión')); } catch (_) {}
     }
@@ -679,6 +679,8 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
       qr_code: null,
       status: 'connecting',
     }).catch(() => {});
+  } else if (existingSession?.sock) {
+    try { existingSession.sock.end(new Error('Reconectando socket')); } catch (_) {}
   }
 
   const sessionDir = path.join(SESSIONS_DIR, userId);
