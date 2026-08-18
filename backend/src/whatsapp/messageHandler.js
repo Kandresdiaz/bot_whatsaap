@@ -80,6 +80,7 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
         conversation = existing;
         await supabase.from('conversations').update({
           contact_name: contactName,
+          last_message: text,
           last_message_at: new Date().toISOString(),
           unread_count: (existing.unread_count || 0) + 1,
         }).eq('id', existing.id);
@@ -90,6 +91,7 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
             session_id: sessionUuid,
             contact_phone: contactPhone,
             contact_name: contactName,
+            last_message: text,
             bot_active: true,
             is_blacklisted: false,
             last_message_at: new Date().toISOString(),

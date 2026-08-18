@@ -226,6 +226,7 @@ router.post('/send', async (req, res) => {
               session_id: sessionUuid,
               contact_phone: cleanDigits,
               contact_name: cleanDigits,
+              last_message: message,
               bot_active: true,
               is_blacklisted: false,
               last_message_at: new Date().toISOString(),
@@ -240,6 +241,7 @@ router.post('/send', async (req, res) => {
 
       if (targetConvId) {
         await supabase.from('conversations').update({
+          last_message: message,
           last_message_at: new Date().toISOString(),
         }).eq('id', targetConvId);
 

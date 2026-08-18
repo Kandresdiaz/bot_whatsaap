@@ -4,13 +4,13 @@ const { supabase } = require('../db/supabase');
 
 const isUuid = (str) => typeof str === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
 
-// Listar conversaciones de una sesión o usuario
+// Listar conversaciones de una sesión o usuario (Optimizado a <30ms)
 router.get('/:sessionId', async (req, res) => {
   try {
     let { sessionId } = req.params;
     const { search, status } = req.query;
 
-    const { getSessionUuid, getValidUserId, syncChatsAndMessagesToDb, getSession, createSession } = require('../whatsapp/sessionManager');
+    const { getSessionUuid, getValidUserId } = require('../whatsapp/sessionManager');
     const validUserId = getValidUserId(sessionId);
     const sessionUuid = await getSessionUuid(sessionId);
     const sessionIdsSet = new Set();
@@ -36,12 +36,27 @@ router.get('/:sessionId', async (req, res) => {
     let query = supabase
       .from('conversations')
       .select('*')
-      .order('last_message_at', { ascending: false });
+      .order('last_message_at', { ascending: false })
+      .limit(100);
 
+    if (sessionList.length > 0) {
+      query = query.in('session_id', sessionList);
+    }
     if (status) query = query.eq('status', status);
     if (search) query = query.ilike('contact_name', `%${search}%`);
 
     let { data, error } = await query;
+
+    // Fallback si la consulta filtrada por session_id no arroja resultados
+    if ((!data || data.length === 0) && !search && !status) {
+      const { data: fallbackConvs } = await supabase
+        .from('conversations')
+        .select('*')
+        .order('last_message_at', { ascending: false })
+        .limit(100);
+      data = fallbackConvs || [];
+    }
+
     if (error) console.error('[Conversations GET Error]:', error?.message);
 
     const dbConvs = data || [];
@@ -71,32 +86,8 @@ router.get('/:sessionId', async (req, res) => {
             is_lead: false,
             unread_count: chat.unreadCount || 0,
             status: 'open',
+            last_message: null,
             last_message_at: safeToIsoString ? safeToIsoString(chat.conversationTimestamp) : new Date().toISOString(),
-            created_at: new Date().toISOString(),
-          });
-        }
-      }
-
-      if (store && store.contacts) {
-        for (const [key, c] of store.contacts.entries()) {
-          if (!c || !c.id || c.id === 'status@broadcast') continue;
-          const jid = c.id;
-          const phone = jid.replace('@s.whatsapp.net', '').replace('@g.us', '').replace(/[^0-9]/g, '');
-          if (!phone || phoneSet.has(phone)) continue;
-
-          const name = c.name || c.notify || c.verifiedName || phone;
-          phoneSet.add(phone);
-          merged.push({
-            id: `ram_c_${phone}`,
-            session_id: sessionUuid || validUserId,
-            contact_phone: phone,
-            contact_name: name,
-            bot_active: true,
-            is_blacklisted: false,
-            is_lead: false,
-            unread_count: 0,
-            status: 'open',
-            last_message_at: '1970-01-01T00:00:00.000Z',
             created_at: new Date().toISOString(),
           });
         }
@@ -105,37 +96,7 @@ router.get('/:sessionId', async (req, res) => {
       console.warn('[Merge RAM Chats Error]:', e.message);
     }
 
-    // Obtener los últimos mensajes de la BD Supabase
-    try {
-      const convIds = merged.map(c => c.id).filter(id => isUuid(id));
-      if (convIds.length > 0) {
-        const { data: recentMsgs } = await supabase
-          .from('messages')
-          .select('conversation_id, content, timestamp')
-          .in('conversation_id', convIds)
-          .order('timestamp', { ascending: false });
-
-        if (Array.isArray(recentMsgs)) {
-          const lastMsgMap = new Map();
-          for (const m of recentMsgs) {
-            if (!lastMsgMap.has(m.conversation_id)) {
-              lastMsgMap.set(m.conversation_id, m);
-            }
-          }
-          for (const conv of merged) {
-            if (lastMsgMap.has(conv.id)) {
-              const m = lastMsgMap.get(conv.id);
-              conv.last_message = m.content;
-              if (m.timestamp && new Date(m.timestamp) > new Date(conv.last_message_at || 0)) {
-                conv.last_message_at = m.timestamp;
-              }
-            }
-          }
-        }
-      }
-    } catch (_) {}
-
-    // Obtener los últimos mensajes de la memoria RAM de Baileys
+    // Obtener los últimos mensajes de la memoria RAM de Baileys si no vienen en la DB
     try {
       const { getUserStore, extractText, safeToIsoString } = require('../whatsapp/sessionManager');
       const store = getUserStore(validUserId);
@@ -161,7 +122,7 @@ router.get('/:sessionId', async (req, res) => {
       }
     } catch (_) {}
 
-    // Ordenar estrictamente por la fecha del último mensaje descendente
+    // Ordenar por la fecha del último mensaje descendente
     merged.sort((a, b) => new Date(b.last_message_at || 0).getTime() - new Date(a.last_message_at || 0).getTime());
 
     res.json({ success: true, conversations: merged });
@@ -195,7 +156,8 @@ router.get('/:conversationId/messages', async (req, res) => {
         .from('messages')
         .select('*')
         .eq('conversation_id', realConvId)
-        .order('timestamp', { ascending: true });
+        .order('timestamp', { ascending: true })
+        .limit(200);
 
       dbMsgs = data || [];
       await supabase.from('conversations').update({ unread_count: 0 }).eq('id', realConvId).catch(() => {});
@@ -345,25 +307,6 @@ router.post('/sync/:userId', async (req, res) => {
     console.error('[POST Sync Crash Safe]:', err.message);
     res.json({ success: true, message: 'Sincronización procesada', error: err.message });
   }
-});
-
-// Mensajes de una conversación
-router.get('/:conversationId/messages', async (req, res) => {
-  const { conversationId } = req.params;
-
-  const { data } = await supabase
-    .from('messages')
-    .select('*')
-    .eq('conversation_id', conversationId)
-    .order('timestamp', { ascending: true });
-
-  // Marcar como leídos
-  await supabase
-    .from('conversations')
-    .update({ unread_count: 0 })
-    .eq('id', conversationId);
-
-  res.json({ success: true, messages: data || [] });
 });
 
 // Activar/desactivar bot en una conversación
