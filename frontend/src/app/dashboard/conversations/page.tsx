@@ -113,10 +113,10 @@ export default function ConversationsPage() {
 
     loadConversations(targetId);
 
-    // Sondeo automático acelerado cada 2s para desplegar chats de inmediato
+    // Sondeo de respaldo pasivo cada 15s para evitar saturación y lentitud en la interfaz
     const interval = setInterval(() => {
       loadConversations(targetId);
-    }, 2000);
+    }, 15000);
 
     // Socket para mensajes en tiempo real
     const socket = io(BACKEND!);
@@ -130,8 +130,24 @@ export default function ConversationsPage() {
       loadConversations(targetId);
     });
 
-    socket.on('conversation_updated', () => {
-      loadConversations(targetId);
+    socket.on('conversation_updated', (payload: { conversationId?: string; contactPhone?: string; contactName?: string; lastMessage?: string; timestamp?: string }) => {
+      const { conversationId, contactPhone, contactName, lastMessage, timestamp } = payload || {};
+      const cleanIncomingPhone = contactPhone ? contactPhone.replace(/[^0-9]/g, '') : '';
+
+      setConversations(prevConvs => {
+        const index = prevConvs.findIndex(c => c.id === conversationId || (cleanIncomingPhone && c.contact_phone.replace(/[^0-9]/g, '') === cleanIncomingPhone));
+        if (index !== -1) {
+          const updatedConv = {
+            ...prevConvs[index],
+            contact_name: contactName || prevConvs[index].contact_name,
+            last_message: lastMessage || prevConvs[index].last_message,
+            last_message_at: timestamp || new Date().toISOString(),
+          };
+          const rest = prevConvs.filter((_, i) => i !== index);
+          return [updatedConv, ...rest];
+        }
+        return prevConvs;
+      });
     });
 
     socket.on('manual_needed', () => {
@@ -153,11 +169,61 @@ export default function ConversationsPage() {
       }
     });
 
-    socket.on('new_message', ({ conversationId, message }) => {
-      if (active?.id === conversationId) {
-        setMessages(prev => [...prev, message]);
-      }
-      loadConversations(targetId);
+    socket.on('new_message', (payload: { conversationId?: string; contactPhone?: string; message?: Message }) => {
+      const { conversationId, contactPhone, message } = payload || {};
+      if (!message || !message.content) return;
+
+      const cleanIncomingPhone = contactPhone ? contactPhone.replace(/[^0-9]/g, '') : '';
+
+      // 1. Agregar mensaje a la pantalla de chat si la conversación está abierta
+      setActive(prevActive => {
+        if (!prevActive) return prevActive;
+        const cleanActivePhone = prevActive.contact_phone ? prevActive.contact_phone.replace(/[^0-9]/g, '') : '';
+        const isMatch = (
+          prevActive.id === conversationId ||
+          (cleanActivePhone && cleanIncomingPhone && cleanActivePhone === cleanIncomingPhone)
+        );
+
+        if (isMatch) {
+          setMessages(prevMsgs => {
+            const exists = prevMsgs.some(m => m.id === message.id || (m.content === message.content && m.direction === message.direction && Math.abs(new Date(m.timestamp).getTime() - new Date(message.timestamp).getTime()) < 3000));
+            if (exists) return prevMsgs;
+            return [...prevMsgs, message];
+          });
+        }
+        return prevActive;
+      });
+
+      // 2. Mover la conversación al inicio de la lista de la izquierda
+      setConversations(prevConvs => {
+        const index = prevConvs.findIndex(c => c.id === conversationId || (cleanIncomingPhone && c.contact_phone.replace(/[^0-9]/g, '') === cleanIncomingPhone));
+        const nowTs = message.timestamp || new Date().toISOString();
+
+        if (index !== -1) {
+          const updatedConv = {
+            ...prevConvs[index],
+            last_message: message.content,
+            last_message_at: nowTs,
+          };
+          const rest = prevConvs.filter((_, i) => i !== index);
+          return [updatedConv, ...rest];
+        } else {
+          // Si el contacto no estaba en la lista, crearlo e insertarlo arriba de primero
+          const newConvItem: Conversation = {
+            id: conversationId || `conv_${cleanIncomingPhone}`,
+            contact_phone: cleanIncomingPhone,
+            contact_name: cleanIncomingPhone,
+            bot_active: true,
+            is_blacklisted: false,
+            is_lead: false,
+            last_message_at: nowTs,
+            unread_count: 1,
+            status: 'open',
+            last_message: message.content,
+          };
+          return [newConvItem, ...prevConvs];
+        }
+      });
     });
 
     return () => {

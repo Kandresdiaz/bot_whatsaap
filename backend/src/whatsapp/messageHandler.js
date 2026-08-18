@@ -128,18 +128,22 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
       try {
         const { emitToUserRooms, getSessionUuid } = require('./sessionManager');
         getSessionUuid(userId).then(sessionUuid => {
+          const msgObj = { id: Date.now().toString(), content: text, direction: 'inbound', sent_by: 'human', timestamp: new Date().toISOString() };
           emitToUserRooms(global.io, userId, 'new_message', {
-            conversationId: conversation.id,
-            message: { content: text, direction: 'inbound', sent_by: 'human', timestamp: new Date() },
+            conversationId: conversation?.id || null,
+            contactPhone,
+            message: msgObj,
           }, sessionUuid);
           emitToUserRooms(global.io, userId, 'conversation_updated', {
-            conversationId: conversation.id, contactName, lastMessage: text,
+            conversationId: conversation?.id || null, contactPhone, contactName, lastMessage: text, timestamp: new Date().toISOString(),
           }, sessionUuid);
         });
       } catch (_) {
+        const msgObj = { id: Date.now().toString(), content: text, direction: 'inbound', sent_by: 'human', timestamp: new Date().toISOString() };
         global.io.to(`user_${userId}`).emit('new_message', {
-          conversationId: conversation.id,
-          message: { content: text, direction: 'inbound', sent_by: 'human', timestamp: new Date() },
+          conversationId: conversation?.id || null,
+          contactPhone,
+          message: msgObj,
         });
       }
     }
@@ -303,10 +307,26 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
     }));
 
     if (global.io) {
-      global.io.to(`user_${userId}`).emit('new_message', {
-        conversationId: conversation.id,
-        message: { content: reply, direction: 'outbound', sent_by: 'bot', timestamp: new Date() },
-      });
+      try {
+        const { emitToUserRooms, getSessionUuid } = require('./sessionManager');
+        getSessionUuid(userId).then(sessionUuid => {
+          const msgObj = { id: Date.now().toString(), content: reply, direction: 'outbound', sent_by: 'bot', timestamp: new Date().toISOString() };
+          emitToUserRooms(global.io, userId, 'new_message', {
+            conversationId: conversation?.id || null,
+            contactPhone,
+            message: msgObj,
+          }, sessionUuid);
+          emitToUserRooms(global.io, userId, 'conversation_updated', {
+            conversationId: conversation?.id || null, contactPhone, lastMessage: reply, timestamp: new Date().toISOString(),
+          }, sessionUuid);
+        });
+      } catch (_) {
+        global.io.to(`user_${userId}`).emit('new_message', {
+          conversationId: conversation?.id || null,
+          contactPhone,
+          message: { id: Date.now().toString(), content: reply, direction: 'outbound', sent_by: 'bot', timestamp: new Date().toISOString() },
+        });
+      }
     }
   }
 };
