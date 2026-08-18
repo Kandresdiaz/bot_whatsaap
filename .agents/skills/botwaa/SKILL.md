@@ -404,6 +404,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-18** | fix: sanitizar sufijos de dispositivo en JID de WhatsApp y formatear numeros/nombres estilo WhatsApp Web (`f72d35a`) | Auto-deploy |
 
+| **2026-08-18** | fix: envio indestructible de mensajes con auto-reconexion, reintentos y soporte de grupos JID sin bloqueo DB (`9043a34`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
