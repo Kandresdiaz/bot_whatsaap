@@ -426,6 +426,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-21** | fix: huella macOS Desktop para forzar sincronizacion del historial de WhatsApp y corregir formateo de numeros (`f343d02`) | Auto-deploy |
 
+| **2026-08-21** | fix: restaurar huella Ubuntu Chrome y registro multi-alias en RAM para generacion instantanea de QR (`9389aaf`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
