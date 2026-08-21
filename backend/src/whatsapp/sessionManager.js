@@ -56,10 +56,10 @@ const cleanPhoneFromJid = (jid) => {
 };
 
 const isLidJidOrDigits = (str) => {
-  if (!str) return false;
-  if (typeof str === 'string' && str.endsWith('@lid')) return true;
-  const digits = String(str).replace(/[^0-9]/g, '');
-  return digits.length === 15 && (digits.startsWith('1') || digits.startsWith('2'));
+  if (!str || typeof str !== 'string') return false;
+  if (str.endsWith('@lid')) return true;
+  const digits = str.replace(/[^0-9]/g, '');
+  return lidToPnMap.has(digits);
 };
 
 const resolvePhoneAndJid = (input) => {
@@ -807,7 +807,7 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
     },
     logger,
     printQRInTerminal: false,
-    browser: Browsers.ubuntu('Chrome'),
+    browser: Browsers.macOS('Desktop'),
     generateHighQualityLinkPreview: false,
     syncFullHistory: true,
     downloadHistory: true,
