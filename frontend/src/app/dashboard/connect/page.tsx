@@ -64,63 +64,6 @@ export default function ConnectPage() {
     return () => { cancelled = true; clearInterval(interval); };
   }, [user?.id, retryCount]);
 
-
-
-  // ── Socket.io para QR en tiempo real ─────────────────────────────────────
-  useEffect(() => {
-    if (!user?.id) return;
-    let socket: any = null;
-
-    const connectSocket = async () => {
-      try {
-        const { io } = await import('socket.io-client');
-        socket = io(BACKEND, {
-          transports: ['polling', 'websocket'], // polling primero como fallback
-          timeout: 10000,
-          reconnectionAttempts: 5,
-        });
-
-        socket.emit('join_session', user!.id);
-        if (user?.id === 'admin' || !user?.id) socket.emit('join_session', '00000000-0000-0000-0000-000000000001');
-        socket.emit('join_session', 'admin');
-
-        socket.on('qr', ({ qr: qrData }: { qr: string }) => {
-          setQr(qrData);
-          setStatus('qr_ready');
-          setError(null);
-        });
-
-        socket.on('connected', ({ phone: p }: { phone: string }) => {
-          setQr(null);
-          setStatus('connected');
-          setPhone(p);
-          setError(null);
-        });
-
-        socket.on('session_ready', ({ phone: p }: { phone: string }) => {
-          setQr(null);
-          setStatus('connected');
-          setPhone(p);
-        });
-
-        socket.on('disconnected', () => {
-          setStatus('disconnected');
-          setQr(null);
-          setPhone(null);
-        });
-
-        socket.on('connect_error', (e: Error) => {
-          console.warn('[Socket] Error de conexión (usando polling):', e.message);
-        });
-      } catch (e) {
-        console.warn('[Socket] No se pudo conectar socket:', e);
-      }
-    };
-
-    connectSocket();
-    return () => { if (socket) socket.disconnect(); };
-  }, [user?.id]);
-
   // ── Iniciar sesión / pedir QR ─────────────────────────────────────────────
   const startSession = useCallback(async (force = false) => {
     if (!user?.id) return;
@@ -166,6 +109,13 @@ export default function ConnectPage() {
       setStatus('error');
     }
   }, [user?.id]);
+
+  // Auto-iniciar sesión / generar QR al cargar la pantalla si está desconectado
+  useEffect(() => {
+    if (user?.id && status === 'disconnected') {
+      startSession(false);
+    }
+  }, [user?.id, status, startSession]);
 
   // ── Desconectar ───────────────────────────────────────────────────────────
   const stopSession = async () => {

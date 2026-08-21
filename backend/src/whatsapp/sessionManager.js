@@ -936,20 +936,27 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
       const phone = sock.user?.id?.split(':')[0] || '';
       console.log(`[Baileys] ✅ Conectado: ${phone} (usuario: ${userId})`);
 
-      // 1. Actualizar memoria RAM INMEDIATAMENTE
-      const prevS = sessions.get(userId) || {};
-      sessions.set(userId, { ...prevS, sock, businessId, status: 'connected', phone, qr: null });
+      // 1. Actualizar memoria RAM INMEDIATAMENTE para todas las claves de usuario
+      const validId = getValidUserId(userId);
+      const prevS = sessions.get(userId) || sessions.get(validId) || {};
+      const connectedState = { ...prevS, sock, businessId, status: 'connected', phone, qr: null };
 
-      // 2. Emitir por Socket.io INMEDIATAMENTE a todas las salas
+      sessions.set(userId, connectedState);
+      sessions.set(validId, connectedState);
+      if (userId === ADMIN_UUID || validId === ADMIN_UUID) sessions.set('admin', connectedState);
+
+      // 2. Emitir por Socket.io INMEDIATAMENTE a todas las salas del usuario
       if (io) {
-        const payload = { phone, userId };
+        const payload = { phone, userId, status: 'connected' };
         emitToUserRooms(io, userId, 'connected', payload);
+        emitToUserRooms(io, validId, 'connected', payload);
         emitToUserRooms(io, userId, 'session_ready', payload);
+        emitToUserRooms(io, validId, 'session_ready', payload);
       }
 
       // 3. Persistir en DB en segundo plano sin bloquear
       safeUpsert('whatsapp_sessions', {
-        user_id: userId,
+        user_id: validId,
         phone_number: phone,
         status: 'connected',
         qr_code: null,
