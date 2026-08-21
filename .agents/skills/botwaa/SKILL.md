@@ -428,6 +428,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-21** | fix: restaurar huella Ubuntu Chrome y registro multi-alias en RAM para generacion instantanea de QR (`9389aaf`) | Auto-deploy |
 
+| **2026-08-21** | fix: sincronizacion inmediata de estado conectado en RAM para todos los alias de usuario y auto-start en connect page (`b911c8f`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
