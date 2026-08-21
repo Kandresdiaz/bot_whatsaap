@@ -422,6 +422,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-21** | feat: experiencia WhatsApp Web completa en contactos y solucion a envio de mensajes (`87dc4e5`) | Auto-deploy |
 
+| **2026-08-21** | fix: resolucion de LIDs de WhatsApp, nombres de contacto reales y envio infalible de mensajes (`c5fbf27`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
