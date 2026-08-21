@@ -432,6 +432,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-21** | fix: cargar incondicionalmente todas las conversaciones de DB y proteger filtro en frontend (`ba6cfd3`) | Auto-deploy |
 
+| **2026-08-21** | fix: requerir clic manual para solicitar nuevo QR al estar desconectado (`678b028`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
