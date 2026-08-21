@@ -428,13 +428,19 @@ export default function ConversationsPage() {
   };
 
   const filtered = useMemo(() => {
+    if (!Array.isArray(conversations)) return [];
     return conversations
       .filter(c => {
-        const q = search.toLowerCase();
+        if (!c) return false;
+        const q = (search || '').toLowerCase();
+        const phone = c.contact_phone || '';
+        const name = c.contact_name || '';
+        const lastMsg = c.last_message || '';
+
         const matchesSearch =
-          c.contact_name?.toLowerCase().includes(q) ||
-          c.contact_phone.includes(q) ||
-          (c.last_message && c.last_message.toLowerCase().includes(q));
+          name.toLowerCase().includes(q) ||
+          phone.includes(q) ||
+          lastMsg.toLowerCase().includes(q);
 
         if (!matchesSearch) return false;
 

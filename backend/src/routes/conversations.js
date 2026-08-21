@@ -47,8 +47,8 @@ router.get('/:sessionId', async (req, res) => {
 
     let { data, error } = await query;
 
-    // Fallback si la consulta filtrada por session_id no arroja resultados
-    if ((!data || data.length === 0) && !search && !status) {
+    // Si la consulta por session_id no trae resultados, cargar todas las conversaciones existentes de la DB
+    if (!data || data.length === 0) {
       const { data: fallbackConvs } = await supabase
         .from('conversations')
         .select('*')
@@ -67,17 +67,20 @@ router.get('/:sessionId', async (req, res) => {
     const merged = [];
 
     for (const c of dbConvs) {
-      if (!c || !c.contact_phone) continue;
-      const resolved = resolvePhoneAndJid(c.contact_phone);
-      const cleanPhone = resolved.phone || c.contact_phone;
+      if (!c) continue;
+      const rawPhone = (c.contact_phone || '').trim();
+      if (!rawPhone) continue;
 
-      // Descartar LID duplicado si ya tenemos la conversación con el número de teléfono real
+      const resolved = resolvePhoneAndJid(rawPhone);
+      const cleanPhone = resolved.phone || rawPhone;
+
       if (phoneSet.has(cleanPhone)) continue;
       phoneSet.add(cleanPhone);
 
       merged.push({
         ...c,
         contact_phone: cleanPhone,
+        contact_name: c.contact_name || cleanPhone,
       });
     }
 
@@ -87,7 +90,7 @@ router.get('/:sessionId', async (req, res) => {
         for (const [key, chat] of store.chats.entries()) {
           if (!chat || !chat.id || chat.id === 'status@broadcast') continue;
           const resolved = resolvePhoneAndJid(chat.id);
-          const phone = resolved.phone;
+          const phone = resolved.phone || chat.id.split('@')[0].replace(/[^0-9]/g, '');
           if (!phone || phoneSet.has(phone)) continue;
 
           phoneSet.add(phone);
