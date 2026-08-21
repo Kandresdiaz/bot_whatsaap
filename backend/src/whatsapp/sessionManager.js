@@ -807,7 +807,7 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
     },
     logger,
     printQRInTerminal: false,
-    browser: Browsers.macOS('Desktop'),
+    browser: Browsers.ubuntu('Chrome'),
     generateHighQualityLinkPreview: false,
     syncFullHistory: true,
     downloadHistory: true,
@@ -908,16 +908,21 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
         const QRCode = require('qrcode');
         const qrDataUrl = await QRCode.toDataURL(qr, { width: 300, margin: 2 });
 
-        // Guardar en memoria activa para respuesta instantánea de API
-        const sData = sessions.get(userId) || {};
-        sessions.set(userId, { ...sData, qr: qrDataUrl, status: 'qr_ready' });
+        // Guardar en memoria activa para respuesta instantánea de API en todas las claves posibles
+        const validId = getValidUserId(userId);
+        const sData = sessions.get(userId) || sessions.get(validId) || {};
+        const updatedState = { ...sData, qr: qrDataUrl, status: 'qr_ready' };
+
+        sessions.set(userId, updatedState);
+        sessions.set(validId, updatedState);
+        if (userId === ADMIN_UUID || validId === ADMIN_UUID) sessions.set('admin', updatedState);
 
         // Emitir al frontend por Socket.io a todas las salas del usuario
         emitToUserRooms(io, userId, 'qr', { qr: qrDataUrl });
 
         // Guardar en DB (no bloquear si falla)
         safeUpsert('whatsapp_sessions', {
-          user_id: userId,
+          user_id: validId,
           qr_code: qrDataUrl,
           status: 'qr_ready',
         }).catch(e => console.warn('[DB] Error guardando QR:', e.message));
