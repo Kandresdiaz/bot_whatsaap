@@ -430,6 +430,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-21** | fix: sincronizacion inmediata de estado conectado en RAM para todos los alias de usuario y auto-start en connect page (`b911c8f`) | Auto-deploy |
 
+| **2026-08-21** | fix: cargar incondicionalmente todas las conversaciones de DB y proteger filtro en frontend (`ba6cfd3`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
