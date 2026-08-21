@@ -122,6 +122,25 @@ router.get('/:sessionId', async (req, res) => {
       }
     } catch (_) {}
 
+    // Enriquecer nombres de contactos desde la memoria de contactos de Baileys
+    try {
+      const { getUserStore } = require('../whatsapp/sessionManager');
+      const store = getUserStore(validUserId);
+      if (store && store.contacts) {
+        for (const c of merged) {
+          const cleanP = c.contact_phone ? c.contact_phone.replace(/[^0-9]/g, '') : '';
+          const cNameClean = c.contact_name ? c.contact_name.replace(/[^0-9]/g, '') : '';
+          if (!c.contact_name || cNameClean === cleanP) {
+            const contactObj = store.contacts.get(cleanP) || store.contacts.get(`${cleanP}@s.whatsapp.net`);
+            const betterName = contactObj?.name || contactObj?.notify || contactObj?.verifiedName;
+            if (betterName) {
+              c.contact_name = betterName;
+            }
+          }
+        }
+      }
+    } catch (_) {}
+
     // Ordenar por la fecha del último mensaje descendente
     merged.sort((a, b) => new Date(b.last_message_at || 0).getTime() - new Date(a.last_message_at || 0).getTime());
 

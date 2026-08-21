@@ -152,9 +152,11 @@ const deleteSessionFolder = (userId) => {
 };
 
 const ADMIN_UUID = '00000000-0000-0000-0000-000000000001';
+const sessionUuidToUserMap = new Map();
 
 const getValidUserId = (userId) => {
   if (!userId || userId === 'admin') return ADMIN_UUID;
+  if (sessionUuidToUserMap.has(userId)) return sessionUuidToUserMap.get(userId);
   return userId;
 };
 
@@ -191,16 +193,23 @@ const getSessionUuid = async (userId) => {
       .eq('user_id', validUserId)
       .maybeSingle();
 
-    if (existing?.id) return existing.id;
+    if (existing?.id) {
+      sessionUuidToUserMap.set(existing.id, validUserId);
+      return existing.id;
+    }
 
     // 2. Probar si userId directamente coincide con id de whatsapp_sessions
     const { data: byId } = await supabase
       .from('whatsapp_sessions')
-      .select('id')
+      .select('id, user_id')
       .eq('id', userId)
       .maybeSingle();
 
-    if (byId?.id) return byId.id;
+    if (byId?.id) {
+      const mappedUser = byId.user_id || validUserId;
+      sessionUuidToUserMap.set(byId.id, mappedUser);
+      return byId.id;
+    }
 
     // 3. Crear registro nuevo usando validUserId
     const { data: newSess } = await supabase
@@ -209,6 +218,9 @@ const getSessionUuid = async (userId) => {
       .select('id')
       .maybeSingle();
 
+    if (newSess?.id) {
+      sessionUuidToUserMap.set(newSess.id, validUserId);
+    }
     return newSess?.id || null;
   } catch (e) {
     console.warn('[DB] getSessionUuid aviso:', e.message);
