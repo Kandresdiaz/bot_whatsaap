@@ -110,12 +110,7 @@ export default function ConnectPage() {
     }
   }, [user?.id]);
 
-  // Auto-iniciar sesión / generar QR al cargar la pantalla si está desconectado
-  useEffect(() => {
-    if (user?.id && status === 'disconnected') {
-      startSession(false);
-    }
-  }, [user?.id, status, startSession]);
+
 
   // ── Desconectar ───────────────────────────────────────────────────────────
   const stopSession = async () => {
