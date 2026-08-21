@@ -420,6 +420,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-18** | perf: optimizar tiempo de respuesta al cargar chats y persistir last_message (`52d0499`) | Auto-deploy |
 
+| **2026-08-21** | feat: experiencia WhatsApp Web completa en contactos y solucion a envio de mensajes (`87dc4e5`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
