@@ -59,20 +59,35 @@ router.get('/:sessionId', async (req, res) => {
 
     if (error) console.error('[Conversations GET Error]:', error?.message);
 
+    const { getUserStore, resolvePhoneAndJid, safeToIsoString } = require('../whatsapp/sessionManager');
+    const store = getUserStore(validUserId);
+
     const dbConvs = data || [];
-    const phoneSet = new Set(dbConvs.map(c => c.contact_phone));
-    const merged = [...dbConvs];
+    const phoneSet = new Set();
+    const merged = [];
+
+    for (const c of dbConvs) {
+      if (!c || !c.contact_phone) continue;
+      const resolved = resolvePhoneAndJid(c.contact_phone);
+      const cleanPhone = resolved.phone || c.contact_phone;
+
+      // Descartar LID duplicado si ya tenemos la conversación con el número de teléfono real
+      if (phoneSet.has(cleanPhone)) continue;
+      phoneSet.add(cleanPhone);
+
+      merged.push({
+        ...c,
+        contact_phone: cleanPhone,
+      });
+    }
 
     // Fusionar chats acumulados en memoria RAM de Baileys
     try {
-      const { getUserStore, safeToIsoString } = require('../whatsapp/sessionManager');
-      const store = getUserStore(validUserId);
-
       if (store && store.chats) {
         for (const [key, chat] of store.chats.entries()) {
           if (!chat || !chat.id || chat.id === 'status@broadcast') continue;
-          const jid = chat.id;
-          const phone = jid.replace('@s.whatsapp.net', '').replace('@g.us', '').replace(/[^0-9]/g, '');
+          const resolved = resolvePhoneAndJid(chat.id);
+          const phone = resolved.phone;
           if (!phone || phoneSet.has(phone)) continue;
 
           phoneSet.add(phone);
@@ -98,14 +113,12 @@ router.get('/:sessionId', async (req, res) => {
 
     // Obtener los últimos mensajes de la memoria RAM de Baileys si no vienen en la DB
     try {
-      const { getUserStore, extractText, safeToIsoString } = require('../whatsapp/sessionManager');
-      const store = getUserStore(validUserId);
-
+      const { extractText } = require('../whatsapp/sessionManager');
       if (store && store.messages && store.messages.size > 0) {
         for (const [key, msg] of store.messages.entries()) {
           if (!msg || !msg.key || !msg.key.remoteJid) continue;
-          const jid = msg.key.remoteJid;
-          const phone = jid.replace('@s.whatsapp.net', '').replace('@g.us', '').replace(/[^0-9]/g, '');
+          const resolved = resolvePhoneAndJid(msg.key.remoteJid);
+          const phone = resolved.phone;
           const text = extractText ? extractText(msg) : '';
           const msgTs = safeToIsoString(msg.messageTimestamp);
 
@@ -124,14 +137,12 @@ router.get('/:sessionId', async (req, res) => {
 
     // Enriquecer nombres de contactos desde la memoria de contactos de Baileys
     try {
-      const { getUserStore } = require('../whatsapp/sessionManager');
-      const store = getUserStore(validUserId);
       if (store && store.contacts) {
         for (const c of merged) {
           const cleanP = c.contact_phone ? c.contact_phone.replace(/[^0-9]/g, '') : '';
           const cNameClean = c.contact_name ? c.contact_name.replace(/[^0-9]/g, '') : '';
           if (!c.contact_name || cNameClean === cleanP) {
-            const contactObj = store.contacts.get(cleanP) || store.contacts.get(`${cleanP}@s.whatsapp.net`);
+            const contactObj = store.contacts.get(cleanP) || store.contacts.get(`${cleanP}@s.whatsapp.net`) || store.contacts.get(`${cleanP}@lid`);
             const betterName = contactObj?.name || contactObj?.notify || contactObj?.verifiedName;
             if (betterName) {
               c.contact_name = betterName;

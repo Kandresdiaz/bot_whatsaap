@@ -44,6 +44,10 @@ const getUserStore = (userId) => {
   return userStores.get(validId);
 };
 
+// Mapeo en memoria de LIDs a números de teléfono reales (PN)
+const lidToPnMap = new Map(); // lidDigits -> pnDigits
+const pnToLidMap = new Map(); // pnDigits -> lidDigits
+
 const cleanPhoneFromJid = (jid) => {
   if (!jid || typeof jid !== 'string') return '';
   const withoutDomain = jid.split('@')[0];
@@ -51,16 +55,70 @@ const cleanPhoneFromJid = (jid) => {
   return withoutDevice.replace(/[^0-9]/g, '');
 };
 
+const isLidJidOrDigits = (str) => {
+  if (!str) return false;
+  if (typeof str === 'string' && str.endsWith('@lid')) return true;
+  const digits = String(str).replace(/[^0-9]/g, '');
+  return digits.length === 15 && (digits.startsWith('1') || digits.startsWith('2'));
+};
+
+const resolvePhoneAndJid = (input) => {
+  if (!input || typeof input !== 'string') return { phone: '', jid: '', isGroup: false };
+  const raw = input.trim();
+  if (raw.endsWith('@g.us') || (raw.length > 15 && raw.includes('-'))) {
+    const cleanGroup = raw.split('@')[0].replace(/[^0-9-]/g, '');
+    return { phone: cleanGroup, jid: `${cleanGroup}@g.us`, isGroup: true };
+  }
+
+  const cleanDigits = cleanPhoneFromJid(raw);
+  const isLid = isLidJidOrDigits(raw);
+
+  if (isLid) {
+    if (lidToPnMap.has(cleanDigits)) {
+      const realPn = lidToPnMap.get(cleanDigits);
+      return { phone: realPn, jid: `${realPn}@s.whatsapp.net`, lid: cleanDigits, isGroup: false };
+    }
+    return { phone: cleanDigits, jid: `${cleanDigits}@lid`, lid: cleanDigits, isGroup: false };
+  }
+
+  if (pnToLidMap.has(cleanDigits)) {
+    return { phone: cleanDigits, jid: `${cleanDigits}@s.whatsapp.net`, lid: pnToLidMap.get(cleanDigits), isGroup: false };
+  }
+
+  return { phone: cleanDigits, jid: `${cleanDigits}@s.whatsapp.net`, isGroup: false };
+};
+
+const registerLidPnMapping = (jid1, jid2) => {
+  if (!jid1 || !jid2) return;
+  const is1Lid = isLidJidOrDigits(jid1);
+  const is2Lid = isLidJidOrDigits(jid2);
+  const d1 = cleanPhoneFromJid(jid1);
+  const d2 = cleanPhoneFromJid(jid2);
+
+  if (!d1 || !d2 || d1 === d2) return;
+
+  if (is1Lid && !is2Lid) {
+    lidToPnMap.set(d1, d2);
+    pnToLidMap.set(d2, d1);
+  } else if (is2Lid && !is1Lid) {
+    lidToPnMap.set(d2, d1);
+    pnToLidMap.set(d1, d2);
+  }
+};
+
 const storeChats = (userId, chats = []) => {
   const list = Array.isArray(chats) ? chats : (chats?.chats || []);
   const store = getUserStore(userId);
   for (const c of list) {
     if (c && c.id && c.id !== 'status@broadcast') {
-      const existing = store.chats.get(c.id) || {};
-      const updated = { ...existing, ...c };
+      if (c.lid) registerLidPnMapping(c.id, c.lid);
+      if (c.pn || c.phone) registerLidPnMapping(c.id, c.pn || c.phone);
+
+      const resolved = resolvePhoneAndJid(c.id);
+      const existing = store.chats.get(c.id) || store.chats.get(resolved.phone) || {};
+      const updated = { ...existing, ...c, id: c.id, name: c.name || existing.name };
       store.chats.set(c.id, updated);
-      const cleanPhone = cleanPhoneFromJid(c.id);
-      if (cleanPhone) store.chats.set(cleanPhone, updated);
+      if (resolved.phone) store.chats.set(resolved.phone, updated);
     }
   }
 };
@@ -70,21 +128,22 @@ const storeContacts = (userId, contacts = []) => {
   const store = getUserStore(userId);
   for (const c of list) {
     if (c && c.id) {
-      const existing = store.contacts.get(c.id) || {};
+      if (c.lid) registerLidPnMapping(c.id, c.lid);
+      if (c.pn || c.phone) registerLidPnMapping(c.id, c.pn || c.phone);
+
+      const resolved = resolvePhoneAndJid(c.id);
+      const existing = store.contacts.get(c.id) || store.contacts.get(resolved.phone) || {};
       const updated = { ...existing, ...c };
       store.contacts.set(c.id, updated);
+      if (resolved.phone) store.contacts.set(resolved.phone, updated);
+
       const name = c.name || c.notify || c.verifiedName;
-      const cleanPhone = cleanPhoneFromJid(c.id);
-      if (cleanPhone) {
-        store.contacts.set(cleanPhone, updated);
-      }
       if (name) {
         if (!userContacts.has(userId)) userContacts.set(userId, new Map());
         const contactsMap = userContacts.get(userId);
         contactsMap.set(c.id, name);
-        if (cleanPhone) {
-          contactsMap.set(cleanPhone, name);
-        }
+        if (resolved.phone) contactsMap.set(resolved.phone, name);
+        if (resolved.lid) contactsMap.set(resolved.lid, name);
       }
     }
   }
@@ -99,7 +158,7 @@ const storeMessages = (userId, messages = []) => {
     store.messages.set(msgId, m);
 
     const jid = m.key.remoteJid;
-    const cleanPhone = cleanPhoneFromJid(jid);
+    const resolved = resolvePhoneAndJid(jid);
 
     if (m.pushName) {
       storeContacts(userId, [{ id: jid, notify: m.pushName }]);
@@ -107,23 +166,26 @@ const storeMessages = (userId, messages = []) => {
 
     const chatObj = {
       id: jid,
-      name: m.pushName || (jid.endsWith('@g.us') ? 'Grupo WA' : cleanPhone),
+      name: m.pushName || (jid.endsWith('@g.us') ? 'Grupo WA' : resolved.phone),
       conversationTimestamp: m.messageTimestamp || Math.floor(Date.now() / 1000),
       unreadCount: 0,
     };
 
     if (!store.chats.has(jid)) {
       store.chats.set(jid, chatObj);
-      if (cleanPhone) store.chats.set(cleanPhone, chatObj);
+      if (resolved.phone) store.chats.set(resolved.phone, chatObj);
     } else {
-      const existingChat = store.chats.get(jid);
-      if (m.pushName && (!existingChat.name || existingChat.name === cleanPhone)) {
-        existingChat.name = m.pushName;
+      const existingChat = store.chats.get(jid) || store.chats.get(resolved.phone);
+      if (existingChat) {
+        if (m.pushName && (!existingChat.name || existingChat.name === resolved.phone)) {
+          existingChat.name = m.pushName;
+        }
+        if (m.messageTimestamp) {
+          existingChat.conversationTimestamp = m.messageTimestamp;
+        }
+        store.chats.set(jid, existingChat);
+        if (resolved.phone) store.chats.set(resolved.phone, existingChat);
       }
-      if (m.messageTimestamp) {
-        existingChat.conversationTimestamp = m.messageTimestamp;
-      }
-      if (cleanPhone) store.chats.set(cleanPhone, existingChat);
     }
   }
 };
@@ -1207,42 +1269,43 @@ const sendMessage = async (userId, to, text) => {
     }
   }
 
-  const activeSock = session?.sock;
+  let activeSock = session?.sock;
 
   if (!activeSock) {
     throw new Error('WhatsApp no está conectado actualmente. Por favor ve a la pestaña "Conectar WhatsApp" y escanea el código QR.');
   }
 
   const rawTo = (to || '').trim();
-  let jid = rawTo;
-  if (!rawTo.includes('@')) {
+  const resolved = resolvePhoneAndJid(rawTo);
+  let targetJid = resolved.jid;
+
+  console.log(`[Baileys Outbound] Enviando mensaje a ${rawTo} -> JID ${targetJid} (usuario: ${userId}): "${text.slice(0, 50)}"`);
+
+  // Intentar envío con hasta 3 reintentos con JID primario y alternativo si aplica
+  let lastErr = null;
+  const jidCandidates = [targetJid];
+  if (resolved.lid && !targetJid.endsWith('@lid')) {
+    jidCandidates.push(`${resolved.lid}@lid`);
+  } else if (!targetJid.endsWith('@g.us') && rawTo.length === 15) {
     const cleanDigits = rawTo.replace(/[^0-9]/g, '');
-    if (cleanDigits.length > 15 && (cleanDigits.startsWith('1203') || cleanDigits.includes('-'))) {
-      jid = `${cleanDigits}@g.us`;
-    } else {
-      jid = `${cleanDigits}@s.whatsapp.net`;
-    }
-  } else if (!rawTo.endsWith('@g.us') && !rawTo.endsWith('@s.whatsapp.net')) {
-    if (rawTo.includes('-') || rawTo.includes('g.us')) {
-      jid = rawTo.endsWith('@g.us') ? rawTo : `${rawTo.split('@')[0]}@g.us`;
-    } else {
-      jid = `${rawTo.split('@')[0]}@s.whatsapp.net`;
-    }
+    if (!jidCandidates.includes(`${cleanDigits}@lid`)) jidCandidates.push(`${cleanDigits}@lid`);
+    if (!jidCandidates.includes(`${cleanDigits}@s.whatsapp.net`)) jidCandidates.push(`${cleanDigits}@s.whatsapp.net`);
   }
 
-  console.log(`[Baileys Outbound] Enviando mensaje a JID ${jid} (usuario: ${userId}): "${text.slice(0, 50)}"`);
-
-  // Intentar envío con hasta 3 reintentos rápidos en caso de micro-interrupciones
-  let lastErr = null;
   for (let attempt = 1; attempt <= 3; attempt++) {
+    const currentJid = jidCandidates[(attempt - 1) % jidCandidates.length];
     try {
-      await activeSock.sendMessage(jid, { text });
-      console.log(`[Baileys Outbound] ✅ Mensaje entregado con éxito a ${jid} (intento ${attempt})`);
-      if (session) session.status = 'connected';
-      return { success: true, jid };
+      // Re-verificar socket por si se reinició entre reintentos
+      const currentSession = getSession(userId) || getSession(validUserId);
+      const currentSock = currentSession?.sock || activeSock;
+
+      await currentSock.sendMessage(currentJid, { text });
+      console.log(`[Baileys Outbound] ✅ Mensaje entregado con éxito a ${currentJid} (intento ${attempt})`);
+      if (currentSession) currentSession.status = 'connected';
+      return { success: true, jid: currentJid };
     } catch (err) {
       lastErr = err;
-      console.warn(`[Baileys Outbound] Error en intento ${attempt} enviando a ${jid}:`, err.message);
+      console.warn(`[Baileys Outbound] Error en intento ${attempt} enviando a ${currentJid}:`, err.message);
       if (attempt < 3) await new Promise(r => setTimeout(r, 1000));
     }
   }

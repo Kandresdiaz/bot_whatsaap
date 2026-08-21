@@ -88,10 +88,13 @@ export default function ConversationsPage() {
   const formatPhoneNumber = (phone: string) => {
     if (!phone) return '';
     const clean = phone.replace(/[^0-9]/g, '');
+    if (clean.length === 15 && (clean.startsWith('1') || clean.startsWith('2'))) {
+      return '';
+    }
     if (clean.length === 12 && clean.startsWith('57')) {
       return `+57 ${clean.slice(2, 5)} ${clean.slice(5, 8)} ${clean.slice(8)}`;
     }
-    if (clean.length > 8) {
+    if (clean.length > 8 && clean.length <= 13) {
       return `+${clean}`;
     }
     return clean;
@@ -104,7 +107,10 @@ export default function ConversationsPage() {
     if (conv.contact_name && cleanName !== cleanPhone && conv.contact_name.trim() !== '') {
       return conv.contact_name;
     }
-    return formatPhoneNumber(conv.contact_phone);
+    if (cleanPhone.length === 15 && (cleanPhone.startsWith('1') || cleanPhone.startsWith('2'))) {
+      return 'Contacto WhatsApp';
+    }
+    return formatPhoneNumber(conv.contact_phone) || 'Contacto WhatsApp';
   };
 
   const formatWhatsAppTime = (ts: string) => {

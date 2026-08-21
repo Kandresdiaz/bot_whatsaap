@@ -53,14 +53,15 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
   const isGroup = jid.endsWith('@g.us');
   if (isGroup) return;
 
-  const { cleanPhoneFromJid } = require('./sessionManager');
-  const contactPhone = cleanPhoneFromJid(jid);
+  const { resolvePhoneAndJid } = require('./sessionManager');
+  const resolved = resolvePhoneAndJid(jid);
+  const contactPhone = resolved.phone;
   if (!contactPhone) return;
   const contactName = msg.pushName || contactPhone;
   const text = extractText(msg).trim();
   if (!text) return;
 
-  console.log(`[MSG] ${contactPhone} → ${userId}: "${text.slice(0, 60)}"`);
+  console.log(`[MSG] ${contactPhone} (${contactName}) → ${userId}: "${text.slice(0, 60)}"`);
 
   // ── 1. Buscar o crear conversación ───────────────────────────────────────
   let conversation = null;
