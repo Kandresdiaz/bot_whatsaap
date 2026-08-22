@@ -197,9 +197,9 @@ router.get('/:conversationId/messages', async (req, res) => {
         .from('conversations')
         .select('id')
         .eq('contact_phone', cleanPhone)
-        .maybeSingle();
+        .limit(1);
 
-      if (conv?.id) realConvId = conv.id;
+      if (conv && conv[0]?.id) realConvId = conv[0].id;
     }
 
     let dbMsgs = [];
@@ -287,10 +287,10 @@ router.post('/create', async (req, res) => {
       .from('conversations')
       .select('*')
       .eq('contact_phone', cleanPhone)
-      .maybeSingle();
+      .limit(1);
 
-    if (existing) {
-      return res.json({ success: true, conversation: existing });
+    if (existing && existing.length > 0) {
+      return res.json({ success: true, conversation: existing[0] });
     }
 
     // Crear conversación nueva en Supabase
@@ -307,14 +307,14 @@ router.post('/create', async (req, res) => {
         status: 'open',
       })
       .select()
-      .maybeSingle();
+      .limit(1);
 
     if (insErr) {
       console.error('[Conversations Create Error]:', insErr.message);
       return res.status(500).json({ success: false, error: insErr.message });
     }
 
-    return res.json({ success: true, conversation: newConv });
+    return res.json({ success: true, conversation: newConv && newConv[0] });
   } catch (err) {
     console.error('[Conversations Create Crash Safe]:', err.message);
     res.status(500).json({ success: false, error: err.message });
