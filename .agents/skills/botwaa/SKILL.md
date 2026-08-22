@@ -436,6 +436,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-22** | feat: adaptacion responsive completa para celulares y pantallas pequeñas con prevencion de desbordamiento (`cbfccbf`) | Auto-deploy |
 
+| **2026-08-22** | fix: resolucion de LIDs en sync, despliegue continuo de conversaciones y envio de mensajes sin afectar QR (`15feb11`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
