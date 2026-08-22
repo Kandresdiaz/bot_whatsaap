@@ -442,6 +442,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-22** | fix: frontend websocket connection stability and room join (`ba042f3`) | Auto-deploy |
 
+| **2026-08-22** | fix: badge de estado real y banner para indicar vincular WhatsApp con QR (`973743a`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
