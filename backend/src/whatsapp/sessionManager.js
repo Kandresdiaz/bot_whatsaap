@@ -414,11 +414,20 @@ const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts =
       }
     }
 
-    // Cargar conversaciones existentes de Supabase en una sola consulta
+    // Cargar conversaciones existentes de Supabase para cualquier sesión pertenecientes a este usuario
+    const validUserId = getValidUserId(userId);
+    const { data: userSessions } = await supabase
+      .from('whatsapp_sessions')
+      .select('id')
+      .eq('user_id', validUserId);
+
+    const userSessionIds = (userSessions || []).map(s => s.id).filter(Boolean);
+    if (sessionUuid && !userSessionIds.includes(sessionUuid)) userSessionIds.push(sessionUuid);
+
     const { data: existingConvs } = await supabase
       .from('conversations')
-      .select('id, contact_phone, contact_name, last_message_at')
-      .eq('session_id', sessionUuid);
+      .select('id, session_id, contact_phone, contact_name, last_message_at')
+      .in('session_id', userSessionIds.length > 0 ? userSessionIds : [sessionUuid]);
 
     const convMap = new Map();
     if (Array.isArray(existingConvs)) {
