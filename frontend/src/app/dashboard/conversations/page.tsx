@@ -633,11 +633,25 @@ export default function ConversationsPage() {
             {filtered.length === 0 && (
               <div style={{ padding: 24, textAlign: 'center', color: '#94a3b8', fontSize: 13, lineHeight: 1.5 }}>
                 <div style={{ fontSize: 32, marginBottom: 8 }}>📲</div>
-                <strong style={{ display: 'block', color: '#f1f5f9', marginBottom: 6 }}>No hay chats en este filtro</strong>
-                <p style={{ fontSize: 12, marginBottom: 12 }}>
-                  Si recién vinculaste tu WhatsApp o quieres actualizar tus chats recientes, haz clic en <strong>Sync</strong>.
-                </p>
-                <button className="btn btn-ghost" style={{ fontSize: 12, width: '100%' }} onClick={handleManualSync} disabled={syncing}>
+                <strong style={{ display: 'block', color: '#f1f5f9', marginBottom: 6 }}>No hay chats disponibles</strong>
+                
+                {sessionStatus !== 'connected' ? (
+                  <div style={{ background: 'rgba(234,179,8,0.1)', border: '1px solid rgba(234,179,8,0.25)', borderRadius: 10, padding: 14, marginTop: 12, textAlign: 'left' }}>
+                    <div style={{ fontWeight: 700, color: '#fbbf24', marginBottom: 6, fontSize: 13 }}>⚠️ Estado: WhatsApp Desconectado</div>
+                    <p style={{ fontSize: 12, color: '#cbd5e1', margin: '0 0 10px 0' }}>
+                      El motor del bot aún no ha sido vinculado con tu cuenta de WhatsApp.
+                    </p>
+                    <a href="/dashboard/connect" className="btn btn-primary" style={{ fontSize: 12, width: '100%', textDecoration: 'none', textAlign: 'center', display: 'block', padding: '8px 0' }}>
+                      🔌 Ir a Conectar WhatsApp y Escanear QR
+                    </a>
+                  </div>
+                ) : (
+                  <p style={{ fontSize: 12, marginBottom: 12 }}>
+                    Si recién vinculaste tu WhatsApp o quieres actualizar tus chats recientes, haz clic en <strong>Sync</strong>.
+                  </p>
+                )}
+
+                <button className="btn btn-ghost" style={{ fontSize: 12, width: '100%', marginTop: 10 }} onClick={handleManualSync} disabled={syncing}>
                   {syncing ? '🔄 Sincronizando...' : '🔄 Sincronizar Chats'}
                 </button>
               </div>

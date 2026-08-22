@@ -391,11 +391,59 @@ router.patch('/:conversationId/blacklist', async (req, res) => {
   res.json({ success: true });
 });
 
-// Marcar conversación como resuelta
-router.patch('/:conversationId/resolve', async (req, res) => {
-  const { conversationId } = req.params;
-  await supabase.from('conversations').update({ status: 'resolved' }).eq('id', conversationId);
-  res.json({ success: true });
+// Endpoint de diagnóstico transparente: estado de Baileys, chats en RAM y chats en DB
+router.get('/debug-info/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { getSession, getValidUserId, getUserStore, getSessionUuid } = require('../whatsapp/sessionManager');
+    const validUserId = getValidUserId(userId);
+    const sessionUuid = await getSessionUuid(userId);
+    const session = getSession(userId) || getSession(validUserId);
+
+    const store = getUserStore(validUserId);
+    const ramChatsCount = store && store.chats ? store.chats.size : 0;
+    const ramMessagesCount = store && store.messages ? store.messages.size : 0;
+
+    let dbChatsCount = 0;
+    let dbSessionStatus = 'unknown';
+
+    try {
+      const { data: userSessions } = await supabase
+        .from('whatsapp_sessions')
+        .select('id, status, phone_number')
+        .eq('user_id', validUserId);
+
+      const sessionIds = (userSessions || []).map(s => s.id).filter(Boolean);
+      if (sessionUuid && !sessionIds.includes(sessionUuid)) sessionIds.push(sessionUuid);
+
+      if (userSessions && userSessions.length > 0) {
+        dbSessionStatus = userSessions[0].status;
+      }
+
+      if (sessionIds.length > 0) {
+        const { count } = await supabase
+          .from('conversations')
+          .select('id', { count: 'exact', head: true })
+          .in('session_id', sessionIds);
+        dbChatsCount = count || 0;
+      }
+    } catch (_) {}
+
+    res.json({
+      success: true,
+      userId: validUserId,
+      sessionUuid,
+      status: session?.status || dbSessionStatus || 'disconnected',
+      phone: session?.phone || null,
+      hasActiveSocket: !!session?.sock,
+      ramChatsCount,
+      ramMessagesCount,
+      dbChatsCount,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (err) {
+    res.json({ success: false, error: err.message });
+  }
 });
 
 module.exports = router;
