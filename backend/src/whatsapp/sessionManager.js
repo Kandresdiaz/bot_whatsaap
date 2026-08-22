@@ -771,13 +771,39 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
   // Guardar estado inicial en memoria inmediatamente
   const prevSession = sessions.get(userId) || {};
   sessions.set(userId, { status: 'connecting', businessId, sock: null, qr: null, bot_enabled: prevSession.bot_enabled !== undefined ? prevSession.bot_enabled : false });
+  sessions.set(validUserId, sessions.get(userId));
+  if (validUserId === ADMIN_UUID) sessions.set('admin', sessions.get(userId));
 
-  // Guardar estado inicial en DB inmediatamente al solicitar conexión
-  safeUpsert('whatsapp_sessions', {
-    user_id: userId,
-    status: 'connecting',
-    qr_code: null,
-  }).catch(() => {});
+  // *** CRÍTICO: Garantizar que el registro en whatsapp_sessions exista ANTES de crear el socket
+  // messaging-history.set llega al conectar y llama syncChatsAndMessagesToDb → getSessionUuid()
+  // Si el registro no existe en DB en ese momento, getSessionUuid() retorna null y se pierden todos los chats
+  if (supabase) {
+    try {
+      const { data: existing } = await supabase
+        .from('whatsapp_sessions')
+        .select('id')
+        .eq('user_id', validUserId)
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (existing && existing.length > 0) {
+        // Registrar en mapa de memoria para acceso rápido
+        sessionUuidToUserMap.set(existing[0].id, validUserId);
+        await supabase.from('whatsapp_sessions').update({ status: 'connecting', qr_code: null }).eq('id', existing[0].id);
+      } else {
+        const { data: newSess } = await supabase
+          .from('whatsapp_sessions')
+          .insert({ user_id: validUserId, status: 'connecting' })
+          .select('id')
+          .limit(1);
+        if (newSess && newSess[0]) {
+          sessionUuidToUserMap.set(newSess[0].id, validUserId);
+        }
+      }
+    } catch (dbErr) {
+      console.warn('[createSession] Aviso DB setup sesión:', dbErr.message);
+    }
+  }
 
   const credsFilePath = path.join(sessionDir, 'creds.json');
   if (!forceClean && !fs.existsSync(credsFilePath) && supabase) {
@@ -1091,7 +1117,8 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
       // Si el mensaje fue enviado por el propio usuario desde su teléfono
       if (msg.key.fromMe) {
         const jid = msg.key.remoteJid || '';
-        const contactPhone = jid.replace('@s.whatsapp.net', '').replace(/[^0-9]/g, '');
+        const resolved = resolvePhoneAndJid(jid);
+        const contactPhone = resolved.phone || cleanPhoneFromJid(jid);
         const text = extractText(msg);
         if (!contactPhone || !text) continue;
 
@@ -1099,24 +1126,24 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
           const sessionUuid = await getSessionUuid(userId);
           if (!sessionUuid) continue;
 
-          const { data: conv } = await supabase
+          const { data: convRows } = await supabase
             .from('conversations')
             .select('id')
             .eq('session_id', sessionUuid)
             .eq('contact_phone', contactPhone)
-            .maybeSingle();
+            .limit(1);
 
-          let conversationId = conv?.id;
+          let conversationId = convRows && convRows[0]?.id;
           if (!conversationId) {
-            const { data: newConv } = await supabase.from('conversations').insert({
+            const { data: newConvRows } = await supabase.from('conversations').insert({
               session_id: sessionUuid,
               contact_phone: contactPhone,
               contact_name: contactPhone,
               bot_active: true,
               is_blacklisted: false,
               last_message_at: new Date().toISOString(),
-            }).select().maybeSingle();
-            conversationId = newConv?.id;
+            }).select('id').limit(1);
+            conversationId = newConvRows && newConvRows[0]?.id;
           }
 
           if (conversationId) {

@@ -4,173 +4,182 @@ const { supabase } = require('../db/supabase');
 
 const isUuid = (str) => typeof str === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
 
-// Listar conversaciones de una sesión o usuario (Optimizado a <30ms)
+// Listar conversaciones de una sesión o usuario
 router.get('/:sessionId', async (req, res) => {
   try {
     let { sessionId } = req.params;
     const { search, status } = req.query;
 
-    const { getSessionUuid, getValidUserId, getUserStore, resolvePhoneAndJid, safeToIsoString } = require('../whatsapp/sessionManager');
+    const { getValidUserId, getUserStore, resolvePhoneAndJid, safeToIsoString } = require('../whatsapp/sessionManager');
     const validUserId = getValidUserId(sessionId);
-    const sessionUuid = await getSessionUuid(sessionId);
+
+    // Recopilar todos los session_ids asociados al usuario (para recuperar todas sus conversaciones)
     const sessionIdsSet = new Set();
-    if (isUuid(sessionUuid)) sessionIdsSet.add(sessionUuid);
     if (isUuid(sessionId)) sessionIdsSet.add(sessionId);
     if (isUuid(validUserId)) sessionIdsSet.add(validUserId);
 
     try {
+      // Buscar todas las sesiones de whatsapp_sessions asociadas al user_id
       const { data: userSessions } = await supabase
         .from('whatsapp_sessions')
         .select('id')
         .eq('user_id', validUserId);
 
       if (Array.isArray(userSessions)) {
-        userSessions.forEach(s => {
-          if (isUuid(s?.id)) sessionIdsSet.add(s.id);
-        });
+        userSessions.forEach(s => { if (isUuid(s?.id)) sessionIdsSet.add(s.id); });
+      }
+      // También buscar si el sessionId es el id de una sesión de whatsapp
+      if (isUuid(sessionId)) {
+        const { data: byId } = await supabase
+          .from('whatsapp_sessions')
+          .select('id, user_id')
+          .eq('id', sessionId)
+          .limit(1);
+        if (byId && byId[0]) {
+          sessionIdsSet.add(byId[0].id);
+          // Añadir sesiones del usuario propietario de esa sesión
+          const { data: ownerSessions } = await supabase
+            .from('whatsapp_sessions')
+            .select('id')
+            .eq('user_id', byId[0].user_id);
+          if (Array.isArray(ownerSessions)) {
+            ownerSessions.forEach(s => { if (isUuid(s?.id)) sessionIdsSet.add(s.id); });
+          }
+        }
       }
     } catch (_) {}
 
     const sessionList = Array.from(sessionIdsSet);
 
-    let query = supabase
-      .from('conversations')
-      .select('*')
-      .order('last_message_at', { ascending: false })
-      .limit(100);
-
+    // Consulta principal por session_ids del usuario
+    let data = [];
     if (sessionList.length > 0) {
-      query = query.in('session_id', sessionList);
-    }
-    if (status) query = query.eq('status', status);
-    if (search) query = query.ilike('contact_name', `%${search}%`);
-
-    let { data, error } = await query;
-
-    // Si la consulta filtrada por session_id no trae resultados, cargar todas las conversaciones de la DB
-    if (!data || data.length === 0) {
-      let fbQuery = supabase
-        .from('conversations')
-        .select('*')
-        .order('last_message_at', { ascending: false })
-        .limit(100);
-      if (status) fbQuery = fbQuery.eq('status', status);
-      if (search) fbQuery = fbQuery.ilike('contact_name', `%${search}%`);
-
-      const { data: fallbackConvs } = await fbQuery;
-      data = fallbackConvs || [];
+      let q = supabase.from('conversations').select('*').in('session_id', sessionList).order('last_message_at', { ascending: false }).limit(200);
+      if (status) q = q.eq('status', status);
+      if (search) q = q.or(`contact_name.ilike.%${search}%,contact_phone.ilike.%${search}%`);
+      const { data: d } = await q;
+      if (d) data = d;
     }
 
-    if (error) console.error('[Conversations GET Error]:', error?.message);
+    // Fallback: si no hay resultados, traer TODAS las conversaciones de la DB
+    if (data.length === 0) {
+      let fbQ = supabase.from('conversations').select('*').order('last_message_at', { ascending: false }).limit(200);
+      if (status) fbQ = fbQ.eq('status', status);
+      if (search) fbQ = fbQ.or(`contact_name.ilike.%${search}%,contact_phone.ilike.%${search}%`);
+      const { data: fbData } = await fbQ;
+      if (fbData) data = fbData;
+    }
 
-    // Obtener la tienda de RAM del usuario (o fallback al store principal de admin)
+    // Obtener la tienda RAM: intentar con validUserId, luego con admin UUID
     let store = getUserStore(validUserId);
-    if ((!store || !store.chats || store.chats.size === 0) && validUserId !== '00000000-0000-0000-0000-000000000001') {
-      const adminStore = getUserStore('00000000-0000-0000-0000-000000000001');
-      if (adminStore && adminStore.chats && adminStore.chats.size > 0) {
-        store = adminStore;
-      }
+    const ADMIN_UUID = '00000000-0000-0000-0000-000000000001';
+    if (!store || store.chats.size === 0) {
+      const adminStore = getUserStore(ADMIN_UUID);
+      if (adminStore && adminStore.chats.size > 0) store = adminStore;
     }
 
-    const dbConvs = data || [];
     const phoneSet = new Set();
     const merged = [];
 
-    for (const c of dbConvs) {
+    // 1. Primero: conversaciones de DB
+    for (const c of data) {
       if (!c) continue;
       const rawPhone = (c.contact_phone || '').trim();
       if (!rawPhone) continue;
-
       const resolved = resolvePhoneAndJid(rawPhone);
       const cleanPhone = resolved.phone || rawPhone;
-
       if (phoneSet.has(cleanPhone)) continue;
       phoneSet.add(cleanPhone);
-
-      merged.push({
-        ...c,
-        contact_phone: cleanPhone,
-        contact_name: c.contact_name || cleanPhone,
-      });
+      merged.push({ ...c, contact_phone: cleanPhone, contact_name: c.contact_name || cleanPhone });
     }
 
-    // Fusionar chats acumulados en memoria RAM de Baileys
+    // 2. Fusionar chats de RAM de Baileys (chats que llegan pero aún no están en DB)
     try {
       if (store && store.chats) {
-        for (const [key, chat] of store.chats.entries()) {
+        for (const [, chat] of store.chats.entries()) {
           if (!chat || !chat.id || chat.id === 'status@broadcast') continue;
           const resolved = resolvePhoneAndJid(chat.id);
-          const phone = resolved.phone || chat.id.split('@')[0].replace(/[^0-9]/g, '');
-          if (!phone || phoneSet.has(phone)) continue;
-
+          const phone = resolved.phone;
+          if (!phone || phone.length < 7) continue; // descartar LIDs sin resolver
+          if (phoneSet.has(phone)) continue;
           phoneSet.add(phone);
+
+          // Obtener nombre del contacto desde store de contactos
+          let contactName = chat.name || '';
+          if (!contactName || contactName === phone) {
+            const co = store.contacts?.get(chat.id) || store.contacts?.get(`${phone}@s.whatsapp.net`) || store.contacts?.get(phone);
+            contactName = co?.name || co?.notify || co?.verifiedName || phone;
+          }
+
           merged.push({
             id: `ram_${phone}`,
-            session_id: sessionUuid || validUserId,
+            session_id: sessionList[0] || validUserId,
             contact_phone: phone,
-            contact_name: chat.name || phone,
+            contact_name: contactName,
             bot_active: true,
             is_blacklisted: false,
             is_lead: false,
             unread_count: chat.unreadCount || 0,
             status: 'open',
             last_message: null,
-            last_message_at: safeToIsoString ? safeToIsoString(chat.conversationTimestamp) : new Date().toISOString(),
+            last_message_at: safeToIsoString(chat.conversationTimestamp) || new Date().toISOString(),
             created_at: new Date().toISOString(),
           });
         }
       }
-    } catch (e) {
-      console.warn('[Merge RAM Chats Error]:', e.message);
-    }
+    } catch (e) { console.warn('[RAM Chats Merge]:', e.message); }
 
-    // Obtener los últimos mensajes de la memoria RAM de Baileys si no vienen en la DB
+    // 3. Enriquecer previews de último mensaje desde RAM
     try {
       const { extractText } = require('../whatsapp/sessionManager');
       if (store && store.messages && store.messages.size > 0) {
-        for (const [key, msg] of store.messages.entries()) {
-          if (!msg || !msg.key || !msg.key.remoteJid) continue;
+        // Agrupar mensajes por teléfono, quedarse con el más reciente
+        const latestByPhone = new Map();
+        for (const [, msg] of store.messages.entries()) {
+          if (!msg?.key?.remoteJid) continue;
           const resolved = resolvePhoneAndJid(msg.key.remoteJid);
           const phone = resolved.phone;
+          if (!phone) continue;
           const text = extractText ? extractText(msg) : '';
-          const msgTs = safeToIsoString(msg.messageTimestamp);
-
-          if (phone && text) {
-            const foundConv = merged.find(c => c.contact_phone === phone);
-            if (foundConv) {
-              if (!foundConv.last_message || new Date(msgTs) > new Date(foundConv.last_message_at || 0)) {
-                foundConv.last_message = text;
-                foundConv.last_message_at = msgTs;
-              }
+          if (!text) continue;
+          const ts = msg.messageTimestamp ? Number(msg.messageTimestamp) : 0;
+          if (!latestByPhone.has(phone) || ts > latestByPhone.get(phone).ts) {
+            latestByPhone.set(phone, { text, ts });
+          }
+        }
+        for (const conv of merged) {
+          const latest = latestByPhone.get(conv.contact_phone);
+          if (latest) {
+            if (!conv.last_message || latest.ts * 1000 > new Date(conv.last_message_at || 0).getTime()) {
+              conv.last_message = latest.text;
+              conv.last_message_at = new Date(latest.ts * 1000).toISOString();
             }
           }
         }
       }
     } catch (_) {}
 
-    // Enriquecer nombres de contactos desde la memoria de contactos de Baileys
+    // 4. Enriquecer nombres desde contactos RAM
     try {
       if (store && store.contacts) {
         for (const c of merged) {
-          const cleanP = c.contact_phone ? c.contact_phone.replace(/[^0-9]/g, '') : '';
-          const cNameClean = c.contact_name ? c.contact_name.replace(/[^0-9]/g, '') : '';
-          if (!c.contact_name || cNameClean === cleanP) {
-            const contactObj = store.contacts.get(cleanP) || store.contacts.get(`${cleanP}@s.whatsapp.net`) || store.contacts.get(`${cleanP}@lid`);
-            const betterName = contactObj?.name || contactObj?.notify || contactObj?.verifiedName;
-            if (betterName) {
-              c.contact_name = betterName;
-            }
+          const cleanP = c.contact_phone;
+          const cleanName = c.contact_name || '';
+          if (!cleanName || cleanName === cleanP) {
+            const co = store.contacts.get(cleanP) || store.contacts.get(`${cleanP}@s.whatsapp.net`) || store.contacts.get(`${cleanP}@lid`);
+            const betterName = co?.name || co?.notify || co?.verifiedName;
+            if (betterName) c.contact_name = betterName;
           }
         }
       }
     } catch (_) {}
 
-    // Ordenar por la fecha del último mensaje descendente
+    // Ordenar por fecha de último mensaje descendente
     merged.sort((a, b) => new Date(b.last_message_at || 0).getTime() - new Date(a.last_message_at || 0).getTime());
 
     res.json({ success: true, conversations: merged });
   } catch (err) {
-    console.error('[GET Conversations Crash Safe]:', err.message);
+    console.error('[GET Conversations Error]:', err.message);
     res.json({ success: true, conversations: [] });
   }
 });

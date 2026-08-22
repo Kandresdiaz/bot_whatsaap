@@ -26,17 +26,31 @@ router.post('/start', async (req, res) => {
 
     businessId = business?.id || null;
 
-    // 2. Intentar guardar o actualizar sesión en DB sin romper si falla
+    // 2. Garantizar que el registro de sesión exista en DB ANTES de arrancar Baileys
+    // (crítico: messaging-history.set se dispara al conectar y necesita el sessionUuid ya creado)
     try {
-      const { data: session } = await supabase
+      const { data: existingSession } = await supabase
         .from('whatsapp_sessions')
-        .upsert({ user_id: validUserId, business_id: businessId, status: 'connecting' }, { onConflict: 'user_id' })
-        .select()
-        .maybeSingle();
+        .select('id')
+        .eq('user_id', validUserId)
+        .order('created_at', { ascending: false })
+        .limit(1);
 
-      if (session?.id) sessionId = session.id;
+      if (existingSession && existingSession.length > 0) {
+        // Actualizar estado a connecting
+        await supabase.from('whatsapp_sessions').update({ status: 'connecting', qr_code: null }).eq('id', existingSession[0].id);
+        sessionId = existingSession[0].id;
+      } else {
+        // Crear nuevo registro
+        const { data: newSession } = await supabase
+          .from('whatsapp_sessions')
+          .insert({ user_id: validUserId, status: 'connecting' })
+          .select('id')
+          .limit(1);
+        if (newSession && newSession[0]) sessionId = newSession[0].id;
+      }
     } catch (dbErr) {
-      console.warn('DB upsert aviso (continuando con Baileys):', dbErr.message);
+      console.warn('DB session upsert aviso (continuando con Baileys):', dbErr.message);
     }
 
     // 3. Iniciar sesión de Baileys (forzando limpieza si no estaba conectada)
@@ -231,7 +245,6 @@ router.post('/send', async (req, res) => {
               session_id: sessionUuid,
               contact_phone: resolvedPhone,
               contact_name: resolvedPhone,
-              last_message: message,
               bot_active: true,
               is_blacklisted: false,
               last_message_at: new Date().toISOString(),
@@ -247,7 +260,6 @@ router.post('/send', async (req, res) => {
 
       if (targetConvId) {
         await supabase.from('conversations').update({
-          last_message: message,
           last_message_at: new Date().toISOString(),
         }).eq('id', targetConvId);
 
