@@ -438,6 +438,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-22** | fix: resolucion de LIDs en sync, despliegue continuo de conversaciones y envio de mensajes sin afectar QR (`15feb11`) | Auto-deploy |
 
+| **2026-08-22** | fix: 5 bugs criticos - sessionUuid garantizado antes de messaging-history.set, eliminar business_id y last_message de inserts, consulta correcta de conversaciones por user_id (`3adf7f5`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
