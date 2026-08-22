@@ -10,7 +10,7 @@ router.get('/:sessionId', async (req, res) => {
     let { sessionId } = req.params;
     const { search, status } = req.query;
 
-    const { getSessionUuid, getValidUserId } = require('../whatsapp/sessionManager');
+    const { getSessionUuid, getValidUserId, getUserStore, resolvePhoneAndJid, safeToIsoString } = require('../whatsapp/sessionManager');
     const validUserId = getValidUserId(sessionId);
     const sessionUuid = await getSessionUuid(sessionId);
     const sessionIdsSet = new Set();
@@ -47,20 +47,30 @@ router.get('/:sessionId', async (req, res) => {
 
     let { data, error } = await query;
 
-    // Si la consulta por session_id no trae resultados, cargar todas las conversaciones existentes de la DB
+    // Si la consulta filtrada por session_id no trae resultados, cargar todas las conversaciones de la DB
     if (!data || data.length === 0) {
-      const { data: fallbackConvs } = await supabase
+      let fbQuery = supabase
         .from('conversations')
         .select('*')
         .order('last_message_at', { ascending: false })
         .limit(100);
+      if (status) fbQuery = fbQuery.eq('status', status);
+      if (search) fbQuery = fbQuery.ilike('contact_name', `%${search}%`);
+
+      const { data: fallbackConvs } = await fbQuery;
       data = fallbackConvs || [];
     }
 
     if (error) console.error('[Conversations GET Error]:', error?.message);
 
-    const { getUserStore, resolvePhoneAndJid, safeToIsoString } = require('../whatsapp/sessionManager');
-    const store = getUserStore(validUserId);
+    // Obtener la tienda de RAM del usuario (o fallback al store principal de admin)
+    let store = getUserStore(validUserId);
+    if ((!store || !store.chats || store.chats.size === 0) && validUserId !== '00000000-0000-0000-0000-000000000001') {
+      const adminStore = getUserStore('00000000-0000-0000-0000-000000000001');
+      if (adminStore && adminStore.chats && adminStore.chats.size > 0) {
+        store = adminStore;
+      }
+    }
 
     const dbConvs = data || [];
     const phoneSet = new Set();

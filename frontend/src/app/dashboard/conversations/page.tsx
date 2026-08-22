@@ -175,9 +175,10 @@ export default function ConversationsPage() {
   }, [user, BACKEND]);
 
   const loadConversations = async (targetId: string) => {
-    if (!targetId) return;
+    const idToFetch = user?.id || targetId || 'admin';
+    if (!idToFetch) return;
     try {
-      const res = await fetch(`${BACKEND}/api/conversations/${targetId}`);
+      const res = await fetch(`${BACKEND}/api/conversations/${idToFetch}`);
       if (!res.ok) return;
       const data = await res.json();
       if (data.conversations && Array.isArray(data.conversations)) {
@@ -193,7 +194,7 @@ export default function ConversationsPage() {
 
   // Sincronización en tiempo real vía WebSockets
   useEffect(() => {
-    const targetId = sessionId || user?.id || 'admin';
+    const targetId = user?.id || sessionId || 'admin';
     loadConversations(targetId);
 
     const interval = setInterval(() => {
@@ -204,6 +205,7 @@ export default function ConversationsPage() {
     socketRef.current = socket;
     socket.emit('join_session', targetId);
     if (user?.id) socket.emit('join_session', user.id);
+    if (sessionId) socket.emit('join_session', sessionId);
     if (user?.id === 'admin' || !user?.id) socket.emit('join_session', '00000000-0000-0000-0000-000000000001');
     socket.emit('join_session', 'admin');
 

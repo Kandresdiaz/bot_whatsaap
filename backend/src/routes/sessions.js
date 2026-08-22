@@ -210,22 +210,27 @@ router.post('/send', async (req, res) => {
 
     try {
       if (!targetConvId && cleanDigits) {
+        const { resolvePhoneAndJid } = require('../whatsapp/sessionManager');
+        const resolved = resolvePhoneAndJid(rawPhone);
+        const resolvedPhone = resolved.phone || cleanDigits;
         const sessionUuid = await getSessionUuid(validUserId);
+
         const { data: existing } = await supabase
           .from('conversations')
           .select('id')
-          .eq('contact_phone', cleanDigits)
-          .maybeSingle();
+          .eq('contact_phone', resolvedPhone)
+          .limit(1);
 
-        if (existing?.id) {
-          targetConvId = existing.id;
+        const existingRow = existing && existing[0];
+        if (existingRow?.id) {
+          targetConvId = existingRow.id;
         } else {
           const { data: newConv } = await supabase
             .from('conversations')
             .insert({
               session_id: sessionUuid,
-              contact_phone: cleanDigits,
-              contact_name: cleanDigits,
+              contact_phone: resolvedPhone,
+              contact_name: resolvedPhone,
               last_message: message,
               bot_active: true,
               is_blacklisted: false,
@@ -234,8 +239,9 @@ router.post('/send', async (req, res) => {
               status: 'open',
             })
             .select('id')
-            .maybeSingle();
-          targetConvId = newConv?.id || null;
+            .limit(1);
+          const newRow = newConv && newConv[0];
+          targetConvId = newRow?.id || null;
         }
       }
 

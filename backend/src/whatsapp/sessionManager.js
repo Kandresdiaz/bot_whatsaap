@@ -253,11 +253,12 @@ const getSessionUuid = async (userId) => {
       .from('whatsapp_sessions')
       .select('id')
       .eq('user_id', validUserId)
-      .maybeSingle();
+      .order('created_at', { ascending: false })
+      .limit(1);
 
-    if (existing?.id) {
-      sessionUuidToUserMap.set(existing.id, validUserId);
-      return existing.id;
+    if (existing && existing.length > 0 && existing[0]?.id) {
+      sessionUuidToUserMap.set(existing[0].id, validUserId);
+      return existing[0].id;
     }
 
     // 2. Probar si userId directamente coincide con id de whatsapp_sessions
@@ -265,12 +266,12 @@ const getSessionUuid = async (userId) => {
       .from('whatsapp_sessions')
       .select('id, user_id')
       .eq('id', userId)
-      .maybeSingle();
+      .limit(1);
 
-    if (byId?.id) {
-      const mappedUser = byId.user_id || validUserId;
-      sessionUuidToUserMap.set(byId.id, mappedUser);
-      return byId.id;
+    if (byId && byId.length > 0 && byId[0]?.id) {
+      const mappedUser = byId[0].user_id || validUserId;
+      sessionUuidToUserMap.set(byId[0].id, mappedUser);
+      return byId[0].id;
     }
 
     // 3. Crear registro nuevo usando validUserId
@@ -278,12 +279,13 @@ const getSessionUuid = async (userId) => {
       .from('whatsapp_sessions')
       .insert({ user_id: validUserId, status: 'connected' })
       .select('id')
-      .maybeSingle();
+      .limit(1);
 
-    if (newSess?.id) {
-      sessionUuidToUserMap.set(newSess.id, validUserId);
+    const newId = newSess && newSess[0]?.id;
+    if (newId) {
+      sessionUuidToUserMap.set(newId, validUserId);
     }
-    return newSess?.id || null;
+    return newId || null;
   } catch (e) {
     console.warn('[DB] getSessionUuid aviso:', e.message);
     return null;
@@ -434,10 +436,11 @@ const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts =
       for (const chat of chats) {
         if (!chat || !chat.id || chat.id === 'status@broadcast') continue;
         const jid = chat.id;
-        const contactPhone = jid.replace('@s.whatsapp.net', '').replace('@g.us', '').replace(/[^0-9]/g, '');
+        const resolved = resolvePhoneAndJid(jid);
+        const contactPhone = resolved.phone || cleanPhoneFromJid(jid);
         if (!contactPhone) continue;
 
-        const isGroup = jid.endsWith('@g.us');
+        const isGroup = resolved.isGroup || jid.endsWith('@g.us');
         let contactName = chat.name || contactsMap.get(jid) || contactsMap.get(contactPhone) || (isGroup ? 'Grupo WA' : contactPhone);
 
         // Si no tenemos nombre, buscar si hay pushName en mensajes recibidos de este JID
@@ -482,10 +485,11 @@ const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts =
       for (const c of contacts) {
         if (!c || !c.id || c.id === 'status@broadcast') continue;
         const jid = c.id;
-        const contactPhone = jid.replace('@s.whatsapp.net', '').replace('@g.us', '').replace(/[^0-9]/g, '');
+        const resolved = resolvePhoneAndJid(jid);
+        const contactPhone = resolved.phone || cleanPhoneFromJid(jid);
         if (!contactPhone) continue;
 
-        const isGroup = jid.endsWith('@g.us');
+        const isGroup = resolved.isGroup || jid.endsWith('@g.us');
         const contactName = c.name || c.notify || c.verifiedName || contactsMap.get(contactPhone) || (isGroup ? 'Grupo WA' : contactPhone);
 
         if (!convMap.has(contactPhone) && !addedPhones.has(contactPhone)) {
@@ -508,10 +512,11 @@ const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts =
       for (const msg of messages) {
         if (!msg || !msg.key || !msg.key.remoteJid || msg.key.remoteJid === 'status@broadcast') continue;
         const jid = msg.key.remoteJid;
-        const contactPhone = jid.replace('@s.whatsapp.net', '').replace('@g.us', '').replace(/[^0-9]/g, '');
+        const resolved = resolvePhoneAndJid(jid);
+        const contactPhone = resolved.phone || cleanPhoneFromJid(jid);
         if (!contactPhone) continue;
 
-        const isGroup = jid.endsWith('@g.us');
+        const isGroup = resolved.isGroup || jid.endsWith('@g.us');
         const pushName = msg.pushName || contactsMap.get(jid) || contactsMap.get(contactPhone) || (isGroup ? 'Grupo WA' : contactPhone);
         const msgTime = safeToIsoString(msg.messageTimestamp);
 
@@ -545,8 +550,9 @@ const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts =
                 .from('conversations')
                 .insert(convItem)
                 .select('id, contact_phone, contact_name, last_message_at')
-                .maybeSingle();
-              if (singleIns) convMap.set(singleIns.contact_phone, singleIns);
+                .limit(1);
+              const row = singleIns && singleIns[0];
+              if (row) convMap.set(row.contact_phone, row);
             } catch (_) {}
           }
         } else if (Array.isArray(inserted)) {
@@ -562,8 +568,9 @@ const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts =
               .from('conversations')
               .insert(convItem)
               .select('id, contact_phone, contact_name, last_message_at')
-              .maybeSingle();
-            if (singleIns) convMap.set(singleIns.contact_phone, singleIns);
+              .limit(1);
+            const row = singleIns && singleIns[0];
+            if (row) convMap.set(row.contact_phone, row);
           } catch (_) {}
         }
       }
@@ -600,7 +607,8 @@ const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts =
       for (const msg of messages) {
         if (!msg || !msg.key || !msg.message || msg.key.remoteJid === 'status@broadcast') continue;
         const jid = msg.key.remoteJid;
-        const contactPhone = jid.replace('@s.whatsapp.net', '').replace('@g.us', '').replace(/[^0-9]/g, '');
+        const resolved = resolvePhoneAndJid(jid);
+        const contactPhone = resolved.phone || cleanPhoneFromJid(jid);
         if (!contactPhone) continue;
 
         const text = extractText(msg);
