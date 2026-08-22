@@ -246,8 +246,14 @@ export default function ConversationsPage() {
       });
     });
 
-    socket.on('connected', () => {
-      setSessionStatus('connected');
+    socket.on('connected', (payload: any) => {
+      const isConn = payload && (payload.status === 'connected' || payload === 'connected');
+      if (isConn) setSessionStatus('connected');
+      loadConversations(userIdToUse);
+    });
+
+    socket.on('session_ready', (payload: any) => {
+      if (payload?.status === 'connected' || !payload?.status) setSessionStatus('connected');
       loadConversations(userIdToUse);
     });
 
@@ -469,6 +475,31 @@ export default function ConversationsPage() {
 
   return (
     <div className="conversations-container" style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 64px)', gap: 8, background: '#080E1F' }}>
+      {/* Alerta de WhatsApp Desconectado / Pendiente */}
+      {sessionStatus !== 'connected' && (
+        <div style={{
+          background: 'rgba(234,179,8,0.12)',
+          border: '1px solid rgba(234,179,8,0.3)',
+          borderRadius: 10,
+          padding: '8px 16px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          fontSize: 13,
+          color: '#fbbf24',
+          flexWrap: 'wrap',
+          gap: 8,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: 18 }}>📱</span>
+            <span><strong>WhatsApp no vinculado:</strong> Para ver tus chats y permitir que el bot responda, debes vincular tu WhatsApp escaneando el QR.</span>
+          </div>
+          <a href="/dashboard/connect" className="btn btn-primary" style={{ fontSize: 12, padding: '4px 12px', textDecoration: 'none' }}>
+            🔌 Escanear QR Ahora
+          </a>
+        </div>
+      )}
+
       {/* Alerta de Bot Global Pausado */}
       {!globalBotEnabled && (
         <div style={{
