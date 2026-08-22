@@ -440,6 +440,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-22** | fix: 5 bugs criticos - sessionUuid garantizado antes de messaging-history.set, eliminar business_id y last_message de inserts, consulta correcta de conversaciones por user_id (`3adf7f5`) | Auto-deploy |
 
+| **2026-08-22** | fix: frontend websocket connection stability and room join (`ba042f3`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
