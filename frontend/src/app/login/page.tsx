@@ -28,19 +28,20 @@ export default function LoginPage() {
   return (
     <div style={{
       minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
-      background: 'radial-gradient(ellipse at 50% 0%, rgba(124,58,237,0.15) 0%, var(--bg-dark) 60%)'
+      background: 'radial-gradient(ellipse at 50% 0%, rgba(26,107,255,0.18) 0%, var(--bg-dark) 70%)',
+      padding: 16,
     }}>
-      <div style={{ width: '100%', maxWidth: 420, padding: '0 24px' }}>
+      <div style={{ width: '100%', maxWidth: 420 }}>
         {/* Logo */}
-        <div style={{ textAlign: 'center', marginBottom: 40 }}>
+        <div style={{ textAlign: 'center', marginBottom: 32 }}>
           <div style={{
-            fontSize: 48, marginBottom: 12, display: 'inline-block',
-            background: 'linear-gradient(135deg, #7c3aed, #a855f7)',
+            fontSize: 42, marginBottom: 12, display: 'inline-block',
+            background: 'linear-gradient(135deg, #1A6BFF, #00CFFF)',
             borderRadius: 16, padding: '12px 16px', lineHeight: 1
           }}>🤖</div>
           <h1 style={{
-            fontSize: 28, fontWeight: 800,
-            background: 'linear-gradient(135deg, #a855f7, #7c3aed)',
+            fontSize: 32, fontWeight: 800,
+            background: 'linear-gradient(135deg, #1A6BFF, #00CFFF)',
             WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent'
           }}>BotWA</h1>
           <p style={{ color: 'var(--text-muted)', fontSize: 14, marginTop: 4 }}>
@@ -49,8 +50,8 @@ export default function LoginPage() {
         </div>
 
         {/* Form */}
-        <div className="card" style={{ borderColor: 'rgba(124,58,237,0.2)' }}>
-          <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 24 }}>Iniciar sesión</h2>
+        <div className="card" style={{ borderColor: 'rgba(26,107,255,0.3)' }}>
+          <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 20 }}>Iniciar sesión</h2>
 
           <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div>
@@ -84,7 +85,7 @@ export default function LoginPage() {
             {error && (
               <div style={{
                 background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)',
-                borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#ef4444'
+                borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#ef4444', wordBreak: 'break-word'
               }}>
                 {error}
               </div>
@@ -94,7 +95,7 @@ export default function LoginPage() {
               className="btn btn-primary"
               type="submit"
               disabled={loading}
-              style={{ width: '100%', justifyContent: 'center', marginTop: 8, padding: '13px' }}
+              style={{ width: '100%', justifyContent: 'center', marginTop: 8, padding: '12px' }}
             >
               {loading ? <><span className="spinner" style={{ width: 18, height: 18 }} /> Entrando...</> : 'Entrar →'}
             </button>

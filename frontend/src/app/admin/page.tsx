@@ -112,51 +112,53 @@ export default function AdminPage() {
       {/* Tabla clientes */}
       {activeTab === 'clients' && (
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Cliente</th>
-                <th>Negocio</th>
-                <th>Plan</th>
-                <th>Estado</th>
-                <th>Bot</th>
-                <th>Vence</th>
-                <th>Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {clients.map(c => (
-                <tr key={c.id}>
-                  <td>
-                    <div style={{ fontWeight: 600 }}>{c.name}</div>
-                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{c.email}</div>
-                  </td>
-                  <td>
-                    <div style={{ fontSize: 13 }}>{c.businesses?.[0]?.name || '—'}</div>
-                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{c.businesses?.[0]?.category || ''}</div>
-                  </td>
-                  <td><span className="badge badge-purple">{c.plan}</span></td>
-                  <td>{statusBadge(c.status)}</td>
-                  <td>{botStatus(c.whatsapp_sessions)}</td>
-                  <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                    {c.paid_until ? new Date(c.paid_until).toLocaleDateString('es-CO') : '—'}
-                  </td>
-                  <td>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <button className="btn btn-success" style={{ padding: '5px 10px', fontSize: 12 }} onClick={() => { setModal({ type: 'pay', client: c }); setPayForm(p => ({ ...p, plan: c.plan })); }}>
-                        💳 Pago
-                      </button>
-                      {c.status === 'active' && (
-                        <button className="btn btn-danger" style={{ padding: '5px 10px', fontSize: 12 }} onClick={() => pause(c.id)}>
-                          ⏸
-                        </button>
-                      )}
-                    </div>
-                  </td>
+          <div className="table-responsive">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Cliente</th>
+                  <th>Negocio</th>
+                  <th>Plan</th>
+                  <th>Estado</th>
+                  <th>Bot</th>
+                  <th>Vence</th>
+                  <th>Acciones</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {clients.map(c => (
+                  <tr key={c.id}>
+                    <td>
+                      <div style={{ fontWeight: 600 }}>{c.name}</div>
+                      <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{c.email}</div>
+                    </td>
+                    <td>
+                      <div style={{ fontSize: 13 }}>{c.businesses?.[0]?.name || '—'}</div>
+                      <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{c.businesses?.[0]?.category || ''}</div>
+                    </td>
+                    <td><span className="badge badge-purple">{c.plan}</span></td>
+                    <td>{statusBadge(c.status)}</td>
+                    <td>{botStatus(c.whatsapp_sessions)}</td>
+                    <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                      {c.paid_until ? new Date(c.paid_until).toLocaleDateString('es-CO') : '—'}
+                    </td>
+                    <td>
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        <button className="btn btn-success" style={{ padding: '5px 10px', fontSize: 12 }} onClick={() => { setModal({ type: 'pay', client: c }); setPayForm(p => ({ ...p, plan: c.plan })); }}>
+                          💳 Pago
+                        </button>
+                        {c.status === 'active' && (
+                          <button className="btn btn-danger" style={{ padding: '5px 10px', fontSize: 12 }} onClick={() => pause(c.id)}>
+                            ⏸
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
           {clients.length === 0 && (
             <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>Sin clientes registrados</div>
           )}

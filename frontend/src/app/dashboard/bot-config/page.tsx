@@ -63,7 +63,7 @@ export default function BotConfigPage() {
         <p className="page-subtitle">Define cómo se comporta tu asistente virtual</p>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 24 }}>
         {/* Info del negocio */}
         <div className="card">
           <h3 style={{ fontWeight: 700, marginBottom: 16 }}>🏢 Información del negocio</h3>
@@ -97,7 +97,7 @@ export default function BotConfigPage() {
                 style={{
                   padding: '14px 16px', borderRadius: 12, cursor: 'pointer',
                   border: `2px solid ${config.bot_personality === p.value ? 'var(--accent)' : 'var(--border)'}`,
-                  background: config.bot_personality === p.value ? 'rgba(124,58,237,0.1)' : 'var(--bg-card2)',
+                  background: config.bot_personality === p.value ? 'rgba(26,107,255,0.12)' : 'var(--bg-card2)',
                   transition: 'all 0.2s'
                 }}
               >
@@ -127,12 +127,12 @@ export default function BotConfigPage() {
         <div className="card">
           <h3 style={{ fontWeight: 700, marginBottom: 16 }}>🕐 Horario de atención</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <div style={{ display: 'flex', gap: 14 }}>
-              <div style={{ flex: 1 }}>
+            <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+              <div style={{ flex: 1, minWidth: 120 }}>
                 <label style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 6, display: 'block' }}>Apertura</label>
                 <input className="input" type="time" value={config.active_hours_start} onChange={e => set('active_hours_start', e.target.value)} />
               </div>
-              <div style={{ flex: 1 }}>
+              <div style={{ flex: 1, minWidth: 120 }}>
                 <label style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 6, display: 'block' }}>Cierre</label>
                 <input className="input" type="time" value={config.active_hours_end} onChange={e => set('active_hours_end', e.target.value)} />
               </div>
@@ -147,7 +147,7 @@ export default function BotConfigPage() {
                     style={{
                       padding: '8px 12px', borderRadius: 10, fontSize: 13, fontWeight: 600,
                       border: `2px solid ${config.active_days?.includes(i) ? 'var(--accent)' : 'var(--border)'}`,
-                      background: config.active_days?.includes(i) ? 'rgba(124,58,237,0.2)' : 'var(--bg-card2)',
+                      background: config.active_days?.includes(i) ? 'rgba(26,107,255,0.2)' : 'var(--bg-card2)',
                       color: config.active_days?.includes(i) ? 'var(--accent-light)' : 'var(--text-muted)',
                       cursor: 'pointer', transition: 'all 0.2s'
                     }}

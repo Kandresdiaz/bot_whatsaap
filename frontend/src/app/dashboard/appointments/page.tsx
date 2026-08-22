@@ -166,48 +166,50 @@ export default function AppointmentsPage() {
             <p>No hay citas aún. El bot las agendará automáticamente cuando los clientes lo soliciten.</p>
           </div>
         ) : (
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Cliente</th>
-                <th>Servicio</th>
-                <th>Fecha</th>
-                <th>Hora</th>
-                <th>Estado</th>
-                <th>Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {appointments.map(a => (
-                <tr key={a.id}>
-                  <td>
-                    <div style={{ fontWeight: 600 }}>{a.client_name}</div>
-                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>+{a.client_phone}</div>
-                  </td>
-                  <td style={{ fontSize: 14 }}>{a.service || '—'}</td>
-                  <td style={{ fontSize: 14 }}>{formatDate(a.appointment_date)}</td>
-                  <td style={{ fontSize: 14, fontWeight: 600, color: 'var(--accent-light)' }}>{formatTime(a.appointment_time)}</td>
-                  <td><span className={`badge ${STATUS_COLORS[a.status]}`}>{STATUS_LABELS[a.status]}</span></td>
-                  <td>
-                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                      {a.status === 'pending' && (
-                        <button className="btn btn-success" style={{ padding: '4px 10px', fontSize: 12 }}
-                          onClick={() => updateStatus(a.id, 'confirmed')}>✅</button>
-                      )}
-                      {a.status === 'confirmed' && (
-                        <button className="btn btn-primary" style={{ padding: '4px 10px', fontSize: 12 }}
-                          onClick={() => updateStatus(a.id, 'completed')}>🎉 Completar</button>
-                      )}
-                      {(a.status === 'pending' || a.status === 'confirmed') && (
-                        <button className="btn btn-danger" style={{ padding: '4px 10px', fontSize: 12 }}
-                          onClick={() => updateStatus(a.id, 'cancelled')}>❌</button>
-                      )}
-                    </div>
-                  </td>
+          <div className="table-responsive">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Cliente</th>
+                  <th>Servicio</th>
+                  <th>Fecha</th>
+                  <th>Hora</th>
+                  <th>Estado</th>
+                  <th>Acciones</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {appointments.map(a => (
+                  <tr key={a.id}>
+                    <td>
+                      <div style={{ fontWeight: 600 }}>{a.client_name}</div>
+                      <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>+{a.client_phone}</div>
+                    </td>
+                    <td style={{ fontSize: 14 }}>{a.service || '—'}</td>
+                    <td style={{ fontSize: 14 }}>{formatDate(a.appointment_date)}</td>
+                    <td style={{ fontSize: 14, fontWeight: 600, color: 'var(--accent-light)' }}>{formatTime(a.appointment_time)}</td>
+                    <td><span className={`badge ${STATUS_COLORS[a.status]}`}>{STATUS_LABELS[a.status]}</span></td>
+                    <td>
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        {a.status === 'pending' && (
+                          <button className="btn btn-success" style={{ padding: '4px 10px', fontSize: 12 }}
+                            onClick={() => updateStatus(a.id, 'confirmed')}>✅</button>
+                        )}
+                        {a.status === 'confirmed' && (
+                          <button className="btn btn-primary" style={{ padding: '4px 10px', fontSize: 12 }}
+                            onClick={() => updateStatus(a.id, 'completed')}>🎉 Completar</button>
+                        )}
+                        {(a.status === 'pending' || a.status === 'confirmed') && (
+                          <button className="btn btn-danger" style={{ padding: '4px 10px', fontSize: 12 }}
+                            onClick={() => updateStatus(a.id, 'cancelled')}>❌</button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </div>

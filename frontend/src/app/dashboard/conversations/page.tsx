@@ -453,7 +453,7 @@ export default function ConversationsPage() {
   }, [conversations, search, filterTab]);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 64px)', gap: 8, background: '#080E1F' }}>
+    <div className="conversations-container" style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 64px)', gap: 8, background: '#080E1F' }}>
       {/* Alerta de Bot Global Pausado */}
       {!globalBotEnabled && (
         <div style={{
@@ -466,6 +466,8 @@ export default function ConversationsPage() {
           alignItems: 'center',
           fontSize: 13,
           color: '#f87171',
+          flexWrap: 'wrap',
+          gap: 8,
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <span style={{ fontSize: 18 }}>⏸️</span>
@@ -477,9 +479,9 @@ export default function ConversationsPage() {
         </div>
       )}
 
-      <div style={{ display: 'flex', flex: 1, gap: 12, minHeight: 0 }}>
+      <div className="conversations-layout" style={{ display: 'flex', flex: 1, gap: 12, minHeight: 0 }}>
         {/* Columna Izquierda: Lista de chats estilo WhatsApp Web */}
-        <div className="card" style={{ width: 380, flexShrink: 0, padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', background: '#0c1527', borderColor: '#1e293b' }}>
+        <div className={`conversations-sidebar card ${active ? 'hidden-mobile' : ''}`} style={{ width: 380, flexShrink: 0, padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', background: '#0c1527', borderColor: '#1e293b' }}>
           
           {/* Header de la lista de chats */}
           <div style={{ padding: '12px 16px', borderBottom: '1px solid #1e293b', background: '#0f1b2f' }}>
@@ -706,7 +708,7 @@ export default function ConversationsPage() {
         </div>
 
         {/* Columna Derecha: Panel de Conversación Activa estilo WhatsApp Web */}
-        <div className="card" style={{ flex: 1, padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', background: '#0b141a', borderColor: '#1e293b' }}>
+        <div className={`conversations-chatview card ${!active ? 'hidden-mobile' : ''}`} style={{ flex: 1, padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', background: '#0b141a', borderColor: '#1e293b' }}>
           {!active ? (
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#64748b', textAlign: 'center', padding: 20 }}>
               <div style={{ fontSize: 72, marginBottom: 16, opacity: 0.8 }}>💬</div>
@@ -719,58 +721,72 @@ export default function ConversationsPage() {
             <>
               {/* Header del Chat estilo WhatsApp Web */}
               <div style={{
-                padding: '12px 20px',
+                padding: '10px 14px',
                 borderBottom: '1px solid #1e293b',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
                 background: '#111b21',
-                zIndex: 10
+                zIndex: 10,
+                flexWrap: 'wrap',
+                gap: 8,
               }}>
-                <div
-                  style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}
-                  onClick={() => setShowInfoDrawer(!showInfoDrawer)}
-                  title="Ver información del contacto"
-                >
-                  <div style={{
-                    width: 42,
-                    height: 42,
-                    borderRadius: '50%',
-                    background: getAvatarBg(active.contact_phone || active.contact_name),
-                    color: '#ffffff',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontWeight: 700,
-                    fontSize: 15,
-                  }}>
-                    {getInitials(active.contact_name, active.contact_phone)}
-                  </div>
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: 15, color: '#f8fafc' }}>
-                      {getContactDisplayTitle(active)}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
+                  <button
+                    className="btn btn-ghost mobile-back-btn"
+                    style={{ fontSize: 12, padding: '4px 8px' }}
+                    onClick={() => setActive(null)}
+                    title="Volver a la lista de chats"
+                  >
+                    ← Volver
+                  </button>
+
+                  <div
+                    style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', flex: 1, minWidth: 0 }}
+                    onClick={() => setShowInfoDrawer(!showInfoDrawer)}
+                    title="Ver información del contacto"
+                  >
+                    <div style={{
+                      width: 38,
+                      height: 38,
+                      borderRadius: '50%',
+                      background: getAvatarBg(active.contact_phone || active.contact_name),
+                      color: '#ffffff',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontWeight: 700,
+                      fontSize: 14,
+                      flexShrink: 0,
+                    }}>
+                      {getInitials(active.contact_name, active.contact_phone)}
                     </div>
-                    <div style={{ fontSize: 12, color: '#00CFFF', display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <span>{formatPhoneNumber(active.contact_phone)}</span>
-                      <span>•</span>
-                      <span>{active.bot_active ? '🤖 Bot de IA respondiendo' : '👤 Atención manual'}</span>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ fontWeight: 700, fontSize: 14, color: '#f8fafc', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {getContactDisplayTitle(active)}
+                      </div>
+                      <div style={{ fontSize: 11, color: '#00CFFF', display: 'flex', alignItems: 'center', gap: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <span>{formatPhoneNumber(active.contact_phone)}</span>
+                        <span>•</span>
+                        <span>{active.bot_active ? '🤖 IA Activa' : '👤 Manual'}</span>
+                      </div>
                     </div>
                   </div>
                 </div>
 
                 {/* Acciones de la cabecera del chat */}
-                <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                <div className="chat-header-actions" style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
                   <div style={{
                     display: 'flex',
                     alignItems: 'center',
-                    gap: 8,
+                    gap: 6,
                     background: active.bot_active ? 'rgba(34,197,94,0.1)' : 'rgba(234,179,8,0.1)',
-                    padding: '5px 12px',
+                    padding: '4px 10px',
                     borderRadius: 20,
                     border: `1px solid ${active.bot_active ? 'rgba(34,197,94,0.3)' : 'rgba(234,179,8,0.3)'}`
                   }}>
                     <span style={{ fontSize: 11, fontWeight: 600, color: active.bot_active ? '#4ade80' : '#eab308' }}>
-                      {active.bot_active ? 'Bot en Chat: ON' : 'Bot en Chat: OFF'}
+                      {active.bot_active ? 'Bot: ON' : 'Bot: OFF'}
                     </span>
                     <label className="toggle" style={{ transform: 'scale(0.75)' }}>
                       <input type="checkbox" checked={active.bot_active} onChange={() => toggleBot(active)} />

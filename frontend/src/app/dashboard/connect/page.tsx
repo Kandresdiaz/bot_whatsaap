@@ -231,7 +231,7 @@ export default function ConnectPage() {
           <img
             src={qr}
             alt="QR WhatsApp"
-            style={{ width: 260, height: 260, borderRadius: 12, border: '4px solid rgba(26,107,255,0.3)' }}
+            style={{ width: 260, maxWidth: '100%', height: 'auto', aspectRatio: '1/1', borderRadius: 12, border: '4px solid rgba(26,107,255,0.3)' }}
           />
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-muted)', fontSize: 13 }}>
             <span className="dot dot-yellow" /> Esperando escaneo... (expira en ~60s)

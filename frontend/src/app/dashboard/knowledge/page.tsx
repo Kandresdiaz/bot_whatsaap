@@ -112,18 +112,18 @@ export default function KnowledgePage() {
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 24 }}>
         {/* Panel agregar */}
         <div className="card">
           <h3 style={{ fontWeight: 700, marginBottom: 16 }}>➕ Agregar conocimiento</h3>
 
           {/* Tabs */}
-          <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
             {(['text', 'faq', 'file', 'image'] as const).map(t => (
               <button
                 key={t}
                 className={`btn ${tab === t ? 'btn-primary' : 'btn-ghost'}`}
-                style={{ flex: 1, justifyContent: 'center', padding: '8px', fontSize: 13 }}
+                style={{ flex: '1 1 120px', justifyContent: 'center', padding: '8px 10px', fontSize: 13 }}
                 onClick={() => setTab(t)}
               >
                 {typeIcon[t]} {typeLabel[t]}
