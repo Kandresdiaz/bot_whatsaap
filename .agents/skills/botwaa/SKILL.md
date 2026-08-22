@@ -448,6 +448,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-22** | feat: diagnostico en vivo /debug-info y aviso claro de estado de vinculación en pantalla de chats (`57d1133`) | Auto-deploy |
 
+| **2026-08-22** | fix: reemplazar maybeSingle por limit(1) en /create para garantizar respuesta 200 en endpoint de conversaciones (`9181f52`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
