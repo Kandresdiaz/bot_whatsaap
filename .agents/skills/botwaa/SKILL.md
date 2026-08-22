@@ -444,6 +444,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-22** | fix: badge de estado real y banner para indicar vincular WhatsApp con QR (`973743a`) | Auto-deploy |
 
+| **2026-08-22** | fix: syncChatsAndMessagesToDb preserva conversaciones historicas unificando todas las sesiones del usuario (`3151e23`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
