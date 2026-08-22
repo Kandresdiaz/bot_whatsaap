@@ -194,23 +194,36 @@ export default function ConversationsPage() {
 
   // Sincronización en tiempo real vía WebSockets
   useEffect(() => {
-    const targetId = user?.id || sessionId || 'admin';
-    loadConversations(targetId);
+    const userIdToUse = user?.id || 'admin';
+    loadConversations(userIdToUse);
 
     const interval = setInterval(() => {
-      loadConversations(targetId);
+      loadConversations(userIdToUse);
     }, 15000);
 
-    const socket = io(BACKEND!);
+    const socket = io(BACKEND, {
+      transports: ['websocket', 'polling'],
+      reconnectionAttempts: 10,
+      reconnectionDelay: 2000,
+    });
     socketRef.current = socket;
-    socket.emit('join_session', targetId);
-    if (user?.id) socket.emit('join_session', user.id);
-    if (sessionId) socket.emit('join_session', sessionId);
-    if (user?.id === 'admin' || !user?.id) socket.emit('join_session', '00000000-0000-0000-0000-000000000001');
-    socket.emit('join_session', 'admin');
+
+    const joinRooms = () => {
+      socket.emit('join_session', userIdToUse);
+      if (user?.id) socket.emit('join_session', user.id);
+      if (sessionId) socket.emit('join_session', sessionId);
+      socket.emit('join_session', '00000000-0000-0000-0000-000000000001');
+      socket.emit('join_session', 'admin');
+    };
+
+    socket.on('connect', () => {
+      joinRooms();
+    });
+
+    joinRooms();
 
     socket.on('chats_synced', () => {
-      loadConversations(targetId);
+      loadConversations(userIdToUse);
     });
 
     socket.on('conversation_updated', (payload: { conversationId?: string; contactPhone?: string; contactName?: string; lastMessage?: string; timestamp?: string }) => {
@@ -235,7 +248,7 @@ export default function ConversationsPage() {
 
     socket.on('connected', () => {
       setSessionStatus('connected');
-      loadConversations(targetId);
+      loadConversations(userIdToUse);
     });
 
     socket.on('disconnected', () => {
@@ -306,7 +319,7 @@ export default function ConversationsPage() {
       clearInterval(interval);
       socket.disconnect();
     };
-  }, [sessionId, user, BACKEND]);
+  }, [user?.id, BACKEND]);
 
   const handleManualSync = async () => {
     const targetId = sessionId || user?.id || 'admin';
