@@ -446,6 +446,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-22** | fix: syncChatsAndMessagesToDb preserva conversaciones historicas unificando todas las sesiones del usuario (`3151e23`) | Auto-deploy |
 
+| **2026-08-22** | feat: diagnostico en vivo /debug-info y aviso claro de estado de vinculación en pantalla de chats (`57d1133`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
