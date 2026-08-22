@@ -434,6 +434,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-21** | fix: requerir clic manual para solicitar nuevo QR al estar desconectado (`678b028`) | Auto-deploy |
 
+| **2026-08-22** | feat: adaptacion responsive completa para celulares y pantallas pequeñas con prevencion de desbordamiento (`cbfccbf`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
