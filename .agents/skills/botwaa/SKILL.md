@@ -452,6 +452,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-23** | feat: boton directo de nuevo chat instantaneo y fallback indestructible (`f3168ba`) | Auto-deploy |
 
+| **2026-08-23** | fix: exportar resolvePhoneAndJid en sessionManager para desbloquear la fusion de los 3294 chats de RAM (`2a02c6b`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
