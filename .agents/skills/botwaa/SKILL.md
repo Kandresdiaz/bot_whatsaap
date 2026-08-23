@@ -462,6 +462,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-23** | fix: limpieza instantanea de mensajes al cambiar de chat y sincronizacion estricta por ref de conversacion activa (`009ef86`) | Auto-deploy |
 
+| **2026-08-23** | fix: resolucion directa por contact_phone para garantizar guardado de mensajes recientes en Supabase (`2e63e8a`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
