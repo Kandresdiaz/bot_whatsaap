@@ -57,9 +57,13 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
   const resolved = resolvePhoneAndJid(jid);
   const contactPhone = resolved.phone;
   if (!contactPhone) return;
-  const contactName = msg.pushName || contactPhone;
-  const text = extractText(msg).trim();
-  if (!text) return;
+
+  const { enqueueIncomingMessage } = require('../queues/messageQueue');
+
+  return enqueueIncomingMessage(contactPhone, async () => {
+    const contactName = msg.pushName || contactPhone;
+    const text = extractText(msg).trim();
+    if (!text) return;
 
   console.log(`[MSG] ${contactPhone} (${contactName}) → ${userId}: "${text.slice(0, 60)}"`);
 
@@ -331,6 +335,7 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
       }
     }
   }
+  });
 };
 
 module.exports = { handleIncomingMessage };
