@@ -295,7 +295,7 @@ router.get('/:conversationId/messages', async (req, res) => {
     });
 
     const allMsgs = Array.from(msgMap.values());
-    allMsgs.sort((a, b) => new Date(a.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime());
+    allMsgs.sort((a, b) => new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime());
 
     res.json({ success: true, messages: allMsgs });
   } catch (err) {
