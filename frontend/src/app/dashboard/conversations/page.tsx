@@ -382,19 +382,26 @@ export default function ConversationsPage() {
 
   const openConversation = async (conv: Conversation) => {
     setActive(conv);
+    activeRef.current = conv;
+    setMessages([]); // Limpieza instantánea para evitar que se pegue la conversación previa
     setShowEmojiPicker(false);
+
     const targetId = user?.id || sessionId || 'admin';
     const cleanP = conv.contact_phone ? conv.contact_phone.replace(/[^0-9]/g, '') : '';
     try {
       const res = await fetch(`${BACKEND}/api/conversations/${conv.id}/messages?phone=${cleanP}&userId=${targetId}`);
       const data = await res.json();
-      if (data.messages && Array.isArray(data.messages)) {
-        setMessages(data.messages);
-      } else {
-        setMessages([]);
+      
+      // Validar que el usuario siga viendo este mismo chat
+      if (activeRef.current?.id === conv.id || (cleanP && activeRef.current?.contact_phone?.replace(/[^0-9]/g, '') === cleanP)) {
+        if (data.messages && Array.isArray(data.messages)) {
+          setMessages(data.messages);
+        } else {
+          setMessages([]);
+        }
       }
     } catch (_) {
-      setMessages([]);
+      if (activeRef.current?.id === conv.id) setMessages([]);
     }
     setConversations(prev => prev.map(c => c.id === conv.id ? { ...c, unread_count: 0 } : c));
   };
