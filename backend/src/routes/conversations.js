@@ -229,7 +229,7 @@ router.get('/:conversationId/messages', async (req, res) => {
         .from('messages')
         .select('*')
         .eq('conversation_id', realConvId)
-        .order('timestamp', { ascending: true })
+        .order('timestamp', { ascending: false })
         .limit(500);
 
       dbMsgs = data || [];
@@ -242,7 +242,7 @@ router.get('/:conversationId/messages', async (req, res) => {
         const { data: relatedConvs } = await supabase.from('conversations').select('id').eq('contact_phone', cleanPhone);
         if (relatedConvs && relatedConvs.length > 0) {
           const cIds = relatedConvs.map(c => c.id);
-          const { data: altMsgs } = await supabase.from('messages').select('*').in('conversation_id', cIds).order('timestamp', { ascending: true }).limit(500);
+          const { data: altMsgs } = await supabase.from('messages').select('*').in('conversation_id', cIds).order('timestamp', { ascending: false }).limit(500);
           if (altMsgs) dbMsgs = altMsgs;
         }
       } catch (_) {}
