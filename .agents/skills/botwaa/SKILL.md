@@ -468,6 +468,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-23** | docs: actualizar documentacion tecnica del proyecto BotWA con arquitectura de resiliencia SaaS (`20e10f4`) | Auto-deploy |
 
+| **2026-08-23** | feat: implementar modulo de cola asincrona hibrida Redis + memoria (messageQueue.js) para colapso y alto trafico (`0f9049f`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
