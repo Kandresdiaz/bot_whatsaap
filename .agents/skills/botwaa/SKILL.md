@@ -458,6 +458,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-23** | fix: saneamiento de sufijos de dispositivo :12 y LIDs en mensajes para abrir chats e historial completo al 100% (`c2ae84a`) | Auto-deploy |
 
+| **2026-08-23** | fix: cargar los 500 mensajes mas recientes hasta el dia de hoy ordenados por timestamp descendente (`43d2997`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
