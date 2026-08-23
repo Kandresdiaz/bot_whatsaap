@@ -456,6 +456,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-23** | fix: restoreSessions recupera credenciales desde Supabase tras reinicios de servidor efimero Render (`0ddd79d`) | Auto-deploy |
 
+| **2026-08-23** | fix: saneamiento de sufijos de dispositivo :12 y LIDs en mensajes para abrir chats e historial completo al 100% (`c2ae84a`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
