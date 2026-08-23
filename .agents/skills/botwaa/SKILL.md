@@ -471,6 +471,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-23** | feat: implementar modulo de cola asincrona hibrida Redis + memoria (messageQueue.js) para colapso y alto trafico (`0f9049f`) | Auto-deploy |
 
+| **2026-08-23** | feat: Onboarding Wizard minimalista flotante de 4 pasos antes de conectar WA y boton de Generador de FAQs con IA a demanda (`c2098be`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
