@@ -465,6 +465,7 @@ Se ejecuta en cada `git push` a `main`:
 | **2026-08-23** | fix: resolucion directa por contact_phone para garantizar guardado de mensajes recientes en Supabase (`2e63e8a`) | Auto-deploy |
 
 | **2026-08-23** | fix: corregir ordenamiento cronologico de mensajes de a.timestamp - b.timestamp para colocar los mensajes mas recientes abajo del todo (`ccc3ef7`) | Auto-deploy |
+| **2026-08-23** | feat: Onboarding Wizard flotante minimalista de 4 pasos antes de conectar QR (Vender vs Agendar Citas) + Botón de Generación de FAQs con IA a demanda en Knowledge Base | Feature |
 
 | **2026-08-23** | docs: actualizar documentacion tecnica del proyecto BotWA con arquitectura de resiliencia SaaS (`20e10f4`) | Auto-deploy |
 

@@ -105,37 +105,51 @@ const buildSystemPrompt = (business, relevantKnowledge, allKnowledge) => {
   const relevantContext = buildKnowledgeContext(relevantKnowledge);
   const hasKnowledge = !!relevantContext;
 
+  const isSales = business.main_goal === 'vender';
+  const isBooking = business.main_goal === 'agendar_citas';
+  const mainGoalText = isSales
+    ? 'VENDER Y CERRAR COMPRAS. Atiende todas las dudas del cliente con cortesía, y guía sutilmente la conversación hacia concretar la venta o pago.'
+    : isBooking
+    ? 'AGENDAR CITAS Y RESERVAS. Atiende todas las dudas del cliente con cortesía, e invita a agendar su cita o reservar horario.'
+    : 'ATENCIÓN AL CLIENTE Y CIERRE DE LEADS.';
+
   // Info general del negocio siempre disponible
   const businessInfo = `
 Nombre: ${business.name}
-Tipo: ${business.category || 'negocio'}
+Tipo / Categoría: ${business.category || 'Negocio'}
 Ciudad: ${business.city || 'Colombia'}
-Horario: ${business.active_hours_start || '8:00'} - ${business.active_hours_end || '18:00'}
+${business.description ? `Descripción / Servicios: ${business.description}` : ''}
+Horario de Atención: ${business.active_hours_start || '08:00'} - ${business.active_hours_end || '18:00'}
 ${business.phone ? `Teléfono: ${business.phone}` : ''}
 ${business.address ? `Dirección: ${business.address}` : ''}
+${business.payment_or_booking_link ? `Enlace / Método de Cierre (${isSales ? 'Pago/Catálogo' : 'Agenda'}): ${business.payment_or_booking_link}` : ''}
+${business.closing_objective ? `Instrucción de Cierre: ${business.closing_objective}` : ''}
 `.trim();
 
-  return `Eres el asistente de WhatsApp de "${business.name}".
-Tu personalidad: ${business.bot_personality || 'amigable, profesional y conciso'}.
+  return `Eres el empleado estrella y asistente virtual oficial en WhatsApp de "${business.name}".
+
+=== ROL Y OBJETIVO PRINCIPAL ===
+${mainGoalText}
+Tu tono de voz: ${business.bot_personality || 'amigable, profesional y persuasivo'}.
 
 === DATOS DEL NEGOCIO ===
 ${businessInfo}
 
 ${hasKnowledge
-  ? `=== INFORMACIÓN RELEVANTE ENCONTRADA ===\n${relevantContext}\n=== FIN DE LA INFORMACIÓN ===`
+  ? `=== INFORMACIÓN RELEVANTE ENCONTRADA (KNOWLEDGE BASE) ===\n${relevantContext}\n=== FIN DE LA INFORMACIÓN ===`
   : `=== NOTA: No encontré información específica sobre este tema en la base de conocimiento ===`
 }
 
-REGLAS ABSOLUTAS (no las rompes NUNCA):
-1. SOLO usa información que esté en las secciones de arriba. JAMÁS inventes datos.
-2. Si no tienes la información, di: "Esa información no la tengo disponible, pero puedo conectarte con alguien del equipo 😊"
-3. NUNCA inventes precios, disponibilidad, fechas o servicios no mencionados.
-4. Si hay imagen disponible para el producto, escribe: [ENVIAR_IMAGEN: nombre_exacto]
-5. Si el cliente quiere comprar, pagar, agendar o contratar, escribe al final: [LEAD_CALIENTE]
-6. Respuestas cortas (máximo 4 líneas). WhatsApp no es email.
-7. Usa emojis con moderación (máximo 2 por mensaje).
-8. Español natural. Saluda solo si es el primer mensaje.
-9. Si te preguntan algo fuera del negocio (chistes, política, etc), redirige amablemente.`;
+REGLAS ABSOLUTAS (NO LAS ROMPES NUNCA):
+1. Eres un EMPLEADO VIRTUAL FIDEL: Atiendes cualquier pregunta de atención al cliente con amabilidad, pero SIEMPRE mantienes el enfoque en CERRAR al cliente (${isSales ? 'Vender/Cotizar' : 'Agendar cita'}).
+2. NUNCA INVENTES PRECIOS, FECHAS, SERVICIOS O POLÍTICAS. Solo usa la información que está en las secciones de arriba.
+3. Si no tienes la información exacta, responde amablemente: "Esa información no la tengo a la mano, pero con gusto te conecto con nuestro equipo para ayudarte 😊".
+4. Si hay una imagen aplicable en el catálogo, escribe: [ENVIAR_IMAGEN: nombre_exacto]
+5. Si el cliente muestra intención clara de comprar, pagar o agendar, incluye al final: [LEAD_CALIENTE]
+6. Respuestas breves, directas y profesionales (máximo 4 líneas).
+7. Usa máximo 1 o 2 emojis por mensaje.
+8. Saluda solo en el primer mensaje de la conversación.
+9. Si te preguntan sobre temas ajenos al negocio (política, chistes, etc.), redirige respetuosamente de vuelta a los servicios del negocio.`;
 };
 
 // ─── 6. Función principal RAG + Groq ─────────────────────────────────────────

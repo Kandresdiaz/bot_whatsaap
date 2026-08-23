@@ -99,16 +99,119 @@ export default function KnowledgePage() {
   const typeIcon = { text: '📝', faq: '❓', file: '📄', image: '🖼️' };
   const typeLabel = { text: 'Texto', faq: 'FAQ', file: 'PDF', image: 'Imagen' };
 
+  const [generatingFaqs, setGeneratingFaqs] = useState(false);
+  const [suggestedFaqs, setSuggestedFaqs] = useState<{ title: string; content: string }[]>([]);
+
+  const handleGenerateFaqs = async () => {
+    if (!user?.id) return;
+    setGeneratingFaqs(true);
+    try {
+      const r = await fetch(`${BACKEND}/api/knowledge/generate-faqs/${user.id}`, { method: 'POST' });
+      const d = await r.json();
+      if (d.success && Array.isArray(d.faqs)) {
+        setSuggestedFaqs(d.faqs);
+      } else {
+        alert(d.error || 'No se pudieron extraer FAQs en este momento');
+      }
+    } catch (e: any) {
+      alert('Error analizando chats: ' + e.message);
+    } finally {
+      setGeneratingFaqs(false);
+    }
+  };
+
+  const approveFaq = async (faq: { title: string; content: string }) => {
+    if (!businessId) return;
+    setLoading(true);
+    await fetch(`${BACKEND}/api/knowledge/${businessId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'faq', title: faq.title, content: faq.content }),
+    });
+    setSuggestedFaqs(prev => prev.filter(f => f.title !== faq.title));
+    await loadItems(businessId);
+    setLoading(false);
+  };
+
   return (
     <div>
-      <div className="page-header">
-        <h1 className="page-title">🧠 Knowledge Base</h1>
-        <p className="page-subtitle">Alimenta al bot con información de tu negocio — como NotebookLM</p>
+      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
+        <div>
+          <h1 className="page-title">🧠 Knowledge Base</h1>
+          <p className="page-subtitle">Alimenta al bot con información de tu negocio — como NotebookLM</p>
+        </div>
+
+        <button
+          className="btn btn-primary"
+          onClick={handleGenerateFaqs}
+          disabled={generatingFaqs || !user?.id}
+          style={{
+            background: 'linear-gradient(90deg, #1A6BFF, #00CFFF)',
+            border: 'none',
+            fontWeight: 700,
+            fontSize: 14,
+            padding: '10px 18px',
+            boxShadow: '0 4px 15px rgba(0, 207, 255, 0.25)',
+          }}
+        >
+          {generatingFaqs ? '⚡ Analizando chats reales...' : '✨ Analizar Chats y Generar FAQs con IA'}
+        </button>
       </div>
+
+      {/* FAQs Sugeridas por IA */}
+      {suggestedFaqs.length > 0 && (
+        <div className="card" style={{
+          marginBottom: 24,
+          borderColor: 'rgba(0, 207, 255, 0.4)',
+          background: 'rgba(0, 207, 255, 0.05)',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+            <h3 style={{ fontWeight: 700, fontSize: 16, color: '#00CFFF' }}>
+              💡 Preguntas Frecuentes Detectadas en tus Chats ({suggestedFaqs.length})
+            </h3>
+            <button className="btn btn-ghost" style={{ fontSize: 12 }} onClick={() => setSuggestedFaqs([])}>
+              Descartar todas
+            </button>
+          </div>
+          <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16 }}>
+            La IA analizó tus conversaciones de WhatsApp y redactó estas plantillas de respuesta. Haz clic en <strong>"Aprobar"</strong> para agregarlas a la memoria de tu bot.
+          </p>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 14 }}>
+            {suggestedFaqs.map((faq, i) => (
+              <div key={i} style={{
+                background: 'var(--bg-card)',
+                border: '1px solid var(--border)',
+                borderRadius: 12,
+                padding: 16,
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+              }}>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6, color: 'var(--text)' }}>
+                    ❓ {faq.title}
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5, marginBottom: 14 }}>
+                    {faq.content}
+                  </div>
+                </div>
+                <button
+                  className="btn btn-success"
+                  style={{ width: '100%', justifyContent: 'center', fontSize: 13, padding: '8px 12px' }}
+                  onClick={() => approveFaq(faq)}
+                >
+                  ✅ Aprobar e Incorporar a la IA
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {!businessId && (
         <div className="card" style={{ borderColor: 'rgba(234,179,8,0.3)', background: 'rgba(234,179,8,0.05)', marginBottom: 24 }}>
-          <p style={{ color: 'var(--yellow)', fontSize: 14 }}>⚠️ Primero configura tu negocio en <a href="/dashboard/bot-config" style={{ color: 'var(--accent-light)', textDecoration: 'underline' }}>Configurar Bot</a></p>
+          <p style={{ color: 'var(--yellow)', fontSize: 14 }}>⚠️ Primero configura tu negocio en <a href="/dashboard/connect" style={{ color: 'var(--accent-light)', textDecoration: 'underline' }}>Conectar WhatsApp (Wizard)</a></p>
         </div>
       )}
 

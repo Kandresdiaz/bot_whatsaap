@@ -72,4 +72,12 @@ router.delete('/:id', async (req, res) => {
   res.json({ success: true });
 });
 
+// Generar preguntas frecuentes con IA a demanda
+const { generateFaqsFromChats } = require('../ai/faqGenerator');
+router.post('/generate-faqs/:userId', async (req, res) => {
+  const { userId } = req.params;
+  const result = await generateFaqsFromChats(userId);
+  res.json(result);
+});
+
 module.exports = router;

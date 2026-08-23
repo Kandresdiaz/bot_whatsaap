@@ -2,6 +2,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
+import OnboardingWizardModal from '@/components/OnboardingWizardModal';
 
 const BACKEND = 'https://bot-whatsaap-tkjd.onrender.com';
 
@@ -15,6 +16,28 @@ export default function ConnectPage() {
   const [phone, setPhone] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
+
+  // Estado de configuración del negocio & Modal
+  const [business, setBusiness] = useState<any>(null);
+  const [isWizardOpen, setIsWizardOpen] = useState(false);
+
+  // Cargar info del negocio al montar
+  useEffect(() => {
+    if (!user?.id) return;
+    fetch(`${BACKEND}/api/business/${user.id}`)
+      .then(r => r.json())
+      .then(d => {
+        if (d.business) {
+          setBusiness(d.business);
+          if (!d.business.is_configured) {
+            setIsWizardOpen(true);
+          }
+        } else {
+          setIsWizardOpen(true);
+        }
+      })
+      .catch(() => {});
+  }, [user?.id]);
 
   // Redirigir automáticamente a conversaciones al conectar
   useEffect(() => {
@@ -128,6 +151,22 @@ export default function ConnectPage() {
     setError(null);
   };
 
+  // Guardar configuración del negocio desde el modal
+  const handleSaveBusiness = async (updatedConfig: any) => {
+    if (!user?.id) return;
+    const r = await fetch(`${BACKEND}/api/business/${user.id}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updatedConfig),
+    });
+    const data = await r.json();
+    if (data.success && data.business) {
+      setBusiness(data.business);
+      // Iniciar sesión para obtener QR automáticamente tras configurar
+      startSession(true);
+    }
+  };
+
   // ── Render ────────────────────────────────────────────────────────────────
   const statusMap = {
     disconnected: { color: 'red',    label: 'Desconectado',       dot: 'dot-red' },
@@ -140,9 +179,26 @@ export default function ConnectPage() {
 
   return (
     <div>
-      <div className="page-header">
-        <h1 className="page-title">📱 Conectar WhatsApp</h1>
-        <p className="page-subtitle">Escanea el QR con tu WhatsApp para activar el bot 24/7</p>
+      {/* Modal Flotante de Configuración del Negocio */}
+      <OnboardingWizardModal
+        isOpen={isWizardOpen}
+        onClose={() => setIsWizardOpen(false)}
+        onSave={handleSaveBusiness}
+        initialConfig={business || {}}
+      />
+
+      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
+        <div>
+          <h1 className="page-title">📱 Conectar WhatsApp</h1>
+          <p className="page-subtitle">Escanea el QR con tu WhatsApp para activar el bot 24/7</p>
+        </div>
+        <button
+          className="btn btn-ghost"
+          onClick={() => setIsWizardOpen(true)}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, border: '1px solid var(--border)' }}
+        >
+          ⚙️ {business?.is_configured ? 'Editar Datos del Negocio' : ' Configurar Bot (Wizard)'}
+        </button>
       </div>
 
       {/* Estado + Acciones */}

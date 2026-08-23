@@ -81,7 +81,20 @@ export default function BotConfigPage() {
             </div>
             <div>
               <label style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 6, display: 'block' }}>Ciudad</label>
-              <input className="input" placeholder="Ej: Bogotá" value={config.city} onChange={e => set('city', e.target.value)} />
+              <input className="input" placeholder="Ej: Bogotá" value={config.city || ''} onChange={e => set('city', e.target.value)} />
+            </div>
+            <div>
+              <label style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 6, display: 'block' }}>Objetivo Principal de Cierre</label>
+              <select className="input" value={config.main_goal || 'vender'} onChange={e => set('main_goal', e.target.value)}>
+                <option value="vender">🛒 Vender Productos / Servicios</option>
+                <option value="agendar_citas">📅 Agendar Citas / Reservas</option>
+              </select>
+            </div>
+            <div>
+              <label style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 6, display: 'block' }}>
+                {config.main_goal === 'agendar_citas' ? 'Link / Método de Agenda' : 'Link / Método de Pago o Catálogo'}
+              </label>
+              <input className="input" placeholder="Ej: Nequi / Wompi / Link Calendly" value={config.payment_or_booking_link || ''} onChange={e => set('payment_or_booking_link', e.target.value)} />
             </div>
           </div>
         </div>
