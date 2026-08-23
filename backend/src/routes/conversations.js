@@ -192,18 +192,35 @@ router.get('/:sessionId', async (req, res) => {
 router.get('/:conversationId/messages', async (req, res) => {
   try {
     const { conversationId } = req.params;
-    const cleanPhone = conversationId.replace(/[^0-9]/g, '');
+    const { phone: queryPhone, userId: queryUserId } = req.query;
+
+    const { getSessionUuid, getValidUserId, getUserStore, extractText, safeToIsoString, resolvePhoneAndJid, cleanPhoneFromJid } = require('../whatsapp/sessionManager');
+
+    const validUserId = getValidUserId(queryUserId || 'admin');
+    const rawTargetPhone = (queryPhone || conversationId || '').toString().trim();
+    const resolvedTarget = resolvePhoneAndJid(rawTargetPhone);
+    const cleanPhone = resolvedTarget.phone || cleanPhoneFromJid(rawTargetPhone);
+
     let realConvId = isUuid(conversationId) ? conversationId : null;
 
-    // Si es un ID de RAM o número de teléfono, buscar el UUID real en Supabase por contact_phone
+    // Buscar UUID real de la conversación si no lo tenemos
     if (!realConvId && cleanPhone) {
-      const { data: conv } = await supabase
-        .from('conversations')
-        .select('id')
-        .eq('contact_phone', cleanPhone)
-        .limit(1);
+      try {
+        const sessionUuid = await getSessionUuid(validUserId);
+        const sessionIdsSet = new Set();
+        if (sessionUuid) sessionIdsSet.add(sessionUuid);
 
-      if (conv && conv[0]?.id) realConvId = conv[0].id;
+        const { data: userSessions } = await supabase.from('whatsapp_sessions').select('id').eq('user_id', validUserId);
+        if (userSessions) userSessions.forEach(s => sessionIdsSet.add(s.id));
+
+        const sessionList = Array.from(sessionIdsSet);
+
+        let convQuery = supabase.from('conversations').select('id').eq('contact_phone', cleanPhone);
+        if (sessionList.length > 0) convQuery = convQuery.in('session_id', sessionList);
+
+        const { data: conv } = await convQuery.limit(1);
+        if (conv && conv[0]?.id) realConvId = conv[0].id;
+      } catch (_) {}
     }
 
     let dbMsgs = [];
@@ -213,25 +230,41 @@ router.get('/:conversationId/messages', async (req, res) => {
         .select('*')
         .eq('conversation_id', realConvId)
         .order('timestamp', { ascending: true })
-        .limit(200);
+        .limit(500);
 
       dbMsgs = data || [];
       await supabase.from('conversations').update({ unread_count: 0 }).eq('id', realConvId).catch(() => {});
     }
 
-    // Fusionar mensajes en RAM de Baileys para este número
+    // Buscar también mensajes en Supabase por conversation_ids pertenecientes a este teléfono
+    if (dbMsgs.length === 0 && cleanPhone) {
+      try {
+        const { data: relatedConvs } = await supabase.from('conversations').select('id').eq('contact_phone', cleanPhone);
+        if (relatedConvs && relatedConvs.length > 0) {
+          const cIds = relatedConvs.map(c => c.id);
+          const { data: altMsgs } = await supabase.from('messages').select('*').in('conversation_id', cIds).order('timestamp', { ascending: true }).limit(500);
+          if (altMsgs) dbMsgs = altMsgs;
+        }
+      } catch (_) {}
+    }
+
+    // Fusionar mensajes de la memoria RAM de Baileys
     const ramMsgs = [];
     if (cleanPhone) {
       try {
-        const { getUserStore, extractText, safeToIsoString, getValidUserId } = require('../whatsapp/sessionManager');
-        const validId = getValidUserId('admin');
-        const store = getUserStore(validId);
+        let store = getUserStore(validUserId);
+        const ADMIN_UUID = '00000000-0000-0000-0000-000000000001';
+        if (!store || !store.messages || store.messages.size === 0) {
+          store = getUserStore(ADMIN_UUID);
+        }
+
         if (store && store.messages) {
           for (const [mId, m] of store.messages.entries()) {
             if (!m || !m.key || !m.key.remoteJid) continue;
             const jid = m.key.remoteJid;
-            const p = jid.replace('@s.whatsapp.net', '').replace('@g.us', '').replace(/[^0-9]/g, '');
-            if (p === cleanPhone) {
+            const resJid = resolvePhoneAndJid(jid);
+            const msgPhone = resJid.phone || cleanPhoneFromJid(jid);
+            if (msgPhone === cleanPhone || (msgPhone && cleanPhone && (msgPhone.includes(cleanPhone) || cleanPhone.includes(msgPhone)))) {
               const text = extractText ? extractText(m) : '';
               if (text) {
                 ramMsgs.push({
@@ -246,10 +279,12 @@ router.get('/:conversationId/messages', async (req, res) => {
             }
           }
         }
-      } catch (_) {}
+      } catch (errRam) {
+        console.warn('[GET Messages RAM Error]:', errRam.message);
+      }
     }
 
-    // Fusionar y eliminar duplicados por id/content
+    // Fusionar y ordenar mensajes por timestamp
     const msgMap = new Map();
     dbMsgs.forEach(m => msgMap.set(m.id || `${m.timestamp}_${m.content}`, m));
     ramMsgs.forEach(m => {
@@ -260,7 +295,7 @@ router.get('/:conversationId/messages', async (req, res) => {
     });
 
     const allMsgs = Array.from(msgMap.values());
-    allMsgs.sort((a, b) => new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime());
+    allMsgs.sort((a, b) => new Date(a.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime());
 
     res.json({ success: true, messages: allMsgs });
   } catch (err) {

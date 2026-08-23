@@ -383,9 +383,19 @@ export default function ConversationsPage() {
   const openConversation = async (conv: Conversation) => {
     setActive(conv);
     setShowEmojiPicker(false);
-    const res = await fetch(`${BACKEND}/api/conversations/${conv.id}/messages`);
-    const data = await res.json();
-    setMessages(data.messages || []);
+    const targetId = user?.id || sessionId || 'admin';
+    const cleanP = conv.contact_phone ? conv.contact_phone.replace(/[^0-9]/g, '') : '';
+    try {
+      const res = await fetch(`${BACKEND}/api/conversations/${conv.id}/messages?phone=${cleanP}&userId=${targetId}`);
+      const data = await res.json();
+      if (data.messages && Array.isArray(data.messages)) {
+        setMessages(data.messages);
+      } else {
+        setMessages([]);
+      }
+    } catch (_) {
+      setMessages([]);
+    }
     setConversations(prev => prev.map(c => c.id === conv.id ? { ...c, unread_count: 0 } : c));
   };
 
