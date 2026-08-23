@@ -5,7 +5,7 @@ description: Documentación técnica completa de BotWA - bot de WhatsApp con IA 
 
 # BotWA — Documentación del Proyecto
 
-> 📅 Última actualización manual: 2026-07-20
+> 📅 Última actualización manual: 2026-08-23
 > 🤖 Las siguientes actualizaciones se generan automáticamente en cada `git push` via GitHub Actions.
 
 ## Qué es
