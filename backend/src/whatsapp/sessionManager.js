@@ -1276,31 +1276,29 @@ const restoreSessions = async (io) => {
   try {
     const { data: activeSessions } = await supabase
       .from('whatsapp_sessions')
-      .select('user_id, business_id, status');
+      .select('user_id, status')
+      .neq('status', 'disconnected');
 
-    const adminDir = path.join(SESSIONS_DIR, ADMIN_UUID);
-    if (fs.existsSync(adminDir)) {
-      console.log(`[Restore] Restaurando credenciales encontradas en disco (${ADMIN_UUID})...`);
+    const hasSessions = Array.isArray(activeSessions) && activeSessions.length > 0;
+
+    if (!hasSessions) {
+      console.log('[Restore] No se encontraron sesiones en DB, intentando restauración default ADMIN...');
       createSession(ADMIN_UUID, null, io).catch(() => {});
+      return;
     }
 
-    if (!activeSessions?.length) return;
-
     for (const session of activeSessions) {
+      if (!session || !session.user_id) continue;
       try {
-        if (session.user_id === ADMIN_UUID) continue;
-        const sessionDir = path.join(SESSIONS_DIR, session.user_id);
-        if (fs.existsSync(sessionDir) && session.status !== 'disconnected') {
-          console.log(`[Restore] Restaurando sesión para ${session.user_id}...`);
-          await createSession(session.user_id, session.business_id, io);
-          await new Promise(r => setTimeout(r, 2000));
-        }
+        console.log(`[Restore] Restaurando sesión activa para ${session.user_id} (status: ${session.status})...`);
+        await createSession(session.user_id, null, io);
+        await new Promise(r => setTimeout(r, 1500));
       } catch (e) {
-        console.error(`[Restore] Error para ${session.user_id}:`, e.message);
+        console.error(`[Restore] Error restaurando ${session.user_id}:`, e.message);
       }
     }
   } catch (e) {
-    console.error('[Restore] Error restaurando sesiones:', e.message);
+    console.error('[Restore] Error en restoreSessions:', e.message);
   }
 };
 
