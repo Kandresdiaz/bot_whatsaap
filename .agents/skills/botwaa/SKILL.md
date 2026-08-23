@@ -450,6 +450,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-22** | fix: reemplazar maybeSingle por limit(1) en /create para garantizar respuesta 200 en endpoint de conversaciones (`9181f52`) | Auto-deploy |
 
+| **2026-08-23** | feat: boton directo de nuevo chat instantaneo y fallback indestructible (`f3168ba`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
