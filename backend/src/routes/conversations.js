@@ -95,12 +95,16 @@ router.get('/:sessionId', async (req, res) => {
 
     // 2. Fusionar chats de RAM de Baileys (chats que llegan pero aún no están en DB)
     try {
+      const resolveFn = typeof resolvePhoneAndJid === 'function'
+        ? resolvePhoneAndJid
+        : (id) => ({ phone: (id || '').split('@')[0].replace(/[^0-9]/g, ''), jid: id, isGroup: false });
+
       if (store && store.chats) {
         for (const [, chat] of store.chats.entries()) {
           if (!chat || !chat.id || chat.id === 'status@broadcast') continue;
-          const resolved = resolvePhoneAndJid(chat.id);
-          const phone = resolved.phone;
-          if (!phone || phone.length < 7) continue; // descartar LIDs sin resolver
+          const resolved = resolveFn(chat.id);
+          const phone = resolved.phone || (chat.id || '').split('@')[0].replace(/[^0-9]/g, '');
+          if (!phone || phone.length < 5) continue;
           if (phoneSet.has(phone)) continue;
           phoneSet.add(phone);
 
@@ -122,12 +126,12 @@ router.get('/:sessionId', async (req, res) => {
             unread_count: chat.unreadCount || 0,
             status: 'open',
             last_message: null,
-            last_message_at: safeToIsoString(chat.conversationTimestamp) || new Date().toISOString(),
+            last_message_at: typeof safeToIsoString === 'function' ? safeToIsoString(chat.conversationTimestamp) : new Date().toISOString(),
             created_at: new Date().toISOString(),
           });
         }
       }
-    } catch (e) { console.warn('[RAM Chats Merge]:', e.message); }
+    } catch (e) { console.warn('[RAM Chats Merge Error]:', e.message); }
 
     // 3. Enriquecer previews de último mensaje desde RAM
     try {

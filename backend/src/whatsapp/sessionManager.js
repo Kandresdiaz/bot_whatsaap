@@ -1458,6 +1458,8 @@ module.exports = {
   storeChats,
   extractText,
   isExplicitlyDisconnected,
+  resolvePhoneAndJid,
+  cleanPhoneFromJid,
 };
 
 
