@@ -464,6 +464,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-23** | fix: resolucion directa por contact_phone para garantizar guardado de mensajes recientes en Supabase (`2e63e8a`) | Auto-deploy |
 
+| **2026-08-23** | fix: corregir ordenamiento cronologico de mensajes de a.timestamp - b.timestamp para colocar los mensajes mas recientes abajo del todo (`ccc3ef7`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
