@@ -625,7 +625,23 @@ const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts =
 
         const msgTime = safeToIsoString(msg.messageTimestamp);
 
-        const conv = convMap.get(contactPhone);
+        let conv = convMap.get(contactPhone);
+        if (!conv?.id) {
+          // Búsqueda directa por número de teléfono en Supabase
+          try {
+            const { data: directConv } = await supabase
+              .from('conversations')
+              .select('id, contact_phone')
+              .eq('contact_phone', contactPhone)
+              .limit(1);
+
+            if (directConv && directConv[0]?.id) {
+              conv = directConv[0];
+              convMap.set(contactPhone, conv);
+            }
+          } catch (_) {}
+        }
+
         if (conv?.id) {
           messagesToInsert.push({
             conversation_id: conv.id,
