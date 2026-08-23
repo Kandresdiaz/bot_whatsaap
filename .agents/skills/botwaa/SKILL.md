@@ -454,6 +454,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-23** | fix: exportar resolvePhoneAndJid en sessionManager para desbloquear la fusion de los 3294 chats de RAM (`2a02c6b`) | Auto-deploy |
 
+| **2026-08-23** | fix: restoreSessions recupera credenciales desde Supabase tras reinicios de servidor efimero Render (`0ddd79d`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
