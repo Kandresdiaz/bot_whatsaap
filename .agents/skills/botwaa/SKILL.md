@@ -460,6 +460,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-23** | fix: cargar los 500 mensajes mas recientes hasta el dia de hoy ordenados por timestamp descendente (`43d2997`) | Auto-deploy |
 
+| **2026-08-23** | fix: limpieza instantanea de mensajes al cambiar de chat y sincronizacion estricta por ref de conversacion activa (`009ef86`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
