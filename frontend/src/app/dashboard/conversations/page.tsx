@@ -129,7 +129,27 @@ export default function ConversationsPage() {
   const handleCreateNewChat = async () => {
     const clean = newPhoneInput.replace(/[^0-9]/g, '');
     if (!clean) return;
-    const targetId = sessionId || user?.id || 'admin';
+    const targetId = user?.id || sessionId || 'admin';
+
+    const tempConv: Conversation = {
+      id: `conv_${clean}`,
+      contact_phone: clean,
+      contact_name: formatPhoneNumber(clean) || clean,
+      bot_active: true,
+      is_blacklisted: false,
+      is_lead: false,
+      last_message_at: new Date().toISOString(),
+      unread_count: 0,
+      status: 'open',
+      last_message: 'Nuevo chat creado',
+    };
+
+    // Agregar localmente de inmediato para respuesta instantánea
+    setConversations(prev => [tempConv, ...prev.filter(c => c.contact_phone !== clean && c.id !== tempConv.id)]);
+    setActive(tempConv);
+    setNewPhoneInput('');
+    setNewPhoneModal(false);
+
     try {
       const res = await fetch(`${BACKEND}/api/conversations/create`, {
         method: 'POST',
@@ -138,14 +158,11 @@ export default function ConversationsPage() {
       });
       const data = await res.json();
       if (data.success && data.conversation) {
-        setConversations(prev => [data.conversation, ...prev.filter(c => c.id !== data.conversation.id)]);
+        setConversations(prev => [data.conversation, ...prev.filter(c => c.contact_phone !== clean && c.id !== data.conversation.id)]);
         setActive(data.conversation);
       }
     } catch (e) {
-      console.error('Error creando nuevo chat:', e);
-    } finally {
-      setNewPhoneInput('');
-      setNewPhoneModal(false);
+      console.warn('Aviso backend creando chat, usando chat local:', e);
     }
   };
 
@@ -651,9 +668,19 @@ export default function ConversationsPage() {
                   </p>
                 )}
 
-                <button className="btn btn-ghost" style={{ fontSize: 12, width: '100%', marginTop: 10 }} onClick={handleManualSync} disabled={syncing}>
-                  {syncing ? '🔄 Sincronizando...' : '🔄 Sincronizar Chats'}
-                </button>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
+                  <button
+                    className="btn btn-primary"
+                    style={{ fontSize: 12, width: '100%', padding: '8px 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+                    onClick={() => setNewPhoneModal(true)}
+                  >
+                    ➕ Iniciar Nuevo Chat por Número
+                  </button>
+
+                  <button className="btn btn-ghost" style={{ fontSize: 12, width: '100%' }} onClick={handleManualSync} disabled={syncing}>
+                    {syncing ? '🔄 Sincronizando...' : '🔄 Sincronizar Chats'}
+                  </button>
+                </div>
               </div>
             )}
 
