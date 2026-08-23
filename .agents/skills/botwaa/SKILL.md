@@ -466,6 +466,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-23** | fix: corregir ordenamiento cronologico de mensajes de a.timestamp - b.timestamp para colocar los mensajes mas recientes abajo del todo (`ccc3ef7`) | Auto-deploy |
 
+| **2026-08-23** | docs: actualizar documentacion tecnica del proyecto BotWA con arquitectura de resiliencia SaaS (`20e10f4`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
