@@ -39,15 +39,12 @@ export default function ConnectPage() {
       .catch(() => {});
   }, [user?.id]);
 
-  // Redirigir automáticamente a conversaciones al conectar
+  // Si WhatsApp se conecta y el negocio NO está configurado aún, abrir el Wizard de configuración
   useEffect(() => {
-    if (status === 'connected') {
-      const timer = setTimeout(() => {
-        router.push('/dashboard/conversations');
-      }, 1500);
-      return () => clearTimeout(timer);
+    if (status === 'connected' && business && !business.is_configured) {
+      setIsWizardOpen(true);
     }
-  }, [status, router]);
+  }, [status, business]);
 
   // ── Polling: pregunta al backend cada 3s el estado de la sesión ──────────
   useEffect(() => {
@@ -301,29 +298,43 @@ export default function ConnectPage() {
       {/* Conectado */}
       {status === 'connected' && (
         <div className="card" style={{
-          maxWidth: 500, marginBottom: 24,
-          borderColor: 'rgba(34,197,94,0.3)',
-          background: 'rgba(34,197,94,0.05)',
+          maxWidth: 540, marginBottom: 24,
+          borderColor: 'rgba(34,197,94,0.35)',
+          background: 'linear-gradient(135deg, rgba(34,197,94,0.08) 0%, rgba(0,207,255,0.04) 100%)',
+          boxShadow: '0 8px 30px rgba(34,197,94,0.1)',
         }}>
-          <div style={{ fontSize: 40, marginBottom: 12 }}>✅</div>
-          <h3 style={{ fontWeight: 700, marginBottom: 8, color: '#4ade80' }}>¡Bot Activo 24/7!</h3>
-          <p style={{ fontSize: 14, color: 'var(--text-muted)', marginBottom: 16 }}>
-            WhatsApp conectado. El bot responde automáticamente con IA.
-          </p>
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            <a href="/dashboard/conversations" className="btn btn-success">
-              Ver conversaciones →
-            </a>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+            <div style={{ fontSize: 36 }}>🎉</div>
+            <div>
+              <h3 style={{ fontWeight: 700, margin: 0, color: '#4ade80', fontSize: 18 }}>¡WhatsApp Vinculado con Éxito!</h3>
+              <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '2px 0 0 0' }}>
+                {phone ? `Número conectado: +${phone}` : 'El asistente está activo 24/7 y listo para responder.'}
+              </p>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 16 }}>
             <button
-              className="btn btn-ghost"
-              onClick={async () => {
-                await stopSession();
-                setTimeout(() => startSession(true), 500);
-              }}
-              style={{ fontSize: 13 }}
+              className="btn btn-primary"
+              onClick={() => setIsWizardOpen(true)}
+              style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}
             >
-              🔄 Re-vincular QR (Descargar Chats)
+              ⚙️ {business?.is_configured ? 'Editar Configuración del Negocio' : 'Configurar Preguntas & Bot'}
             </button>
+            <a
+              href="/dashboard/knowledge"
+              className="btn btn-ghost"
+              style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, border: '1px solid rgba(255,255,255,0.1)' }}
+            >
+              📚 Base de Conocimiento (RAG)
+            </a>
+            <a
+              href="/dashboard/conversations"
+              className="btn btn-success"
+              style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}
+            >
+              💬 Mis Conversaciones →
+            </a>
           </div>
         </div>
       )}
