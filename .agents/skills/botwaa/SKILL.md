@@ -473,6 +473,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-23** | feat: Onboarding Wizard minimalista flotante de 4 pasos antes de conectar WA y boton de Generador de FAQs con IA a demanda (`c2098be`) | Auto-deploy |
 
+| **2026-08-25** | feat: flujo de onboarding intuitivo 1-2-3 tras escanear QR con acceso directo al Wizard de preguntas del negocio (`93e2f79`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
