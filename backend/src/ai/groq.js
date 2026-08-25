@@ -101,9 +101,14 @@ const buildKnowledgeContext = (knowledge) => {
 };
 
 // ─── 5. System prompt con toda la info del negocio ───────────────────────────
-const buildSystemPrompt = (business, relevantKnowledge, allKnowledge) => {
+const buildSystemPrompt = (business, relevantKnowledge, allKnowledge, products = []) => {
   const relevantContext = buildKnowledgeContext(relevantKnowledge);
   const hasKnowledge = !!relevantContext;
+
+  const hasProducts = Array.isArray(products) && products.length > 0;
+  const productsContext = hasProducts
+    ? products.map(p => `- [${p.category || 'General'}] ${p.name}: $${Number(p.price || 0).toLocaleString('es-CO')} ${p.currency || 'COP'}${p.description ? ` (${p.description})` : ''}`).join('\n')
+    : null;
 
   const isSales = business.main_goal === 'vender';
   const isBooking = business.main_goal === 'agendar_citas';
@@ -135,30 +140,36 @@ Tu tono de voz: ${business.bot_personality || 'amigable, profesional y persuasiv
 === DATOS DEL NEGOCIO ===
 ${businessInfo}
 
-${hasKnowledge
-  ? `=== INFORMACIÓN RELEVANTE ENCONTRADA (KNOWLEDGE BASE) ===\n${relevantContext}\n=== FIN DE LA INFORMACIÓN ===`
-  : `=== NOTA: No encontré información específica sobre este tema en la base de conocimiento ===`
+${hasProducts
+  ? `=== CATÁLOGO OFICIAL DE PRODUCTOS Y SERVICIOS DISPONIBLES ===\n${productsContext}\n=== FIN DEL CATÁLOGO ===`
+  : ''
 }
 
-REGLAS ABSOLUTAS (NO LAS ROMPES NUNCA):
+${hasKnowledge
+  ? `=== INFORMACIÓN ADICIONAL ENCONTRADA (KNOWLEDGE BASE) ===\n${relevantContext}\n=== FIN DE LA INFORMACIÓN ===`
+  : ''
+}
+
+REGLAS ABSOLUTAS (NO LAS ROMPES NUNCA POR NINGÚN MOTIVO):
 1. Eres un EMPLEADO VIRTUAL FIDEL: Atiendes cualquier pregunta de atención al cliente con amabilidad, pero SIEMPRE mantienes el enfoque en CERRAR al cliente (${isSales ? 'Vender/Cotizar' : 'Agendar cita'}).
-2. NUNCA INVENTES PRECIOS, FECHAS, SERVICIOS O POLÍTICAS. Solo usa la información que está en las secciones de arriba.
-3. Si no tienes la información exacta, responde amablemente: "Esa información no la tengo a la mano, pero con gusto te conecto con nuestro equipo para ayudarte 😊".
-4. Si hay una imagen aplicable en el catálogo, escribe: [ENVIAR_IMAGEN: nombre_exacto]
-5. Si el cliente muestra intención clara de comprar, pagar o agendar, incluye al final: [LEAD_CALIENTE]
-6. Respuestas breves, directas y profesionales (máximo 4 líneas).
-7. Usa máximo 1 o 2 emojis por mensaje.
-8. Saluda solo en el primer mensaje de la conversación.
-9. Si te preguntan sobre temas ajenos al negocio (política, chistes, etc.), redirige respetuosamente de vuelta a los servicios del negocio.`;
+2. PRECISIÓN TOTAL DE PRODUCTOS Y PRECIOS: SOLO puedes cotizar, recomendar o mencionar los productos y servicios presentes en el CATÁLOGO OFICIAL de arriba. NUNCA inventes productos, platillos, promociones ni precios.
+3. Si el usuario pregunta por un producto que NO está en el catálogo, responde amablemente: "Por el momento no ofrecemos [producto], pero con gusto te puedo recomendar: [opción disponible del catálogo]."
+4. Si no tienes la información exacta sobre algo, responde amablemente: "Esa información no la tengo a la mano, pero con gusto te conecto con nuestro equipo para ayudarte 😊".
+5. Si hay una imagen aplicable en el catálogo, escribe: [ENVIAR_IMAGEN: nombre_exacto]
+6. Si el cliente muestra intención clara de comprar, pagar o agendar, incluye al final: [LEAD_CALIENTE]
+7. Respuestas breves, directas y profesionales (máximo 4 líneas).
+8. Usa máximo 1 o 2 emojis por mensaje.
+9. Saluda solo en el primer mensaje de la conversación.
+10. Si te preguntan sobre temas ajenos al negocio (política, chistes, etc.), redirige respetuosamente de vuelta a los servicios del negocio.`;
 };
 
 // ─── 6. Función principal RAG + Groq ─────────────────────────────────────────
-const askGroq = async (userMessage, business, knowledge, chatHistory = []) => {
+const askGroq = async (userMessage, business, knowledge, chatHistory = [], products = []) => {
   try {
     // RAG: buscar los chunks más relevantes con multi-query
     const relevantKnowledge = await ragSearch(userMessage, knowledge);
 
-    const systemPrompt = buildSystemPrompt(business, relevantKnowledge, knowledge);
+    const systemPrompt = buildSystemPrompt(business, relevantKnowledge, knowledge, products);
 
     // Historial de conversación (últimos 8 intercambios)
     const messages = [

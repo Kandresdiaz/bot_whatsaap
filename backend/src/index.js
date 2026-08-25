@@ -49,6 +49,7 @@ app.use('/api/business',      require('./routes/business'));
 app.use('/api/knowledge',     require('./routes/knowledge'));
 app.use('/api/admin',         require('./routes/admin'));
 app.use('/api/appointments',  require('./routes/appointments'));
+app.use('/api/products',      require('./routes/products'));
 
 // ── Health / Debug ───────────────────────────────────────────────────────────
 app.get('/ping', (req, res) => res.send('pong 🤖'));

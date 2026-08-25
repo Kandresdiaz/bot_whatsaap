@@ -232,8 +232,9 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
     console.error('[MSG] Error en appointmentFlow:', e.message);
   }
 
-  // ── 8. Cargar knowledge base completa ─────────────────────────────────────
+  // ── 8. Cargar knowledge base completa y Catálogo de Productos/Servicios ────
   let knowledge = [];
+  let products = [];
   try {
     const { data } = await supabase
       .from('knowledge_base')
@@ -243,6 +244,18 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
     knowledge = data || [];
   } catch (e) {
     console.error('[MSG] Error cargando knowledge base:', e.message);
+  }
+
+  try {
+    const { data: prods } = await supabase
+      .from('products_services')
+      .select('name, description, price, currency, category, image_url')
+      .eq('business_id', business.id)
+      .eq('is_active', true)
+      .order('category', { ascending: true });
+    products = prods || [];
+  } catch (e) {
+    console.error('[MSG] Error cargando catálogo de productos:', e.message);
   }
 
   // ── 9. Historial reciente de la conversación ───────────────────────────────
@@ -263,7 +276,7 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
 
   // ── 10. RAG + Groq: generar respuesta ─────────────────────────────────────
   const { reply, isLeadHot, tokensUsed, imageName, ragChunksUsed } = await askGroq(
-    text, business, knowledge, history
+    text, business, knowledge, history, products
   );
 
   console.log(`[RAG] Chunks usados: ${ragChunksUsed} | Tokens: ${tokensUsed}`);
