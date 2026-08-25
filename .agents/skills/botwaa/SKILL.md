@@ -479,6 +479,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-25** | feat: actualizar logo y favicon de la pestana con la Opcion 1 (Chat Bubble con Rayo IA) (`9297db0`) | Auto-deploy |
 
+| **2026-08-25** | fix: corregir formato de favicon.ico en RGBA para compatibilidad total de compilacion (`36aa788`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
