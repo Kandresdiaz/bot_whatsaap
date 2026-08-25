@@ -475,6 +475,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-25** | feat: flujo de onboarding intuitivo 1-2-3 tras escanear QR con acceso directo al Wizard de preguntas del negocio (`93e2f79`) | Auto-deploy |
 
+| **2026-08-25** | feat: modulo completo de Catalogo de Productos y Servicios con RAG anti-alucinacion e interfaz interactiva CRUD (`9ee5b14`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
