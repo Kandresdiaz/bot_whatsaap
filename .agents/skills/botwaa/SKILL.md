@@ -477,6 +477,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-25** | feat: modulo completo de Catalogo de Productos y Servicios con RAG anti-alucinacion e interfaz interactiva CRUD (`9ee5b14`) | Auto-deploy |
 
+| **2026-08-25** | feat: actualizar logo y favicon de la pestana con la Opcion 1 (Chat Bubble con Rayo IA) (`9297db0`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
