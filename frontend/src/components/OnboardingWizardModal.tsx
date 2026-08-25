@@ -93,19 +93,19 @@ export default function OnboardingWizardModal({ isOpen, onClose, onSave, initial
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      padding: 16,
+      padding: '10px 8px',
     }}>
       <div style={{
         background: '#0B132B',
         border: '1px solid rgba(0, 207, 255, 0.3)',
         boxShadow: '0 20px 50px rgba(0, 0, 0, 0.6), 0 0 30px rgba(26, 107, 255, 0.2)',
-        borderRadius: 20,
+        borderRadius: 16,
         width: '100%',
         maxWidth: 580,
         overflow: 'hidden',
         display: 'flex',
         flexDirection: 'column',
-        maxHeight: '90vh',
+        maxHeight: '92vh',
         color: '#FFFFFF',
       }}>
         {/* Header del Modal */}
@@ -159,7 +159,7 @@ export default function OnboardingWizardModal({ isOpen, onClose, onSave, initial
         </div>
 
         {/* Cuerpo / Contenido por Pasos */}
-        <div style={{ padding: 24, overflowY: 'auto', flex: 1 }}>
+        <div style={{ padding: '18px 16px', overflowY: 'auto', flex: 1 }}>
 
           {/* PASO 1: DATOS DEL NEGOCIO */}
           {step === 1 && (
@@ -360,11 +360,13 @@ export default function OnboardingWizardModal({ isOpen, onClose, onSave, initial
 
         {/* Footer con Botones de Navegación */}
         <div style={{
-          padding: '16px 24px',
+          padding: '14px 16px',
           borderTop: '1px solid rgba(255, 255, 255, 0.08)',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
+          gap: 10,
+          flexWrap: 'wrap',
           background: '#080E1F',
         }}>
           {step > 1 ? (
