@@ -64,14 +64,24 @@ export default function ProductsPage() {
   // Cargar productos al montar
   const loadProducts = async () => {
     const targetId = effectiveUserId || user?.id || 'admin';
-    if (!targetId) return;
     setLoading(true);
     try {
-      const res = await fetch(`${BACKEND}/api/products/${targetId}`);
+      let res = await fetch(`${BACKEND}/api/products/${targetId}`);
       if (res.ok) {
-        const data = await res.json();
-        if (data.products && Array.isArray(data.products)) {
+        let data = await res.json();
+        if (data.products && Array.isArray(data.products) && data.products.length > 0) {
           setProducts(data.products);
+          return;
+        }
+      }
+      // Fallback a 'admin' si el usuario no tiene productos propios aún
+      if (targetId !== 'admin') {
+        const fallbackRes = await fetch(`${BACKEND}/api/products/admin`);
+        if (fallbackRes.ok) {
+          const fallbackData = await fallbackRes.json();
+          if (fallbackData.products && Array.isArray(fallbackData.products)) {
+            setProducts(fallbackData.products);
+          }
         }
       }
     } catch (e) {
@@ -83,7 +93,7 @@ export default function ProductsPage() {
 
   useEffect(() => {
     loadProducts();
-  }, [effectiveUserId]);
+  }, [effectiveUserId, user]);
 
   // Abrir modal para Crear
   const openCreateModal = () => {
