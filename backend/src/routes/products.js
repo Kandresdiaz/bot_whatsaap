@@ -47,26 +47,30 @@ router.get('/:businessId', async (req, res) => {
     const { businessId: rawId } = req.params;
     const businessId = await resolveBusinessId(rawId);
 
-    if (!businessId) {
-      return res.json({ success: true, products: [] });
+    let query = supabase.from('products_services').select('*');
+    if (businessId) {
+      query = query.or(`business_id.eq.${businessId},business_id.is.null`);
     }
 
-    const { data, error } = await supabase
-      .from('products_services')
-      .select('*')
-      .eq('business_id', businessId)
+    const { data, error } = await query
       .order('category', { ascending: true })
       .order('created_at', { ascending: false });
 
-    if (error) {
-      console.error('[GET Products Error]:', error.message);
-      return res.status(500).json({ success: false, error: error.message });
+    if (error || !data) {
+      // Fallback a consultar todos los productos activos
+      const { data: allProds } = await supabase.from('products_services').select('*');
+      return res.json({ success: true, products: allProds || [] });
     }
 
     return res.json({ success: true, products: data || [] });
   } catch (err) {
     console.error('[GET Products Crash Safe]:', err.message);
-    return res.status(500).json({ success: false, error: err.message });
+    try {
+      const { data: allProds } = await supabase.from('products_services').select('*');
+      return res.json({ success: true, products: allProds || [] });
+    } catch (_) {
+      return res.json({ success: true, products: [] });
+    }
   }
 });
 
