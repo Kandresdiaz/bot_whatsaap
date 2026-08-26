@@ -44,30 +44,27 @@ router.get('/:businessId', async (req, res) => {
     const { businessId: rawId } = req.params;
     const businessId = await resolveBusinessId(rawId);
 
-    const { data, error } = await supabase
-      .from('products_services')
-      .select('*');
+    const { data, error } = await supabase.from('products_services').select('*');
+    let allProds = data || [];
 
-    if (error) {
-      console.error('[GET Products Error]:', error.message);
-      // Intentar sin ordenar
-      const fallbackQuery = await supabase.from('products_services').select('*');
-      return res.json({ success: true, products: fallbackQuery.data || [], error: error.message });
+    if (allProds.length === 0) {
+      const { seedDefaultProductsAndKB } = require('../db/seedHelper');
+      await seedDefaultProductsAndKB(businessId || '00000000-0000-0000-0000-000000000001');
+      const reFetch = await supabase.from('products_services').select('*');
+      allProds = reFetch.data || [];
     }
 
-    const allProds = data || [];
     let filtered = allProds.filter(p => p.business_id === businessId);
 
-    // Fallback inteligente: si no hay productos específicos para este businessId, devolver todos los productos disponibles
-    if (filtered.length === 0 && allProds.length > 0) {
+    if (filtered.length === 0) {
       const defaultMatched = allProds.filter(p => p.business_id === '00000000-0000-0000-0000-000000000001' || !p.business_id);
       filtered = defaultMatched.length > 0 ? defaultMatched : allProds;
     }
 
-    return res.json({ success: true, products: filtered, count: filtered.length, totalInDb: allProds.length });
+    return res.json({ success: true, products: filtered });
   } catch (err) {
     console.error('[GET Products Crash Safe]:', err.message);
-    return res.json({ success: true, products: [], crash: err.message });
+    return res.json({ success: true, products: [] });
   }
 });
 

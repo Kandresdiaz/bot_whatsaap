@@ -35,19 +35,21 @@ router.get('/:businessId', async (req, res) => {
     const { businessId: rawId } = req.params;
     const businessId = await resolveBusinessId(rawId);
 
-    const { data, error } = await supabase
-      .from('knowledge_base')
-      .select('*')
-      .order('created_at', { ascending: false });
+    const { data, error } = await supabase.from('knowledge_base').select('*');
+    let allItems = data || [];
 
-    if (error) {
-      return res.json({ success: true, items: [] });
+    if (allItems.length === 0) {
+      const { seedDefaultProductsAndKB } = require('../db/seedHelper');
+      await seedDefaultProductsAndKB(businessId || '00000000-0000-0000-0000-000000000001');
+      const reFetch = await supabase.from('knowledge_base').select('*');
+      allItems = reFetch.data || [];
     }
 
-    let filtered = (data || []).filter(k => k.business_id === businessId);
-    if (filtered.length === 0 && Array.isArray(data) && data.length > 0) {
-      const defaultMatched = data.filter(k => k.business_id === '00000000-0000-0000-0000-000000000001' || !k.business_id);
-      filtered = defaultMatched.length > 0 ? defaultMatched : data;
+    let filtered = allItems.filter(k => k.business_id === businessId);
+
+    if (filtered.length === 0) {
+      const defaultMatched = allItems.filter(k => k.business_id === '00000000-0000-0000-0000-000000000001' || !k.business_id);
+      filtered = defaultMatched.length > 0 ? defaultMatched : allItems;
     }
 
     res.json({ success: true, items: filtered });
