@@ -14,7 +14,6 @@ const resolveBusinessId = async (idOrUserId) => {
       return '00000000-0000-0000-0000-000000000001';
     }
 
-    // 1. Probar si idOrUserId ya es el id de la tabla businesses
     const { data: bById } = await supabase
       .from('businesses')
       .select('id')
@@ -23,7 +22,6 @@ const resolveBusinessId = async (idOrUserId) => {
 
     if (bById && bById[0]?.id) return bById[0].id;
 
-    // 2. Probar si idOrUserId es el user_id
     const { data: bByUser } = await supabase
       .from('businesses')
       .select('id')
@@ -32,7 +30,6 @@ const resolveBusinessId = async (idOrUserId) => {
 
     if (bByUser && bByUser[0]?.id) return bByUser[0].id;
 
-    // 3. Fallback a cualquier negocio existente
     const { data: fallback } = await supabase.from('businesses').select('id').limit(1);
     if (fallback && fallback[0]?.id) return fallback[0].id;
   } catch (e) {
@@ -47,30 +44,28 @@ router.get('/:businessId', async (req, res) => {
     const { businessId: rawId } = req.params;
     const businessId = await resolveBusinessId(rawId);
 
-    let query = supabase.from('products_services').select('*');
-    if (businessId) {
-      query = query.or(`business_id.eq.${businessId},business_id.is.null`);
-    }
-
-    const { data, error } = await query
+    const { data, error } = await supabase
+      .from('products_services')
+      .select('*')
       .order('category', { ascending: true })
       .order('created_at', { ascending: false });
 
-    if (error || !data) {
-      // Fallback a consultar todos los productos activos
-      const { data: allProds } = await supabase.from('products_services').select('*');
-      return res.json({ success: true, products: allProds || [] });
-    }
-
-    return res.json({ success: true, products: data || [] });
-  } catch (err) {
-    console.error('[GET Products Crash Safe]:', err.message);
-    try {
-      const { data: allProds } = await supabase.from('products_services').select('*');
-      return res.json({ success: true, products: allProds || [] });
-    } catch (_) {
+    if (error) {
+      console.error('[GET Products Error]:', error.message);
       return res.json({ success: true, products: [] });
     }
+
+    // Filtrar en memoria para evitar sintaxisPostgREST invalida
+    let filtered = data || [];
+    if (businessId && Array.isArray(data)) {
+      const matched = data.filter(p => p.business_id === businessId || !p.business_id);
+      if (matched.length > 0) filtered = matched;
+    }
+
+    return res.json({ success: true, products: filtered });
+  } catch (err) {
+    console.error('[GET Products Crash Safe]:', err.message);
+    return res.json({ success: true, products: [] });
   }
 });
 
@@ -180,7 +175,7 @@ router.patch('/:id/toggle', async (req, res) => {
 
     return res.json({ success: true, product: data && data[0] });
   } catch (err) {
-    return res.status(500).json({ success: false, error: err.message });
+    return res.status(500).json({ success: false, error: error.message });
   }
 });
 
