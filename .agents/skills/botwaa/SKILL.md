@@ -540,6 +540,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-26** | chore: sync local files and test-groq updates (`343d116`) | Auto-deploy |
 
+| **2026-08-26** | fix: update Groq active model IDs list to include llama-3.1-70b-versatile and mixtral (`23b8ca3`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
