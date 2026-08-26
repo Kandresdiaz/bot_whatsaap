@@ -35,7 +35,7 @@ export default function DashboardHome() {
 
       {/* Status del bot */}
       <div className="card" style={{ marginBottom: 24, borderColor: isConnected ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.2)', background: isConnected ? 'rgba(34,197,94,0.05)' : 'rgba(239,68,68,0.03)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 14 }}>
+        <div className="action-buttons-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 14 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
             <div style={{ fontSize: 40 }}>{isConnected ? '🤖' : '😴'}</div>
             <div>
@@ -47,7 +47,7 @@ export default function DashboardHome() {
               </div>
             </div>
           </div>
-          <Link href={isConnected ? '/dashboard/conversations' : '/dashboard/connect'} className="btn btn-primary">
+          <Link href={isConnected ? '/dashboard/conversations' : '/dashboard/connect'} className="btn btn-primary btn-mobile-full">
             {isConnected ? '💬 Ver conversaciones' : '📱 Conectar ahora'}
           </Link>
         </div>
