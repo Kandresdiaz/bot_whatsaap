@@ -171,10 +171,9 @@ WhatsApp → Baileys (protocolo directo, sin API de Meta)
 
 | Plan | Precio COP/mes | USD aprox | Incluye |
 |---|---|---|---|
-| Básico | $29.900 | ~$7 | 1 número, 500 msgs/mes, 5 docs knowledge |
-| Profesional | $79.900 | ~$20 | 1 número, ilimitado, 50 docs, dashboard |
-| Negocio | $179.900 | ~$45 | 3 números, ilimitado, métricas |
-| Agencia | $499.900 | ~$125 | 10 clientes, white label |
+| Básico | $120.000 | ~$30 | 1 número WA, RAG Agente 24/7, resp. ilimitadas, 20 docs FAQs |
+| Profesional | $250.000 | ~$62 | 1 número WA, RAG Catálogo + Citas + Leads calientes + 100 docs |
+| Business / Agencia | $450.000 | ~$112 | Múltiples números, White-label, Prompting Done-For-You, Soporte VIP |
 
 ---
 

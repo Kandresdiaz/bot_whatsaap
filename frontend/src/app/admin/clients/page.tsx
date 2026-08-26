@@ -15,7 +15,7 @@ type Client = {
   whatsapp_sessions?: { status: string; phone_number: string }[];
 };
 
-const PLAN_PRICES: Record<string, number> = { starter: 75000, pro: 160000, business: 320000 };
+const PLAN_PRICES: Record<string, number> = { starter: 120000, pro: 250000, business: 450000 };
 
 export default function AdminClientsPage() {
   const { setSelectedClientContext } = useAuth();
@@ -37,7 +37,7 @@ export default function AdminClientsPage() {
     customDays: 30,
     months: 1,
     plan: 'starter',
-    amount: 75000,
+    amount: 120000,
     method: 'nequi',
     note: ''
   });
@@ -282,7 +282,7 @@ export default function AdminClientsPage() {
                           style={{ padding: '5px 10px', fontSize: 11 }}
                           onClick={() => {
                             setPayModalClient(c);
-                            setPayForm(p => ({ ...p, plan: c.plan || 'starter', amount: PLAN_PRICES[c.plan] || 75000 }));
+                            setPayForm(p => ({ ...p, plan: c.plan || 'starter', amount: PLAN_PRICES[c.plan] || 120000 }));
                           }}
                         >
                           💳 Activar / Pago
@@ -302,7 +302,7 @@ export default function AdminClientsPage() {
                             style={{ padding: '5px 10px', fontSize: 11 }}
                             onClick={() => {
                               setPayModalClient(c);
-                              setPayForm(p => ({ ...p, plan: c.plan || 'starter', amount: PLAN_PRICES[c.plan] || 75000 }));
+                              setPayForm(p => ({ ...p, plan: c.plan || 'starter', amount: PLAN_PRICES[c.plan] || 120000 }));
                             }}
                           >
                             ▶️ Activar
@@ -353,11 +353,11 @@ export default function AdminClientsPage() {
                 <select
                   className="input"
                   value={payForm.plan}
-                  onChange={e => setPayForm(p => ({ ...p, plan: e.target.value, amount: PLAN_PRICES[e.target.value] || 75000 }))}
+                  onChange={e => setPayForm(p => ({ ...p, plan: e.target.value, amount: PLAN_PRICES[e.target.value] || 120000 }))}
                 >
-                  <option value="starter">Starter - $75.000 COP / mes</option>
-                  <option value="pro">Pro - $160.000 COP / mes</option>
-                  <option value="business">Business - $320.000 COP / mes</option>
+                  <option value="starter">Básico - $120.000 COP / mes (~$30 USD)</option>
+                  <option value="pro">Profesional - $250.000 COP / mes (~$62 USD)</option>
+                  <option value="business">Business / Agencia - $450.000 COP / mes (~$112 USD)</option>
                 </select>
               </div>
 
@@ -519,9 +519,9 @@ export default function AdminClientsPage() {
                 <div>
                   <label style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4, display: 'block' }}>Plan</label>
                   <select className="input" value={newClientForm.plan} onChange={e => setNewClientForm({ ...newClientForm, plan: e.target.value })}>
-                    <option value="starter">Starter ($75k)</option>
-                    <option value="pro">Pro ($160k)</option>
-                    <option value="business">Business ($320k)</option>
+                    <option value="starter">Básico ($120k COP / ~$30 USD)</option>
+                    <option value="pro">Profesional ($250k COP / ~$62 USD)</option>
+                    <option value="business">Business / Agencia ($450k COP / ~$112 USD)</option>
                   </select>
                 </div>
                 <div>
