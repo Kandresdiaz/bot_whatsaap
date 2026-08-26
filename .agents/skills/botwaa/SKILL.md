@@ -483,6 +483,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-25** | style: optimizaciones de adaptabilidad ultra-responsive para celulares de cualquier tamaño (`61ee0ce`) | Auto-deploy |
 
+| **2026-08-26** | Merge branch 'main' of https://github.com/Kandresdiaz/bot_whatsaap (`7d8379e`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
