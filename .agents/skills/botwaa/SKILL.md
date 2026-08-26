@@ -489,6 +489,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-26** | feat: estructurar panel admin con rutas independientes para Dashboard, Clientes y Pagos (`a47eca7`) | Auto-deploy |
 
+| **2026-08-26** | fix: PKCE exchangeCodeForSession en callback de Google Auth (`9415935`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
