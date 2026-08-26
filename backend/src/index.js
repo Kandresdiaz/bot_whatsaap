@@ -74,28 +74,41 @@ app.get('/api/debug/version', (req, res) => {
 app.get('/api/debug/test-groq', async (req, res) => {
   try {
     const Groq = require('groq-sdk');
-    const apiKey = (process.env.GROQ_API_KEY || '').trim();
+    const apiKey = (process.env.GROQ_API_KEY || '').trim().replace(/^['"]|['"]$/g, '');
     if (!apiKey) {
       return res.json({ success: false, error: 'GROQ_API_KEY env var is missing or empty' });
     }
     const client = new Groq({ apiKey });
-    const modelsToTest = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'llama3-70b-8192'];
+    
+    // Obtener lista completa de modelos soportados por la API Key
+    let availableModels = [];
+    try {
+      const modelsList = await client.models.list();
+      availableModels = (modelsList.data || []).map(m => m.id);
+    } catch (listErr) {
+      console.warn('Error listando modelos:', listErr.message);
+    }
+
+    const testCandidates = availableModels.length > 0 
+      ? availableModels 
+      : ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'llama-3.1-70b-versatile', 'mixtral-8x7b-32768', 'gemma2-9b-it'];
+
     const results = [];
     const errors = [];
 
-    for (const m of modelsToTest) {
+    for (const m of testCandidates) {
       try {
         const resp = await client.chat.completions.create({
           model: m,
           messages: [{ role: 'user', content: 'Hola' }],
-          max_tokens: 20
+          max_tokens: 15
         });
         results.push({ model: m, content: resp.choices[0]?.message?.content });
       } catch (err) {
         errors.push({ model: m, error: err.message, status: err.status, code: err.code });
       }
     }
-    res.json({ success: results.length > 0, apiKeyLength: apiKey.length, results, errors });
+    res.json({ success: results.length > 0, apiKeyLength: apiKey.length, availableModels, results, errors });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message, stack: err.stack });
   }
