@@ -558,6 +558,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-26** | fix: sanitizar credenciales de Supabase en backend y asegurar salvaguarda total de datos en frontend (`82391d6`) | Auto-deploy |
 
+| **2026-08-26** | fix(config): fallback business fetch and sync categories and persuasivo personality (`044e0bf`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
