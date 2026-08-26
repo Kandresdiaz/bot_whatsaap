@@ -55,24 +55,34 @@ export default function AuthCallbackPage() {
       try {
         if (typeof window === 'undefined') return;
 
-        // Estrategia 1: Leer Hash de la URL (#access_token=...)
+        // 1. Si viene hash de la URL (#access_token=...&refresh_token=...)
         if (window.location.hash) {
           const hashParams = new URLSearchParams(window.location.hash.substring(1));
           const accessToken = hashParams.get('access_token');
-          if (accessToken) {
-            setStatus('Verificando token de acceso...');
-            const { data: userData } = await supabase.auth.getUser(accessToken);
-            if (userData?.user) {
-              await processSession(userData.user);
-              return;
+          const refreshToken = hashParams.get('refresh_token');
+
+          if (accessToken && refreshToken) {
+            setStatus('Estableciendo sesión segura...');
+            try {
+              const { data: sessionData } = await supabase.auth.setSession({
+                access_token: accessToken,
+                refresh_token: refreshToken,
+              });
+              if (sessionData?.session?.user) {
+                await processSession(sessionData.session.user);
+                return;
+              }
+            } catch (hashErr) {
+              console.error('Error en setSession desde hash:', hashErr);
             }
           }
         }
 
-        // Estrategia 2: Leer código PKCE de la URL (?code=...)
+        // 2. Si viene código PKCE en la URL (?code=...)
         if (window.location.search) {
           const searchParams = new URLSearchParams(window.location.search);
           const code = searchParams.get('code');
+
           if (code) {
             setStatus('Confirmando acceso de Google...');
             try {
@@ -87,27 +97,27 @@ export default function AuthCallbackPage() {
           }
         }
 
-        // Estrategia 3: Obtener usuario / sesión activa de cliente Supabase
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          await processSession(user);
-          return;
-        }
-
+        // 3. Obtener sesión de Supabase
         const { data: { session } } = await supabase.auth.getSession();
         if (session?.user) {
           await processSession(session.user);
           return;
         }
 
-        // Estrategia 4: Escuchar cambios de sesión de Supabase
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          await processSession(user);
+          return;
+        }
+
+        // 4. Listener asíncrono para cambios de autenticación
         const { data: authSubscription } = supabase.auth.onAuthStateChange(async (event, currentSession) => {
           if (currentSession?.user && !processed) {
             await processSession(currentSession.user);
           }
         });
 
-        // Polling de respaldo cada segundo por 6 segundos
+        // 5. Polling de respaldo por 6 segundos
         let attempts = 0;
         const interval = setInterval(async () => {
           attempts++;
@@ -115,10 +125,10 @@ export default function AuthCallbackPage() {
             clearInterval(interval);
             return;
           }
-          const { data: { user: pollUser } } = await supabase.auth.getUser();
-          if (pollUser) {
+          const { data: { session: pollSession } } = await supabase.auth.getSession();
+          if (pollSession?.user) {
             clearInterval(interval);
-            await processSession(pollUser);
+            await processSession(pollSession.user);
           } else if (attempts >= 6) {
             clearInterval(interval);
             if (!processed) {
