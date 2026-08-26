@@ -511,6 +511,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-26** | fix: complete mobile responsive layout fixes, mobile topbar menu and button word wrapping (`983cd4e`) | Auto-deploy |
 
+| **2026-08-26** | fix(ui): polish button labels and single-line button styling for mobile (`e2d990c`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
