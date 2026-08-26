@@ -529,6 +529,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-26** | feat: alertas internas silenciosas para admin (notifySystemAlert) manteniendo atencion humana impecable al cliente final (`6573f0b`) | Auto-deploy |
 
+| **2026-08-26** | debug: add detailed Groq API test diagnostic endpoint (`0d2b0e9`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
