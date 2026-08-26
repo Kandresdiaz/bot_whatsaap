@@ -250,6 +250,101 @@ export default function ConnectPage() {
         </div>
       </div>
 
+      {/* Tarjeta de Pregunta & Estado de Configuración Guardada */}
+      {business && (business.is_configured || business.name) && (
+        <div className="card" style={{
+          marginBottom: 24,
+          border: '1px solid rgba(0, 207, 255, 0.4)',
+          background: 'linear-gradient(135deg, rgba(8, 14, 31, 0.95) 0%, rgba(11, 19, 43, 0.9) 100%)',
+          boxShadow: '0 8px 30px rgba(0, 207, 255, 0.08)',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12, marginBottom: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ fontSize: 24 }}>💾</div>
+              <div>
+                <h3 style={{ margin: 0, fontWeight: 700, fontSize: 16, color: '#00CFFF' }}>
+                  Configuración del Bot Guardada (Permanente)
+                </h3>
+                <p style={{ margin: '2px 0 0 0', fontSize: 13, color: 'var(--text-muted)' }}>
+                  Tus datos del bot persisten en la nube aunque WhatsApp se desconecte o reconecte.
+                </p>
+              </div>
+            </div>
+            <span style={{
+              fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 20,
+              background: 'rgba(34, 197, 94, 0.15)', color: '#4ade80', border: '1px solid rgba(34, 197, 94, 0.3)'
+            }}>
+              ✅ Configurado: {business.name}
+            </span>
+          </div>
+
+          {/* Resumen compacto de los datos guardados */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+            gap: 12,
+            background: 'rgba(255, 255, 255, 0.03)',
+            borderRadius: 10,
+            padding: '12px 14px',
+            marginBottom: 16,
+            border: '1px solid rgba(255, 255, 255, 0.06)'
+          }}>
+            <div>
+              <span style={{ fontSize: 11, color: '#94A3B8', display: 'block' }}>Negocio</span>
+              <strong style={{ fontSize: 13, color: '#FFFFFF' }}>{business.name}</strong>
+            </div>
+            <div>
+              <span style={{ fontSize: 11, color: '#94A3B8', display: 'block' }}>Categoría / Ciudad</span>
+              <strong style={{ fontSize: 13, color: '#FFFFFF' }}>{business.category || 'General'} {business.city ? `• ${business.city}` : ''}</strong>
+            </div>
+            <div>
+              <span style={{ fontSize: 11, color: '#94A3B8', display: 'block' }}>Objetivo Principal</span>
+              <strong style={{ fontSize: 13, color: '#FFFFFF' }}>
+                {business.main_goal === 'agendar_citas' ? '📅 Agendar Citas' : '🛒 Vender Productos'}
+              </strong>
+            </div>
+            <div>
+              <span style={{ fontSize: 11, color: '#94A3B8', display: 'block' }}>Tono de Voz</span>
+              <strong style={{ fontSize: 13, color: '#FFFFFF', textTransform: 'capitalize' }}>{business.bot_personality || 'Amigable'}</strong>
+            </div>
+          </div>
+
+          {/* Si WhatsApp está desconectado o en proceso, preguntar qué hacer */}
+          {status !== 'connected' && (
+            <div style={{
+              background: 'rgba(26, 107, 255, 0.1)',
+              borderRadius: 10,
+              padding: '14px 16px',
+              border: '1px solid rgba(26, 107, 255, 0.25)'
+            }}>
+              <div style={{ fontWeight: 600, fontSize: 14, color: '#E2E8F0', marginBottom: 6 }}>
+                ❓ WhatsApp desconectado: ¿Qué deseas hacer al conectar?
+              </div>
+              <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '0 0 12px 0' }}>
+                Puedes usar la configuración existente guardada arriba o crear/modificar una configuración nueva.
+              </p>
+
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                <button
+                  className="btn btn-success btn-mobile-full"
+                  onClick={() => startSession(true)}
+                  style={{ fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}
+                >
+                  ⚡ Usar configuración guardada y Obtener QR
+                </button>
+                <button
+                  className="btn btn-ghost btn-mobile-full"
+                  onClick={() => setIsWizardOpen(true)}
+                  style={{ fontSize: 13, border: '1px solid rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', gap: 6 }}
+                >
+                  📝 Configurar algo nuevo / Editar Wizard
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Error visible */}
       {error && (
         <div style={{
