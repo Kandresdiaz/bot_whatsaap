@@ -3,8 +3,19 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 
 const DAYS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
-const CATEGORIES = ['Peluquería', 'Consultorio médico', 'Restaurante', 'Tienda', 'Taller mecánico', 'Spa / Estética', 'Abogado', 'Psicólogo', 'Dentista', 'Otro'];
+const CATEGORIES = [
+  'Asesoría / Consultoría',
+  'Restaurante / Comida',
+  'Peluquería / Barbería',
+  'Consultorio médico / Odontología',
+  'Tienda / E-commerce',
+  'Taller mecánico',
+  'Spa / Estética',
+  'Gimnasio / Deporte',
+  'Otro'
+];
 const PERSONALITIES = [
+  { value: 'persuasivo', label: '⚡ Vendedor Persuasivo', desc: 'Enfocado en cerrar ventas e incentivar la compra' },
   { value: 'profesional', label: '💼 Profesional', desc: 'Formal, directo, eficiente' },
   { value: 'amigable', label: '😊 Amigable', desc: 'Cercano, cálido, conversacional' },
   { value: 'casual', label: '😎 Casual', desc: 'Relajado, informal, con humor' },
@@ -20,7 +31,7 @@ export default function BotConfigPage() {
     active_hours_end: '18:00',
     active_days: [1, 2, 3, 4, 5],
     timezone: 'America/Bogota',
-    bot_personality: 'amigable',
+    bot_personality: 'persuasivo',
   });
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -29,7 +40,7 @@ export default function BotConfigPage() {
   useEffect(() => {
     const targetId = effectiveUserId || user?.id || 'admin';
     if (!targetId) return;
-    fetch(`${BACKEND}/api/business/${targetId}`)
+    fetch(`${BACKEND}/api/business/${targetId}`, { cache: 'no-store' })
       .then(r => r.json())
       .then(d => { if (d.business) setConfig(d.business); });
   }, [effectiveUserId, user, BACKEND]);

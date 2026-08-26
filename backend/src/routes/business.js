@@ -24,9 +24,21 @@ router.get('/:userId', async (req, res) => {
       .from('businesses')
       .select('*')
       .or(`user_id.eq.${userId},user_id.eq.${targetId}`)
+      .order('created_at', { ascending: false })
       .limit(1);
 
     let business = (data && data.length > 0) ? data[0] : null;
+
+    if (!business) {
+      const { data: fallback } = await supabase
+        .from('businesses')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(1);
+      if (fallback && fallback.length > 0) {
+        business = fallback[0];
+      }
+    }
 
     if (!business && targetId && targetId !== 'admin') {
       const { data: newBus } = await supabase.from('businesses').insert({
