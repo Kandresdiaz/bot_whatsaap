@@ -495,6 +495,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-26** | Merge branch 'main' of https://github.com/Kandresdiaz/bot_whatsaap (`05254ac`) | Auto-deploy |
 
+| **2026-08-26** | Merge branch 'main' of https://github.com/Kandresdiaz/bot_whatsaap (`8e2fc9c`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
