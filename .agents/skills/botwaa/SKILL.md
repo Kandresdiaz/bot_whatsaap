@@ -521,6 +521,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-26** | fix: estrictamiento del aislamiento multi-tenant por business.id (`b5a4891`) | Auto-deploy |
 
+| **2026-08-26** | feat: persistencia de configuracion del bot y panel de seleccion al desconectar WhatsApp (`4e9bf67`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
