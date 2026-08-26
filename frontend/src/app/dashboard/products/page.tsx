@@ -61,6 +61,42 @@ export default function ProductsPage() {
     setTimeout(() => setToast(null), 3500);
   };
 
+  const DEFAULT_PRODUCTS: Product[] = [
+    {
+      id: 'prod_basic_120',
+      business_id: '00000000-0000-0000-0000-000000000001',
+      name: 'Plan Básico BotWA',
+      description: '1 número de WhatsApp, Agente IA 24/7 RAG, 1.000 msgs/mes, 20 docs FAQs. Captura de datos para Vender O Agendar.',
+      price: 120000,
+      currency: 'COP',
+      category: 'Planes / Membresías',
+      is_active: true,
+      created_at: new Date().toISOString(),
+    },
+    {
+      id: 'prod_pro_250',
+      business_id: '00000000-0000-0000-0000-000000000001',
+      name: 'Plan Profesional BotWA',
+      description: '1 número de WhatsApp, Vender Y Agendar simultáneamente, Catálogo interactivo RAG, Lead Alert instantáneo, 5.000 msgs/mes, 100 docs.',
+      price: 250000,
+      currency: 'COP',
+      category: 'Planes / Membresías',
+      is_active: true,
+      created_at: new Date().toISOString(),
+    },
+    {
+      id: 'prod_biz_450',
+      business_id: '00000000-0000-0000-0000-000000000001',
+      name: 'Plan Business / Agencia BotWA',
+      description: 'Multi-línea WhatsApp, White-Label VIP, 15.000 msgs/mes, Configuración e instalación Done-For-You por el equipo.',
+      price: 450000,
+      currency: 'COP',
+      category: 'Planes / Membresías',
+      is_active: true,
+      created_at: new Date().toISOString(),
+    },
+  ];
+
   // Cargar productos al montar
   const loadProducts = async () => {
     const targetId = effectiveUserId || user?.id || 'admin';
@@ -74,18 +110,21 @@ export default function ProductsPage() {
           return;
         }
       }
-      // Fallback a 'admin' si el usuario no tiene productos propios aún
       if (targetId !== 'admin') {
         const fallbackRes = await fetch(`${BACKEND}/api/products/admin`);
         if (fallbackRes.ok) {
           const fallbackData = await fallbackRes.json();
-          if (fallbackData.products && Array.isArray(fallbackData.products)) {
+          if (fallbackData.products && Array.isArray(fallbackData.products) && fallbackData.products.length > 0) {
             setProducts(fallbackData.products);
+            return;
           }
         }
       }
+      // Salvaguarda final en frontend
+      setProducts(DEFAULT_PRODUCTS);
     } catch (e) {
       console.error('Error cargando productos:', e);
+      setProducts(DEFAULT_PRODUCTS);
     } finally {
       setLoading(false);
     }

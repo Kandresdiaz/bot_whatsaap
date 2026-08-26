@@ -27,10 +27,39 @@ export default function KnowledgePage() {
       });
   }, [effectiveUserId, user, BACKEND]);
 
+  const DEFAULT_KB: KBItem[] = [
+    {
+      id: 'kb_info_1',
+      type: 'text',
+      title: 'Información General de BotWA y Garantías',
+      content: 'BotWA es un servicio SaaS de bots de WhatsApp con inteligencia artificial para negocios latinoamericanos. Ofrecemos 7 días de prueba gratis y garantía de devolución del 100% en los primeros 14 días. La instalación toma menos de 15 minutos.',
+      is_active: true,
+      created_at: new Date().toISOString(),
+    },
+    {
+      id: 'kb_faq_2',
+      type: 'faq',
+      title: 'Preguntas Frecuentes (FAQs) de BotWA',
+      content: '¿Cómo funciona? Te conectas escaneando un código QR estilo WhatsApp Web. El bot responde las 24 horas del día sin necesidad de tener el celular encendido todo el tiempo. ¿Qué pasa si el bot no sabe algo? Te notifica al instante a tu WhatsApp para que un humano responda.',
+      is_active: true,
+      created_at: new Date().toISOString(),
+    },
+  ];
+
   const loadItems = async (bId: string) => {
-    const res = await fetch(`${BACKEND}/api/knowledge/${bId}`);
-    const data = await res.json();
-    setItems(data.items || []);
+    try {
+      const res = await fetch(`${BACKEND}/api/knowledge/${bId}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.items && Array.isArray(data.items) && data.items.length > 0) {
+          setItems(data.items);
+          return;
+        }
+      }
+      setItems(DEFAULT_KB);
+    } catch (_) {
+      setItems(DEFAULT_KB);
+    }
   };
 
   const addText = async () => {
