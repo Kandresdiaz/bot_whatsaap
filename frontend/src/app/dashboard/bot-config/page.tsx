@@ -11,7 +11,7 @@ const PERSONALITIES = [
 ];
 
 export default function BotConfigPage() {
-  const { user } = useAuth();
+  const { user, effectiveUserId } = useAuth();
   const [config, setConfig] = useState<any>({
     name: '', category: '', city: '',
     greeting_msg: 'Hola! 👋 Bienvenido a [Nombre negocio]. ¿En qué te puedo ayudar?',
@@ -27,11 +27,12 @@ export default function BotConfigPage() {
   const BACKEND = 'https://bot-whatsaap-tkjd.onrender.com';
 
   useEffect(() => {
-    if (!user) return;
-    fetch(`${BACKEND}/api/business/${user.id}`)
+    const targetId = effectiveUserId || user?.id || 'admin';
+    if (!targetId) return;
+    fetch(`${BACKEND}/api/business/${targetId}`)
       .then(r => r.json())
       .then(d => { if (d.business) setConfig(d.business); });
-  }, [user, BACKEND]);
+  }, [effectiveUserId, user, BACKEND]);
 
   const toggleDay = (day: number) => {
     setConfig((prev: any) => ({
@@ -43,8 +44,10 @@ export default function BotConfigPage() {
   };
 
   const save = async () => {
+    const targetId = effectiveUserId || user?.id || 'admin';
+    if (!targetId) return;
     setLoading(true);
-    await fetch(`${BACKEND}/api/business/${user!.id}`, {
+    await fetch(`${BACKEND}/api/business/${targetId}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(config),

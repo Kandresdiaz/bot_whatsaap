@@ -5,7 +5,7 @@ import { useAuth } from '@/context/AuthContext';
 type KBItem = { id: string; type: string; title: string; content: string; is_active: boolean; created_at: string };
 
 export default function KnowledgePage() {
-  const { user } = useAuth();
+  const { user, effectiveUserId } = useAuth();
   const [businessId, setBusinessId] = useState<string | null>(null);
   const [items, setItems] = useState<KBItem[]>([]);
   const [tab, setTab] = useState<'text' | 'faq' | 'file' | 'image'>('text');
@@ -15,8 +15,9 @@ export default function KnowledgePage() {
   const BACKEND = 'https://bot-whatsaap-tkjd.onrender.com';
 
   useEffect(() => {
-    if (!user) return;
-    fetch(`${BACKEND}/api/business/${user.id}`)
+    const targetId = effectiveUserId || user?.id || 'admin';
+    if (!targetId) return;
+    fetch(`${BACKEND}/api/business/${targetId}`)
       .then(r => r.json())
       .then(d => {
         if (d.business?.id) {
@@ -24,7 +25,7 @@ export default function KnowledgePage() {
           loadItems(d.business.id);
         }
       });
-  }, [user, BACKEND]);
+  }, [effectiveUserId, user, BACKEND]);
 
   const loadItems = async (bId: string) => {
     const res = await fetch(`${BACKEND}/api/knowledge/${bId}`);

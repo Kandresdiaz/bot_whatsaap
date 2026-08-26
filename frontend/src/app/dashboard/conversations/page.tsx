@@ -32,7 +32,7 @@ const COMMON_EMOJIS = [
 ];
 
 export default function ConversationsPage() {
-  const { user } = useAuth();
+  const { user, effectiveUserId } = useAuth();
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [active, setActive] = useState<Conversation | null>(null);
@@ -168,9 +168,10 @@ export default function ConversationsPage() {
 
   // Cargar sesión del usuario y Bot Global
   useEffect(() => {
-    if (!user) return;
-    setSessionId(user.id);
-    fetch(`${BACKEND}/api/sessions/status/${user.id}`)
+    const targetId = effectiveUserId || user?.id || 'admin';
+    if (!targetId) return;
+    setSessionId(targetId);
+    fetch(`${BACKEND}/api/sessions/status/${targetId}`)
       .then(r => r.json())
       .then(d => {
         if (d.session?.id) setSessionId(d.session.id);
@@ -181,7 +182,7 @@ export default function ConversationsPage() {
       })
       .catch(() => {});
 
-    fetch(`${BACKEND}/api/sessions/global-bot/${user.id}`)
+    fetch(`${BACKEND}/api/sessions/global-bot/${targetId}`)
       .then(r => r.json())
       .then(d => {
         if (d.success && typeof d.bot_enabled === 'boolean') {
@@ -189,10 +190,10 @@ export default function ConversationsPage() {
         }
       })
       .catch(() => setGlobalBotEnabled(false));
-  }, [user, BACKEND]);
+  }, [effectiveUserId, user, BACKEND]);
 
   const loadConversations = async (targetId: string) => {
-    const idToFetch = user?.id || targetId || 'admin';
+    const idToFetch = effectiveUserId || targetId || 'admin';
     if (!idToFetch) return;
     try {
       const res = await fetch(`${BACKEND}/api/conversations/${idToFetch}`);
@@ -211,7 +212,7 @@ export default function ConversationsPage() {
 
   // Sincronización en tiempo real vía WebSockets
   useEffect(() => {
-    const userIdToUse = user?.id || 'admin';
+    const userIdToUse = effectiveUserId || user?.id || 'admin';
     loadConversations(userIdToUse);
 
     const interval = setInterval(() => {

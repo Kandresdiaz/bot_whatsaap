@@ -4,25 +4,33 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 
 export default function DashboardHome() {
-  const { user } = useAuth();
+  const { user, effectiveUserId, selectedClientName } = useAuth();
   const [session, setSession] = useState<any>(null);
-  const [stats, setStats] = useState({ conversations: 0, messages: 0, leads: 0 });
   const BACKEND = 'https://bot-whatsaap-tkjd.onrender.com';
 
   useEffect(() => {
-    if (!user) return;
-    fetch(`${BACKEND}/api/sessions/status/${user.id}`)
+    if (!effectiveUserId) return;
+    fetch(`${BACKEND}/api/sessions/status/${effectiveUserId}`)
       .then(r => r.json())
-      .then(d => setSession(d.session));
-  }, [user, BACKEND]);
+      .then(d => setSession(d.session))
+      .catch(() => setSession(null));
+  }, [effectiveUserId, BACKEND]);
 
   const isConnected = session?.status === 'connected';
+
+  const titleName = selectedClientName
+    ? selectedClientName
+    : user?.name?.split(' ')[0] || 'Usuario';
 
   return (
     <div>
       <div className="page-header">
-        <h1 className="page-title">👋 Hola, {user?.name?.split(' ')[0]}</h1>
-        <p className="page-subtitle">Panel de control de tu bot de WhatsApp</p>
+        <h1 className="page-title">👋 Hola, {titleName}</h1>
+        <p className="page-subtitle">
+          {selectedClientName
+            ? `Panel de control para ${selectedClientName}`
+            : 'Panel de control de tu bot de WhatsApp'}
+        </p>
       </div>
 
       {/* Status del bot */}
@@ -50,6 +58,7 @@ export default function DashboardHome() {
         {[
           { href: '/dashboard/connect', icon: '📱', title: 'Conectar WhatsApp', desc: 'Escanea el QR', color: '#7c3aed' },
           { href: '/dashboard/conversations', icon: '💬', title: 'Conversaciones', desc: 'Ver todos los chats', color: '#0ea5e9' },
+          { href: '/dashboard/products', icon: '📦', title: 'Productos y Servicios', desc: 'Gestión de catálogo', color: '#00CFFF' },
           { href: '/dashboard/knowledge', icon: '🧠', title: 'Knowledge Base', desc: 'Alimentar el bot', color: '#d946ef' },
           { href: '/dashboard/bot-config', icon: '⚙️', title: 'Configurar Bot', desc: 'Personalidad y horarios', color: '#f59e0b' },
         ].map(item => (
@@ -63,7 +72,7 @@ export default function DashboardHome() {
 
       {/* Plan info */}
       <div className="card" style={{ maxWidth: 500 }}>
-        <h3 style={{ fontWeight: 700, marginBottom: 12 }}>📋 Tu plan</h3>
+        <h3 style={{ fontWeight: 700, marginBottom: 12 }}>📋 Info del Plan</h3>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
             <span className="badge badge-purple" style={{ fontSize: 14, padding: '6px 14px' }}>{user?.plan?.toUpperCase()}</span>
@@ -74,8 +83,12 @@ export default function DashboardHome() {
             )}
           </div>
           <div style={{ fontSize: 13, color: 'var(--text-muted)', textAlign: 'right' }}>
-            ¿Renovar o mejorar?<br />
-            <span style={{ color: 'var(--accent-light)' }}>Contacta al administrador</span>
+            ¿Modificar plan o vigencia?<br />
+            {user?.is_admin ? (
+              <Link href="/admin" style={{ color: '#00CFFF', fontWeight: 600 }}>Gestionar desde Admin</Link>
+            ) : (
+              <span style={{ color: 'var(--accent-light)' }}>Contacta al administrador</span>
+            )}
           </div>
         </div>
       </div>

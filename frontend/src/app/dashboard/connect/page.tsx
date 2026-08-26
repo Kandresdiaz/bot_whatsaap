@@ -9,7 +9,7 @@ const BACKEND = 'https://bot-whatsaap-tkjd.onrender.com';
 type Status = 'disconnected' | 'connecting' | 'qr_ready' | 'connected' | 'error';
 
 export default function ConnectPage() {
-  const { user } = useAuth();
+  const { user, effectiveUserId } = useAuth();
   const router = useRouter();
   const [status, setStatus] = useState<Status>('disconnected');
   const [qr, setQr] = useState<string | null>(null);
@@ -23,8 +23,8 @@ export default function ConnectPage() {
 
   // Cargar info del negocio al montar
   useEffect(() => {
-    if (!user?.id) return;
-    fetch(`${BACKEND}/api/business/${user.id}`)
+    if (!effectiveUserId) return;
+    fetch(`${BACKEND}/api/business/${effectiveUserId}`)
       .then(r => r.json())
       .then(d => {
         if (d.business) {
@@ -37,7 +37,7 @@ export default function ConnectPage() {
         }
       })
       .catch(() => {});
-  }, [user?.id]);
+  }, [effectiveUserId]);
 
   // Si WhatsApp se conecta y el negocio NO está configurado aún, abrir el Wizard de configuración
   useEffect(() => {
@@ -48,12 +48,12 @@ export default function ConnectPage() {
 
   // ── Polling: pregunta al backend cada 3s el estado de la sesión ──────────
   useEffect(() => {
-    if (!user?.id) return;
+    if (!effectiveUserId) return;
     let cancelled = false;
 
     const poll = async () => {
       try {
-        const r = await fetch(`${BACKEND}/api/sessions/status/${user.id}`, { signal: AbortSignal.timeout(8000) });
+        const r = await fetch(`${BACKEND}/api/sessions/status/${effectiveUserId}`, { signal: AbortSignal.timeout(8000) });
         if (!r.ok) return;
         const d = await r.json();
         if (cancelled) return;
@@ -82,11 +82,11 @@ export default function ConnectPage() {
     poll();
     const interval = setInterval(poll, 3000);
     return () => { cancelled = true; clearInterval(interval); };
-  }, [user?.id, retryCount]);
+  }, [effectiveUserId, retryCount]);
 
   // ── Iniciar sesión / pedir QR ─────────────────────────────────────────────
   const startSession = useCallback(async (force = false) => {
-    if (!user?.id) return;
+    if (!effectiveUserId) return;
     setStatus('connecting');
     setError(null);
     setQr(null);
@@ -98,7 +98,7 @@ export default function ConnectPage() {
       const res = await fetch(`${BACKEND}/api/sessions/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.id, force }),
+        body: JSON.stringify({ userId: effectiveUserId, force }),
         signal: controller.signal,
       });
       clearTimeout(timeout);
@@ -128,18 +128,16 @@ export default function ConnectPage() {
       }
       setStatus('error');
     }
-  }, [user?.id]);
-
-
+  }, [effectiveUserId]);
 
   // ── Desconectar ───────────────────────────────────────────────────────────
   const stopSession = async () => {
-    if (!user?.id) return;
+    if (!effectiveUserId) return;
     try {
       await fetch(`${BACKEND}/api/sessions/stop`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.id }),
+        body: JSON.stringify({ userId: effectiveUserId }),
       });
     } catch (_) {}
     setStatus('disconnected');
@@ -150,8 +148,8 @@ export default function ConnectPage() {
 
   // Guardar configuración del negocio desde el modal
   const handleSaveBusiness = async (updatedConfig: any) => {
-    if (!user?.id) return;
-    const r = await fetch(`${BACKEND}/api/business/${user.id}`, {
+    if (!effectiveUserId) return;
+    const r = await fetch(`${BACKEND}/api/business/${effectiveUserId}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(updatedConfig),

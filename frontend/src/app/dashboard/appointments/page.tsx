@@ -28,7 +28,7 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 export default function AppointmentsPage() {
-  const { user } = useAuth();
+  const { user, effectiveUserId } = useAuth();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [businessId, setBusinessId] = useState<string | null>(null);
   const [filter, setFilter] = useState('all');
@@ -36,8 +36,9 @@ export default function AppointmentsPage() {
   const BACKEND = 'https://bot-whatsaap-tkjd.onrender.com';
 
   useEffect(() => {
-    if (!user) return;
-    fetch(`${BACKEND}/api/business/${user.id}`)
+    const targetId = effectiveUserId || user?.id || 'admin';
+    if (!targetId) return;
+    fetch(`${BACKEND}/api/business/${targetId}`)
       .then(r => r.json())
       .then(d => {
         if (d.business?.id) {
@@ -47,7 +48,7 @@ export default function AppointmentsPage() {
           setLoading(false);
         }
       });
-  }, [user, BACKEND]);
+  }, [effectiveUserId, user, BACKEND]);
 
   const loadAppointments = async (bId: string) => {
     setLoading(true);

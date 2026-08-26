@@ -4,6 +4,13 @@ import { useRouter, usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 
+type ClientItem = {
+  id: string;
+  name: string;
+  email: string;
+  businesses?: { name: string }[];
+};
+
 const navItems = [
   { href: '/dashboard', icon: '🏠', label: 'Inicio' },
   { href: '/dashboard/connect', icon: '📱', label: 'Conectar WhatsApp' },
@@ -15,17 +22,34 @@ const navItems = [
 ];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const { user, loading, logout } = useAuth();
+  const { user, loading, logout, selectedClientId, selectedClientName, setSelectedClientContext, effectiveUserId } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
 
   const [globalBotEnabled, setGlobalBotEnabled] = useState<boolean>(false);
   const [togglingGlobal, setTogglingGlobal] = useState<boolean>(false);
-  const BACKEND = 'https://bot-whatsaap-tkjd.onrender.com';
 
+  const [clientsList, setClientsList] = useState<ClientItem[]>([]);
+  const BACKEND = 'https://bot-whatsaap-tkjd.onrender.com';
+  const headers = { 'Content-Type': 'application/json', 'x-admin-key': process.env.NEXT_PUBLIC_ADMIN_KEY || 'admin123' };
+
+  // Cargar lista de clientes si es Admin
   useEffect(() => {
-    if (!user?.id) return;
-    fetch(`${BACKEND}/api/sessions/global-bot/${user.id}`)
+    if (!user?.is_admin) return;
+    fetch(`${BACKEND}/api/admin/clients`, { headers })
+      .then(r => r.json())
+      .then(d => {
+        if (d.clients && Array.isArray(d.clients)) {
+          setClientsList(d.clients);
+        }
+      })
+      .catch(() => {});
+  }, [user?.is_admin]);
+
+  // Cargar estado de bot global para el usuario efectivo
+  useEffect(() => {
+    if (!effectiveUserId) return;
+    fetch(`${BACKEND}/api/sessions/global-bot/${effectiveUserId}`)
       .then(r => r.json())
       .then(d => {
         if (d.success && typeof d.bot_enabled === 'boolean') {
@@ -35,15 +59,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         }
       })
       .catch(() => setGlobalBotEnabled(false));
-  }, [user?.id]);
+  }, [effectiveUserId]);
 
   const toggleGlobalBot = async () => {
-    if (!user?.id || togglingGlobal) return;
+    if (!effectiveUserId || togglingGlobal) return;
     const nextVal = !globalBotEnabled;
     setTogglingGlobal(true);
     setGlobalBotEnabled(nextVal);
     try {
-      await fetch(`${BACKEND}/api/sessions/global-bot/${user.id}`, {
+      await fetch(`${BACKEND}/api/sessions/global-bot/${effectiveUserId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ bot_enabled: nextVal }),
@@ -75,9 +99,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <stop offset="100%" stopColor="#00CFFF"/>
               </linearGradient>
             </defs>
-            {/* Burbuja de chat */}
             <path d="M4 8C4 5.8 5.8 4 8 4H32C34.2 4 36 5.8 36 8V26C36 28.2 34.2 30 32 30H22L14 37V30H8C5.8 30 4 28.2 4 26V8Z" fill="url(#logoGrad)" opacity="0.15" stroke="url(#logoGrad)" strokeWidth="1.5"/>
-            {/* Rayo/IA */}
             <path d="M22 9L15 21H21L18 31L27 17H21L22 9Z" fill="url(#logoGrad)"/>
           </svg>
           BotWA
@@ -128,13 +150,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <div style={{ padding: '10px 14px', marginBottom: 8 }}>
             <div style={{ fontSize: 13, fontWeight: 600 }}>{user.name}</div>
             <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{user.email}</div>
-            <div style={{ marginTop: 6 }}>
+            <div style={{ marginTop: 6, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
               <span className="badge badge-blue">{user.plan}</span>
+              {user.is_admin && <span className="badge badge-purple">🛡️ Admin</span>}
             </div>
           </div>
           {user.is_admin && (
             <Link href="/admin" className="nav-link" style={{ color: '#22d3ee', marginBottom: 8 }}>
-              <span>🛡️</span> Volver a Admin
+              <span>🛡️</span> Panel Admin
             </Link>
           )}
           <button className="nav-link" onClick={logout} style={{ color: '#ef4444' }}>
@@ -143,8 +166,71 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
       </aside>
 
-      {/* Content */}
-      <main className="main">{children}</main>
+      {/* Main Container */}
+      <main className="main" style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+        {/* Admin Selector Bar */}
+        {user.is_admin && (
+          <div style={{
+            background: 'linear-gradient(90deg, #0f1b2f 0%, #1e1b4b 100%)',
+            borderBottom: '1px solid rgba(0,207,255,0.3)',
+            padding: '10px 24px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: 12,
+            marginBottom: 16,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontSize: 18 }}>👑</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: '#00CFFF' }}>
+                MODO ADMINISTRADOR:
+              </span>
+              <span style={{ fontSize: 13, color: '#f8fafc' }}>
+                {selectedClientId === 'all'
+                  ? '🌐 Viendo Todos los Clientes'
+                  : selectedClientId
+                  ? `👤 Viendo a: ${selectedClientName || selectedClientId}`
+                  : '👑 Viendo: Mi Cuenta Admin'}
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <label style={{ fontSize: 12, color: '#94a3b8' }}>Cambiar Vista:</label>
+              <select
+                className="input"
+                style={{ height: 32, fontSize: 12, padding: '0 8px', background: '#080E1F', color: '#00CFFF', borderColor: 'rgba(0,207,255,0.4)', width: 'auto' }}
+                value={selectedClientId || 'admin'}
+                onChange={e => {
+                  const val = e.target.value;
+                  if (val === 'admin') {
+                    setSelectedClientContext(null);
+                  } else if (val === 'all') {
+                    setSelectedClientContext('all', 'Todos los Clientes');
+                  } else {
+                    const c = clientsList.find(item => item.id === val);
+                    setSelectedClientContext(val, c ? (c.businesses?.[0]?.name || c.name) : val);
+                  }
+                }}
+              >
+                <option value="admin">👑 Mi Cuenta Admin</option>
+                <option value="all">🌐 Ver Todo (Todos los Clientes)</option>
+                {clientsList.map(c => (
+                  <option key={c.id} value={c.id}>
+                    👤 {c.name} ({c.businesses?.[0]?.name || c.email})
+                  </option>
+                ))}
+              </select>
+
+              <Link href="/admin" className="btn btn-primary" style={{ fontSize: 11, padding: '4px 10px', textDecoration: 'none' }}>
+                🛡️ Volver a Admin
+              </Link>
+            </div>
+          </div>
+        )}
+
+        <div style={{ flex: 1 }}>{children}</div>
+      </main>
     </div>
   );
 }

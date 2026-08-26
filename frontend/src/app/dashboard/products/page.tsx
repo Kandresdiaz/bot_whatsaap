@@ -32,7 +32,7 @@ const CATEGORIES_PRESETS = [
 ];
 
 export default function ProductsPage() {
-  const { user } = useAuth();
+  const { user, effectiveUserId } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -63,10 +63,11 @@ export default function ProductsPage() {
 
   // Cargar productos al montar
   const loadProducts = async () => {
-    if (!user?.id) return;
+    const targetId = effectiveUserId || user?.id || 'admin';
+    if (!targetId) return;
     setLoading(true);
     try {
-      const res = await fetch(`${BACKEND}/api/products/${user.id}`);
+      const res = await fetch(`${BACKEND}/api/products/${targetId}`);
       if (res.ok) {
         const data = await res.json();
         if (data.products && Array.isArray(data.products)) {
@@ -82,7 +83,7 @@ export default function ProductsPage() {
 
   useEffect(() => {
     loadProducts();
-  }, [user?.id]);
+  }, [effectiveUserId]);
 
   // Abrir modal para Crear
   const openCreateModal = () => {
@@ -124,7 +125,7 @@ export default function ProductsPage() {
 
     setSaving(true);
     try {
-      const targetId = user?.id || 'admin';
+      const targetId = effectiveUserId || user?.id || 'admin';
       const payload = {
         userId: targetId,
         businessId: targetId,
