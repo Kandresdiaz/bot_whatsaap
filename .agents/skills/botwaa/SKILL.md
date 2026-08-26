@@ -523,6 +523,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-26** | feat: persistencia de configuracion del bot y panel de seleccion al desconectar WhatsApp (`4e9bf67`) | Auto-deploy |
 
+| **2026-08-26** | fix: mejorar resiliencia de Groq AI con fallback de negocio y endpoint test-groq (`e96a0cb`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
