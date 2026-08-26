@@ -155,17 +155,17 @@ export default function BotConfigPage() {
             </div>
             <div>
               <label style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 10, display: 'block' }}>Días activos</label>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 {DAYS.map((day, i) => (
                   <button
                     key={i}
                     onClick={() => toggleDay(i)}
                     style={{
-                      padding: '8px 12px', borderRadius: 10, fontSize: 13, fontWeight: 600,
+                      padding: '6px 10px', borderRadius: 8, fontSize: 12, fontWeight: 600,
                       border: `2px solid ${config.active_days?.includes(i) ? 'var(--accent)' : 'var(--border)'}`,
                       background: config.active_days?.includes(i) ? 'rgba(26,107,255,0.2)' : 'var(--bg-card2)',
                       color: config.active_days?.includes(i) ? 'var(--accent-light)' : 'var(--text-muted)',
-                      cursor: 'pointer', transition: 'all 0.2s'
+                      cursor: 'pointer', transition: 'all 0.2s', flex: '1 1 36px', textAlign: 'center'
                     }}
                   >
                     {day}
@@ -178,12 +178,12 @@ export default function BotConfigPage() {
       </div>
 
       {/* Guardar */}
-      <div style={{ marginTop: 24, display: 'flex', gap: 14, alignItems: 'center' }}>
-        <button className="btn btn-primary" onClick={save} disabled={loading} style={{ padding: '13px 28px', fontSize: 15 }}>
+      <div style={{ marginTop: 24, display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+        <button className="btn btn-primary" onClick={save} disabled={loading} style={{ padding: '10px 20px', fontSize: 14 }}>
           {loading ? <><span className="spinner" style={{ width: 18, height: 18 }} /> Guardando...</> : '💾 Guardar configuración'}
         </button>
         {saved && (
-          <span style={{ color: 'var(--green)', fontSize: 14, fontWeight: 600 }}>
+          <span style={{ color: 'var(--green)', fontSize: 13, fontWeight: 600 }}>
             ✅ Guardado correctamente
           </span>
         )}

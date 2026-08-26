@@ -54,18 +54,20 @@ export default function DashboardHome() {
       </div>
 
       {/* Quick actions */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 28 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 24 }}>
         {[
-          { href: '/dashboard/connect', icon: '📱', title: 'Conectar WhatsApp', desc: 'Escanea el QR', color: '#7c3aed' },
+          { href: '/dashboard/connect', icon: '📱', title: 'Conectar WhatsApp', desc: 'Escanea el QR', color: '#00CFFF' },
           { href: '/dashboard/conversations', icon: '💬', title: 'Conversaciones', desc: 'Ver todos los chats', color: '#0ea5e9' },
-          { href: '/dashboard/products', icon: '📦', title: 'Productos y Servicios', desc: 'Gestión de catálogo', color: '#00CFFF' },
-          { href: '/dashboard/knowledge', icon: '🧠', title: 'Knowledge Base', desc: 'Alimentar el bot', color: '#d946ef' },
+          { href: '/dashboard/products', icon: '📦', title: 'Productos y Servicios', desc: 'Gestión de catálogo', color: '#38bdf8' },
+          { href: '/dashboard/knowledge', icon: '🧠', title: 'Knowledge Base', desc: 'Alimentar el bot', color: '#818cf8' },
           { href: '/dashboard/bot-config', icon: '⚙️', title: 'Configurar Bot', desc: 'Personalidad y horarios', color: '#f59e0b' },
         ].map(item => (
-          <Link key={item.href} href={item.href} className="card card-hover" style={{ textDecoration: 'none', display: 'block' }}>
-            <div style={{ fontSize: 32, marginBottom: 10 }}>{item.icon}</div>
-            <div style={{ fontWeight: 700, marginBottom: 4, color: item.color }}>{item.title}</div>
-            <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>{item.desc}</div>
+          <Link key={item.href} href={item.href} className="card card-hover" style={{ textDecoration: 'none', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: 14 }}>
+            <div>
+              <div style={{ fontSize: 28, marginBottom: 8 }}>{item.icon}</div>
+              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4, color: item.color, wordBreak: 'break-word' }}>{item.title}</div>
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{item.desc}</div>
           </Link>
         ))}
       </div>
@@ -73,16 +75,16 @@ export default function DashboardHome() {
       {/* Plan info */}
       <div className="card" style={{ maxWidth: 500 }}>
         <h3 style={{ fontWeight: 700, marginBottom: 12 }}>📋 Info del Plan</h3>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
           <div>
-            <span className="badge badge-purple" style={{ fontSize: 14, padding: '6px 14px' }}>{user?.plan?.toUpperCase()}</span>
+            <span className="badge badge-purple" style={{ fontSize: 13, padding: '5px 12px' }}>{user?.plan?.toUpperCase()}</span>
             {user?.paid_until && (
               <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 8 }}>
                 Activo hasta: {new Date(user.paid_until).toLocaleDateString('es-CO')}
               </div>
             )}
           </div>
-          <div style={{ fontSize: 13, color: 'var(--text-muted)', textAlign: 'right' }}>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'left' }}>
             ¿Modificar plan o vigencia?<br />
             {user?.is_admin ? (
               <Link href="/admin" style={{ color: '#00CFFF', fontWeight: 600 }}>Gestionar desde Admin</Link>

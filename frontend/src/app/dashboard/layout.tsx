@@ -28,10 +28,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const [globalBotEnabled, setGlobalBotEnabled] = useState<boolean>(false);
   const [togglingGlobal, setTogglingGlobal] = useState<boolean>(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
 
   const [clientsList, setClientsList] = useState<ClientItem[]>([]);
   const BACKEND = 'https://bot-whatsaap-tkjd.onrender.com';
   const headers = { 'Content-Type': 'application/json', 'x-admin-key': process.env.NEXT_PUBLIC_ADMIN_KEY || 'admin123' };
+
+  // Cerrar menú móvil al navegar
+  useEffect(() => {
+    setIsMobileMenuOpen(false);
+  }, [pathname]);
 
   // Redirigir a login si no hay usuario autenticado
   useEffect(() => {
@@ -95,8 +101,39 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <div>
+      {/* Mobile Header Topbar */}
+      <div className="mobile-topbar">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <svg className="logo-icon" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="logoGradMob" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stopColor="#1A6BFF"/>
+                <stop offset="100%" stopColor="#00CFFF"/>
+              </linearGradient>
+            </defs>
+            <path d="M4 8C4 5.8 5.8 4 8 4H32C34.2 4 36 5.8 36 8V26C36 28.2 34.2 30 32 30H22L14 37V30H8C5.8 30 4 28.2 4 26V8Z" fill="url(#logoGradMob)" opacity="0.15" stroke="url(#logoGradMob)" strokeWidth="1.5"/>
+            <path d="M22 9L15 21H21L18 31L27 17H21L22 9Z" fill="url(#logoGradMob)"/>
+          </svg>
+          <span style={{ fontWeight: 800, fontSize: 18, color: '#f8fafc' }}>BotWA</span>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span className="badge" style={{ background: globalBotEnabled ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', color: globalBotEnabled ? '#4ade80' : '#f87171', fontSize: 11 }}>
+            {globalBotEnabled ? '🤖 ON' : '⏸️ OFF'}
+          </span>
+
+          <button
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            style={{ background: 'none', border: 'none', color: '#00CFFF', fontSize: 24, cursor: 'pointer', padding: '4px 8px' }}
+            aria-label="Menú"
+          >
+            {isMobileMenuOpen ? '✕' : '☰'}
+          </button>
+        </div>
+      </div>
+
       {/* Sidebar */}
-      <aside className="sidebar">
+      <aside className={`sidebar ${isMobileMenuOpen ? 'mobile-open' : ''}`}>
         <div className="sidebar-logo">
           {/* Logo: chat bubble + rayo, gradiente azul/cyan */}
           <svg className="logo-icon" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -118,6 +155,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               key={item.href}
               href={item.href}
               className={`nav-link ${pathname === item.href ? 'active' : ''}`}
+              onClick={() => setIsMobileMenuOpen(false)}
             >
               <span style={{ fontSize: 18 }}>{item.icon}</span>
               {item.label}

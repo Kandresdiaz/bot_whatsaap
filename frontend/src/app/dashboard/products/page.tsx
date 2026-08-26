@@ -262,22 +262,22 @@ export default function ProductsPage() {
       </div>
 
       {/* Barra de Búsqueda y Filtros */}
-      <div className="card" style={{ background: '#0C1527', borderColor: '#1E293B', padding: 16, display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ display: 'flex', gap: 12, flex: 1, minWidth: 260 }}>
+      <div className="card" style={{ background: '#0C1527', borderColor: '#1E293B', padding: 14, display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', gap: 10, flex: 1, minWidth: 200, flexWrap: 'wrap' }}>
           <input
             type="text"
             className="input"
             placeholder="🔍 Buscar por nombre, descripción o categoría..."
             value={search}
             onChange={e => setSearch(e.target.value)}
-            style={{ fontSize: 13, flex: 1 }}
+            style={{ fontSize: 13, flex: 1, minWidth: 160 }}
           />
 
           <select
             className="input"
             value={selectedCategory}
             onChange={e => setSelectedCategory(e.target.value)}
-            style={{ fontSize: 13, width: 180 }}
+            style={{ fontSize: 13, flex: '1 1 140px', minWidth: 130 }}
           >
             <option value="all">Todas las Categorías</option>
             {categoriesList.filter(c => c !== 'all').map(cat => (
@@ -328,7 +328,7 @@ export default function ProductsPage() {
         </div>
       ) : viewMode === 'grid' ? (
         /* Vista Cuadrícula */
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 14 }}>
           {filteredProducts.map(prod => (
             <div
               key={prod.id}
@@ -342,7 +342,7 @@ export default function ProductsPage() {
               }}
             >
               <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 8 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
                   <span style={{
                     fontSize: 10, fontWeight: 700, textTransform: 'uppercase', padding: '2px 8px',
                     borderRadius: 10, background: 'rgba(0,207,255,0.1)', color: '#00CFFF', border: '1px solid rgba(0,207,255,0.2)',
@@ -361,11 +361,11 @@ export default function ProductsPage() {
                   </button>
                 </div>
 
-                <h3 style={{ fontSize: 16, fontWeight: 700, margin: '0 0 4px 0', color: '#f8fafc' }}>
+                <h3 style={{ fontSize: 15, fontWeight: 700, margin: '0 0 4px 0', color: '#f8fafc', wordBreak: 'break-word' }}>
                   {prod.name}
                 </h3>
 
-                <div style={{ fontSize: 18, fontWeight: 800, color: '#00CFFF', marginBottom: 8 }}>
+                <div style={{ fontSize: 17, fontWeight: 800, color: '#00CFFF', marginBottom: 8 }}>
                   ${Number(prod.price || 0).toLocaleString('es-CO')} <span style={{ fontSize: 11, color: '#94a3b8' }}>{prod.currency || 'COP'}</span>
                 </div>
 
@@ -390,40 +390,42 @@ export default function ProductsPage() {
       ) : (
         /* Vista Tabla */
         <div className="card" style={{ background: '#0C1527', borderColor: '#1E293B', padding: 0, overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, textAlign: 'left' }}>
-            <thead>
-              <tr style={{ background: '#080E1F', borderBottom: '1px solid #1E293B', color: '#94a3b8' }}>
-                <th style={{ padding: '12px 16px' }}>Producto / Servicio</th>
-                <th style={{ padding: '12px 16px' }}>Categoría</th>
-                <th style={{ padding: '12px 16px' }}>Precio</th>
-                <th style={{ padding: '12px 16px' }}>Estado</th>
-                <th style={{ padding: '12px 16px', textAlign: 'right' }}>Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredProducts.map(prod => (
-                <tr key={prod.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
-                  <td style={{ padding: '12px 16px' }}>
-                    <div style={{ fontWeight: 700, color: '#f8fafc' }}>{prod.name}</div>
-                    {prod.description && <div style={{ fontSize: 11, color: '#94a3b8' }}>{prod.description.slice(0, 60)}...</div>}
-                  </td>
-                  <td style={{ padding: '12px 16px', color: '#00CFFF' }}>{prod.category || 'General'}</td>
-                  <td style={{ padding: '12px 16px', fontWeight: 700, color: '#f8fafc' }}>
-                    ${Number(prod.price || 0).toLocaleString('es-CO')} {prod.currency}
-                  </td>
-                  <td style={{ padding: '12px 16px' }}>
-                    <span onClick={() => toggleActive(prod)} style={{ cursor: 'pointer', fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 10, background: prod.is_active ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', color: prod.is_active ? '#4ade80' : '#f87171' }}>
-                      {prod.is_active ? '🟢 Disponible' : '🔴 Agotado'}
-                    </span>
-                  </td>
-                  <td style={{ padding: '12px 16px', textAlign: 'right' }}>
-                    <button className="btn btn-ghost" onClick={() => openEditModal(prod)} style={{ fontSize: 12, padding: '4px 8px', marginRight: 6 }}>✏️</button>
-                    <button className="btn btn-ghost" onClick={() => handleDelete(prod)} style={{ fontSize: 12, color: '#f87171', padding: '4px 8px' }}>🗑️</button>
-                  </td>
+          <div className="table-responsive">
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, textAlign: 'left', minWidth: 500 }}>
+              <thead>
+                <tr style={{ background: '#080E1F', borderBottom: '1px solid #1E293B', color: '#94a3b8' }}>
+                  <th style={{ padding: '12px 16px' }}>Producto / Servicio</th>
+                  <th style={{ padding: '12px 16px' }}>Categoría</th>
+                  <th style={{ padding: '12px 16px' }}>Precio</th>
+                  <th style={{ padding: '12px 16px' }}>Estado</th>
+                  <th style={{ padding: '12px 16px', textAlign: 'right' }}>Acciones</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {filteredProducts.map(prod => (
+                  <tr key={prod.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                    <td style={{ padding: '12px 16px' }}>
+                      <div style={{ fontWeight: 700, color: '#f8fafc' }}>{prod.name}</div>
+                      {prod.description && <div style={{ fontSize: 11, color: '#94a3b8' }}>{prod.description.slice(0, 60)}...</div>}
+                    </td>
+                    <td style={{ padding: '12px 16px', color: '#00CFFF' }}>{prod.category || 'General'}</td>
+                    <td style={{ padding: '12px 16px', fontWeight: 700, color: '#f8fafc' }}>
+                      ${Number(prod.price || 0).toLocaleString('es-CO')} {prod.currency}
+                    </td>
+                    <td style={{ padding: '12px 16px' }}>
+                      <span onClick={() => toggleActive(prod)} style={{ cursor: 'pointer', fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 10, background: prod.is_active ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', color: prod.is_active ? '#4ade80' : '#f87171' }}>
+                        {prod.is_active ? '🟢 Disponible' : '🔴 Agotado'}
+                      </span>
+                    </td>
+                    <td style={{ padding: '12px 16px', textAlign: 'right' }}>
+                      <button className="btn btn-ghost" onClick={() => openEditModal(prod)} style={{ fontSize: 12, padding: '4px 8px', marginRight: 6 }}>✏️</button>
+                      <button className="btn btn-ghost" onClick={() => handleDelete(prod)} style={{ fontSize: 12, color: '#f87171', padding: '4px 8px' }}>🗑️</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
@@ -432,11 +434,11 @@ export default function ProductsPage() {
         <div style={{
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
           background: 'rgba(5,10,24,0.85)', backdropFilter: 'blur(8px)',
-          zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+          zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 12,
         }}>
-          <div className="card" style={{ background: '#0C1527', borderColor: '#00CFFF', width: '100%', maxWidth: 520, padding: 24, color: '#f8fafc' }}>
+          <div className="card" style={{ background: '#0C1527', borderColor: '#00CFFF', width: '100%', maxWidth: 520, maxHeight: '90vh', overflowY: 'auto', padding: 20, color: '#f8fafc' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0, color: '#f8fafc' }}>
+              <h2 style={{ fontSize: 17, fontWeight: 700, margin: 0, color: '#f8fafc' }}>
                 {editingProduct ? '✏️ Editar Producto / Servicio' : '➕ Agregar Producto / Servicio'}
               </h2>
               <button onClick={() => setIsModalOpen(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: 20, cursor: 'pointer' }}>✕</button>
@@ -453,7 +455,7 @@ export default function ProductsPage() {
                 />
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
                 <div>
                   <label style={{ fontSize: 12, fontWeight: 600, color: '#94a3b8', display: 'block', marginBottom: 4 }}>Categoría</label>
                   <select className="input" value={formData.category} onChange={e => setFormData({ ...formData, category: e.target.value })}>

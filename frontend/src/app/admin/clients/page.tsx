@@ -206,21 +206,21 @@ export default function AdminClientsPage() {
       </div>
 
       {/* Buscador y Filtros */}
-      <div className="card" style={{ background: '#0C1527', borderColor: '#1E293B', padding: 16, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+      <div className="card" style={{ background: '#0C1527', borderColor: '#1E293B', padding: 14, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
         <input
           type="text"
           className="input"
           placeholder="🔍 Buscar cliente por nombre, email o teléfono..."
           value={search}
           onChange={e => setSearch(e.target.value)}
-          style={{ flex: 1, minWidth: 260, fontSize: 13 }}
+          style={{ flex: 1, minWidth: 160, fontSize: 13 }}
         />
 
         <select
           className="input"
           value={statusFilter}
           onChange={e => setStatusFilter(e.target.value)}
-          style={{ width: 180, fontSize: 13 }}
+          style={{ flex: '1 1 140px', minWidth: 130, fontSize: 13 }}
         >
           <option value="all">Todos los Estados</option>
           <option value="active">🟢 Activos</option>
@@ -341,9 +341,9 @@ export default function AdminClientsPage() {
       {payModalClient && (
         <div style={{
           position: 'fixed', inset: 0, background: 'rgba(5,10,24,0.85)', backdropFilter: 'blur(8px)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 12
         }}>
-          <div className="card" style={{ width: '100%', maxWidth: 520, background: '#0C1527', borderColor: '#00CFFF' }}>
+          <div className="card" style={{ width: '100%', maxWidth: 520, maxHeight: '90vh', overflowY: 'auto', background: '#0C1527', borderColor: '#00CFFF', padding: 20 }}>
             <h3 style={{ fontWeight: 700, marginBottom: 4, color: '#f8fafc' }}>💳 Activar Bot / Registrar Pago</h3>
             <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16 }}>Cliente: <strong>{payModalClient.name}</strong> ({payModalClient.email})</p>
 
@@ -366,7 +366,7 @@ export default function AdminClientsPage() {
                 <label style={{ fontSize: 12, color: '#00CFFF', fontWeight: 700, marginBottom: 8, display: 'block' }}>
                   ⏳ Selección de Duración del Bot
                 </label>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 10 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(80px, 1fr))', gap: 8, marginBottom: 10 }}>
                   {[
                     { days: 30, label: '30 días' },
                     { days: 90, label: '90 días' },
@@ -388,7 +388,7 @@ export default function AdminClientsPage() {
                   ))}
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                   <button
                     type="button"
                     onClick={() => setPayForm(p => ({ ...p, durationType: 'custom_days' }))}
@@ -415,7 +415,7 @@ export default function AdminClientsPage() {
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
                 <div>
                   <label style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 6, display: 'block' }}>Monto Recibido (COP)</label>
                   <input
@@ -449,7 +449,7 @@ export default function AdminClientsPage() {
                 ✅ Activará el bot por <strong>{payForm.durationType === 'custom_days' ? payForm.customDays : payForm.presetDays} días</strong> con el plan <strong>{payForm.plan.toUpperCase()}</strong>
               </div>
 
-              <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
+              <div style={{ display: 'flex', gap: 10, marginTop: 8, flexWrap: 'wrap' }}>
                 <button className="btn btn-primary" style={{ flex: 1, justifyContent: 'center' }} onClick={() => activateClient(payModalClient)}>
                   ✅ Confirmar Pago y Activar Bot
                 </button>
@@ -464,9 +464,9 @@ export default function AdminClientsPage() {
       {isCreateModalOpen && (
         <div style={{
           position: 'fixed', inset: 0, background: 'rgba(5,10,24,0.85)', backdropFilter: 'blur(8px)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 12
         }}>
-          <div className="card" style={{ width: '100%', maxWidth: 520, background: '#0C1527', borderColor: '#00CFFF' }}>
+          <div className="card" style={{ width: '100%', maxWidth: 520, maxHeight: '90vh', overflowY: 'auto', background: '#0C1527', borderColor: '#00CFFF', padding: 20 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
               <h3 style={{ fontWeight: 700, margin: 0, color: '#f8fafc' }}>➕ Registrar Nuevo Cliente</h3>
               <button onClick={() => setIsCreateModalOpen(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: 20, cursor: 'pointer' }}>✕</button>
@@ -481,7 +481,7 @@ export default function AdminClientsPage() {
                 />
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
                 <div>
                   <label style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4, display: 'block' }}>Email *</label>
                   <input
@@ -498,7 +498,7 @@ export default function AdminClientsPage() {
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
                 <div>
                   <label style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4, display: 'block' }}>Nombre del Negocio</label>
                   <input
@@ -515,7 +515,7 @@ export default function AdminClientsPage() {
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
                 <div>
                   <label style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4, display: 'block' }}>Plan</label>
                   <select className="input" value={newClientForm.plan} onChange={e => setNewClientForm({ ...newClientForm, plan: e.target.value })}>
@@ -533,7 +533,7 @@ export default function AdminClientsPage() {
                 </div>
               </div>
 
-              <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 12 }}>
+              <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 12, flexWrap: 'wrap' }}>
                 <button type="button" className="btn btn-ghost" onClick={() => setIsCreateModalOpen(false)}>Cancelar</button>
                 <button type="submit" className="btn btn-primary">🎉 Registrar Cliente</button>
               </div>

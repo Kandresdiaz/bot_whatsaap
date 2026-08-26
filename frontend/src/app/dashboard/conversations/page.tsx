@@ -1099,15 +1099,16 @@ export default function ConversationsPage() {
         <div style={{
           position: 'fixed',
           inset: 0,
-          background: 'rgba(0,0,0,0.7)',
+          background: 'rgba(0,0,0,0.75)',
           backdropFilter: 'blur(4px)',
           display: 'flex',
           justifyContent: 'center',
           alignItems: 'center',
           zIndex: 9999,
+          padding: 12,
         }}>
-          <div className="card" style={{ width: 380, padding: 24, borderRadius: 16, background: '#0c1527', border: '1px solid #1e293b' }}>
-            <h3 style={{ margin: '0 0 8px 0', fontSize: 18, fontWeight: 700, color: '#f8fafc' }}>📱 Abrir Nuevo Chat</h3>
+          <div className="card" style={{ width: '100%', maxWidth: 380, padding: 20, borderRadius: 16, background: '#0c1527', border: '1px solid #1e293b', boxSizing: 'border-box' }}>
+            <h3 style={{ margin: '0 0 8px 0', fontSize: 17, fontWeight: 700, color: '#f8fafc' }}>📱 Abrir Nuevo Chat</h3>
             <p style={{ fontSize: 13, color: '#94a3b8', marginBottom: 16 }}>
               Ingresa el número con código de país (ej. 573001234567) para chatear directamente por WhatsApp:
             </p>
@@ -1120,7 +1121,7 @@ export default function ConversationsPage() {
               style={{ width: '100%', marginBottom: 16, fontSize: 14, background: '#080E1F', borderColor: '#1e293b' }}
               autoFocus
             />
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, flexWrap: 'wrap' }}>
               <button className="btn btn-ghost" onClick={() => setNewPhoneModal(false)}>Cancelar</button>
               <button className="btn btn-primary" onClick={handleCreateNewChat} disabled={!newPhoneInput.trim()}>
                 Abrir Chat

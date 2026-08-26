@@ -120,12 +120,12 @@ export default function AppointmentsPage() {
       {today.length > 0 && (
         <div className="card" style={{ marginBottom: 24, borderColor: 'rgba(34,197,94,0.3)', background: 'rgba(34,197,94,0.03)' }}>
           <h3 style={{ fontWeight: 700, marginBottom: 14, color: 'var(--green)' }}>🗓️ Citas de hoy ({today.length})</h3>
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             {today.map(a => (
-              <div key={a.id} style={{ background: 'var(--bg-card2)', borderRadius: 12, padding: '14px 16px', minWidth: 200 }}>
-                <div style={{ fontWeight: 700, fontSize: 15 }}>{a.client_name}</div>
-                <div style={{ fontSize: 13, color: 'var(--text-muted)', margin: '4px 0' }}>📋 {a.service}</div>
-                <div style={{ fontSize: 13, color: 'var(--accent-light)', fontWeight: 600 }}>🕐 {formatTime(a.appointment_time)}</div>
+              <div key={a.id} style={{ background: 'var(--bg-card2)', borderRadius: 12, padding: '12px 14px', flex: '1 1 160px', minWidth: 140 }}>
+                <div style={{ fontWeight: 700, fontSize: 14 }}>{a.client_name}</div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', margin: '4px 0' }}>📋 {a.service}</div>
+                <div style={{ fontSize: 12, color: 'var(--accent-light)', fontWeight: 600 }}>🕐 {formatTime(a.appointment_time)}</div>
                 <div style={{ marginTop: 8 }}>
                   <span className={`badge ${STATUS_COLORS[a.status]}`} style={{ fontSize: 11 }}>{STATUS_LABELS[a.status]}</span>
                 </div>
@@ -136,7 +136,7 @@ export default function AppointmentsPage() {
       )}
 
       {/* Filtros */}
-      <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
         {[
           { value: 'all', label: '📋 Todas' },
           { value: 'pending', label: '⏳ Pendientes' },
@@ -147,7 +147,7 @@ export default function AppointmentsPage() {
           <button
             key={f.value}
             className={`btn ${filter === f.value ? 'btn-primary' : 'btn-ghost'}`}
-            style={{ fontSize: 13, padding: '7px 14px' }}
+            style={{ fontSize: 12, padding: '6px 12px' }}
             onClick={() => setFilter(f.value)}
           >
             {f.label}

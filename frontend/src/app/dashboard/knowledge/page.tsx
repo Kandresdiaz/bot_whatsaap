@@ -222,12 +222,12 @@ export default function KnowledgePage() {
           <h3 style={{ fontWeight: 700, marginBottom: 16 }}>➕ Agregar conocimiento</h3>
 
           {/* Tabs */}
-          <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 20, flexWrap: 'wrap' }}>
             {(['text', 'faq', 'file', 'image'] as const).map(t => (
               <button
                 key={t}
                 className={`btn ${tab === t ? 'btn-primary' : 'btn-ghost'}`}
-                style={{ flex: '1 1 120px', justifyContent: 'center', padding: '8px 10px', fontSize: 13 }}
+                style={{ flex: '1 1 80px', justifyContent: 'center', padding: '7px 8px', fontSize: 12 }}
                 onClick={() => setTab(t)}
               >
                 {typeIcon[t]} {typeLabel[t]}
