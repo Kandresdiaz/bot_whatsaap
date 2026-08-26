@@ -187,21 +187,45 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
   // ── 5. Obtener negocio ────────────────────────────────────────────────────
   let business = null;
   try {
-    const { data } = await supabase
+    const { getValidUserId } = require('./sessionManager');
+    const validUserId = getValidUserId(userId);
+
+    const { data: bData } = await supabase
       .from('businesses')
       .select('*')
-      .eq('user_id', userId)
-      .maybeSingle();
-    business = data;
+      .or(`user_id.eq.${userId},user_id.eq.${validUserId}`)
+      .limit(1);
+
+    if (bData && bData.length > 0) {
+      business = bData[0];
+    } else {
+      const { data: fallback } = await supabase
+        .from('businesses')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(1);
+      if (fallback && fallback.length > 0) {
+        business = fallback[0];
+      }
+    }
   } catch (e) {
     console.error('[MSG] Error obteniendo negocio:', e.message);
   }
 
-  // Si no hay negocio configurado, responder con mensaje genérico
+  // Si no hay negocio en la DB, usar objeto por defecto para que la IA responda
   if (!business) {
-    await randomDelay();
-    await sendText(sock, jid, '¡Hola! 👋 Estamos configurando nuestro asistente. Vuelve pronto para recibir atención completa 😊');
-    return;
+    business = {
+      id: '00000000-0000-0000-0000-000000000001',
+      name: 'Asistente Virtual',
+      category: 'General',
+      city: 'Medellín',
+      timezone: 'America/Bogota',
+      bot_personality: 'amigable, profesional, atento y experto',
+      active_hours_start: '00:00:00',
+      active_hours_end: '23:59:59',
+      active_days: [0, 1, 2, 3, 4, 5, 6],
+      bot_enabled: true
+    };
   }
 
   // ── 6. Verificar horario de atención ──────────────────────────────────────
@@ -210,11 +234,14 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
     const local = new Date(now.toLocaleString('en-US', { timeZone: business.timezone || 'America/Bogota' }));
     const hour = local.getHours();
     const day = local.getDay();
-    const activeDays = business.active_days || [1, 2, 3, 4, 5];
-    const start = parseInt(business.active_hours_start?.split(':')[0] || '8');
-    const end = parseInt(business.active_hours_end?.split(':')[0] || '18');
+    let activeDays = business.active_days || [0, 1, 2, 3, 4, 5, 6];
+    if (typeof activeDays === 'string') {
+      try { activeDays = JSON.parse(activeDays); } catch (_) { activeDays = [0, 1, 2, 3, 4, 5, 6]; }
+    }
+    const start = parseInt(business.active_hours_start?.toString().split(':')[0] || '0');
+    const end = parseInt(business.active_hours_end?.toString().split(':')[0] || '24');
 
-    if (!activeDays.includes(day) || hour < start || hour >= end) {
+    if (Array.isArray(activeDays) && (!activeDays.includes(day) || hour < start || hour >= end)) {
       await randomDelay();
       await sendText(sock, jid, business.away_msg || 'Gracias por escribirnos 🙏 Te respondemos en nuestro horario de atención.');
       return;
@@ -236,23 +263,22 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
   let knowledge = [];
   let products = [];
   try {
-    const { data } = await supabase
-      .from('knowledge_base')
-      .select('id, title, content, type, file_url')
-      .eq('business_id', business.id)
-      .eq('is_active', true);
+    let query = supabase.from('knowledge_base').select('id, title, content, type, file_url').eq('is_active', true);
+    if (business?.id) {
+      query = query.or(`business_id.eq.${business.id},business_id.is.null`);
+    }
+    const { data } = await query;
     knowledge = data || [];
   } catch (e) {
     console.error('[MSG] Error cargando knowledge base:', e.message);
   }
 
   try {
-    const { data: prods } = await supabase
-      .from('products_services')
-      .select('name, description, price, currency, category, image_url')
-      .eq('business_id', business.id)
-      .eq('is_active', true)
-      .order('category', { ascending: true });
+    let pQuery = supabase.from('products_services').select('name, description, price, currency, category, image_url').eq('is_active', true).order('category', { ascending: true });
+    if (business?.id) {
+      pQuery = pQuery.or(`business_id.eq.${business.id},business_id.is.null`);
+    }
+    const { data: prods } = await pQuery;
     products = prods || [];
   } catch (e) {
     console.error('[MSG] Error cargando catálogo de productos:', e.message);
