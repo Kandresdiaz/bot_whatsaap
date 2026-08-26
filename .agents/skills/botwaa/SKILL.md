@@ -556,6 +556,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-26** | fix: asegurar fallback total e infalible para productos y base de conocimiento en backend (`4e0d844`) | Auto-deploy |
 
+| **2026-08-26** | fix: sanitizar credenciales de Supabase en backend y asegurar salvaguarda total de datos en frontend (`82391d6`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
