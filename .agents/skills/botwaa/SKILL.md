@@ -481,6 +481,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-25** | fix: corregir formato de favicon.ico en RGBA para compatibilidad total de compilacion (`36aa788`) | Auto-deploy |
 
+| **2026-08-25** | style: optimizaciones de adaptabilidad ultra-responsive para celulares de cualquier tamaño (`61ee0ce`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
