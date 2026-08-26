@@ -531,6 +531,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-26** | debug: add detailed Groq API test diagnostic endpoint (`0d2b0e9`) | Auto-deploy |
 
+| **2026-08-26** | fix: desinfectar API Key de Groq y formatear catalogo real en respuestas de asistente (`59d4a87`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
