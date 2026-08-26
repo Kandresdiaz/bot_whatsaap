@@ -533,6 +533,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-26** | fix: desinfectar API Key de Groq y formatear catalogo real en respuestas de asistente (`59d4a87`) | Auto-deploy |
 
+| **2026-08-26** | fix: resolver 'admin' y cualquier id en resolveBusinessId para desplegar productos en la vista de Productos y Servicios (`74e4358`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
