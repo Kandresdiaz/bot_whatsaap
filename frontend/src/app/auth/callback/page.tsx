@@ -18,7 +18,7 @@ export default function AuthCallbackPage() {
         const googleUser = session.user;
         const backendUrl = 'https://bot-whatsaap-tkjd.onrender.com';
 
-        setStatus('Sincronizando cuenta con el servidor...');
+        setStatus('Cargando tu panel de control...');
 
         const res = await fetch(`${backendUrl}/api/auth/google`, {
           method: 'POST',
@@ -36,14 +36,10 @@ export default function AuthCallbackPage() {
           localStorage.setItem('wbot_user', JSON.stringify(data.user));
           localStorage.setItem('wbot_token', data.token);
 
-          setStatus('¡Sesión iniciada con éxito! Redirigiendo...');
+          setStatus('¡Bienvenido! Entrando a tu Dashboard...');
 
           setTimeout(() => {
-            if (data.user.is_admin) {
-              window.location.href = '/admin';
-            } else {
-              window.location.href = '/dashboard';
-            }
+            window.location.href = '/dashboard';
           }, 300);
         } else {
           setStatus(`Error: ${data.error || 'No se pudo vincular la cuenta'}`);
@@ -73,7 +69,7 @@ export default function AuthCallbackPage() {
           }
         }
 
-        // 2. Obtener sesión de Supabase si ya existe o está en hash
+        // 2. Obtener sesión de Supabase si ya existe o está en hash de la URL
         const { data: { session } } = await supabase.auth.getSession();
         if (session) {
           await processSession(session);
