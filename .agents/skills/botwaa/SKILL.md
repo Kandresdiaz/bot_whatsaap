@@ -560,6 +560,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-26** | fix(config): fallback business fetch and sync categories and persuasivo personality (`044e0bf`) | Auto-deploy |
 
+| **2026-08-26** | fix(business): validate UUIDs before querying Supabase to prevent 22P02 Postgres errors (`a49af7d`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
