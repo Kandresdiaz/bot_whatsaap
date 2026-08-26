@@ -550,6 +550,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-26** | feat: vincular usuario Google de Kevin como Super Admin relacional con productos y negocio en Supabase (`7740298`) | Auto-deploy |
 
+| **2026-08-26** | fix: resolver business_id relacional con fallback a catalogos por defecto en productos y KB (`22ab26c`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
