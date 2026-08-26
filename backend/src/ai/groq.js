@@ -1,13 +1,25 @@
 const Groq = require('groq-sdk');
 
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+const CANDIDATE_MODELS = [
+  'llama-3.3-70b-versatile',
+  'llama-3.1-8b-instant',
+  'llama3-70b-8192',
+  'llama3-8b-8192',
+  'mixtral-8x7b-32768'
+];
 
-// ─── Modelos disponibles en Groq ─────────────────────────────────────────────
-const MODEL_FAST = 'llama-3.1-8b-instant';   // rápido, para búsqueda
-const MODEL_SMART = 'llama-3.3-70b-versatile'; // inteligente, para respuesta final
+const getGroqClient = () => {
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey || !apiKey.trim()) return null;
+  try {
+    return new Groq({ apiKey: apiKey.trim() });
+  } catch (e) {
+    console.error('[Groq] Error instanciando SDK:', e.message);
+    return null;
+  }
+};
 
 // ─── 1. RAG: Buscar chunks relevantes de la knowledge base ───────────────────
-// Búsqueda semántica simple por palabras clave (sin embeddings externos)
 const searchKnowledge = (query, knowledge) => {
   if (!knowledge?.length) return [];
 
@@ -15,11 +27,9 @@ const searchKnowledge = (query, knowledge) => {
     .split(/\s+/)
     .filter(w => w.length > 2);
 
-  // Score por coincidencia de palabras clave
   const scored = knowledge.map(item => {
     const text = `${item.title} ${item.content}`.toLowerCase();
     const score = queryWords.reduce((acc, word) => {
-      // Peso doble si está en el título
       if (item.title.toLowerCase().includes(word)) return acc + 2;
       if (text.includes(word)) return acc + 1;
       return acc;
@@ -27,7 +37,6 @@ const searchKnowledge = (query, knowledge) => {
     return { ...item, score };
   });
 
-  // Devolver los top 5 más relevantes (score > 0)
   return scored
     .filter(i => i.score > 0)
     .sort((a, b) => b.score - a.score)
@@ -36,16 +45,18 @@ const searchKnowledge = (query, knowledge) => {
 
 // ─── 2. Generar sub-consultas para encontrar más contexto ────────────────────
 const generateSubQueries = async (userMessage) => {
+  const client = getGroqClient();
+  if (!client) return [userMessage];
+
   try {
-    const response = await groq.chat.completions.create({
-      model: MODEL_FAST,
+    const response = await client.chat.completions.create({
+      model: 'llama-3.1-8b-instant',
       messages: [
         {
           role: 'system',
           content: `Eres un asistente que genera consultas de búsqueda.
 Dado un mensaje de usuario, genera 2-3 sub-consultas alternativas que ayuden a buscar información relevante en una base de conocimiento.
-Responde SOLO con las sub-consultas separadas por "|", sin numeración ni explicación.
-Ejemplo: "precio pizza|costo pizza margherita|cuánto vale la pizza"`
+Responde SOLO con las sub-consultas separadas por "|", sin numeración ni explicación.`
         },
         { role: 'user', content: userMessage }
       ],
@@ -54,22 +65,20 @@ Ejemplo: "precio pizza|costo pizza margherita|cuánto vale la pizza"`
     });
 
     const raw = response.choices[0]?.message?.content || '';
-    return raw.split('|').map(q => q.trim()).filter(q => q.length > 0);
+    const queries = raw.split('|').map(q => q.trim()).filter(q => q.length > 0);
+    return queries.length > 0 ? queries : [userMessage];
   } catch (e) {
-    // Si falla, simplemente usar la consulta original
     return [userMessage];
   }
 };
 
-// ─── 3. RAG Multi-Query: buscar con consulta original + sub-consultas ────────
+// ─── 3. RAG Multi-Query ───────────────────────────────────────────────────────
 const ragSearch = async (userMessage, knowledge) => {
   if (!knowledge?.length) return [];
 
-  // Generar sub-consultas en paralelo
   const subQueries = await generateSubQueries(userMessage);
   const allQueries = [userMessage, ...subQueries];
 
-  // Buscar con cada consulta y unir resultados únicos
   const seenIds = new Set();
   const allResults = [];
 
@@ -83,13 +92,12 @@ const ragSearch = async (userMessage, knowledge) => {
     }
   }
 
-  // Ordenar por score y tomar top 6
   return allResults
     .sort((a, b) => (b.score || 0) - (a.score || 0))
     .slice(0, 6);
 };
 
-// ─── 4. Formatear contexto RAG para el prompt ─────────────────────────────────
+// ─── 4. Formatear contexto RAG ────────────────────────────────────────────────
 const buildKnowledgeContext = (knowledge) => {
   if (!knowledge?.length) return null;
 
@@ -100,7 +108,7 @@ const buildKnowledgeContext = (knowledge) => {
   }).join('\n\n---\n\n');
 };
 
-// ─── 5. System prompt con toda la info del negocio ───────────────────────────
+// ─── 5. System prompt con info del negocio ────────────────────────────────────
 const buildSystemPrompt = (business, relevantKnowledge, allKnowledge, products = []) => {
   const relevantContext = buildKnowledgeContext(relevantKnowledge);
   const hasKnowledge = !!relevantContext;
@@ -118,24 +126,22 @@ const buildSystemPrompt = (business, relevantKnowledge, allKnowledge, products =
     ? 'AGENDAR CITAS Y RESERVAS. Atiende todas las dudas del cliente con cortesía, e invita a agendar su cita o reservar horario.'
     : 'ATENCIÓN AL CLIENTE Y CIERRE DE LEADS.';
 
-  // Info general del negocio siempre disponible
   const businessInfo = `
-Nombre: ${business.name}
+Nombre: ${business.name || 'Nuestro Negocio'}
 Tipo / Categoría: ${business.category || 'Negocio'}
 Ciudad: ${business.city || 'Colombia'}
 ${business.description ? `Descripción / Servicios: ${business.description}` : ''}
 Horario de Atención: ${business.active_hours_start || '08:00'} - ${business.active_hours_end || '18:00'}
 ${business.phone ? `Teléfono: ${business.phone}` : ''}
 ${business.address ? `Dirección: ${business.address}` : ''}
-${business.payment_or_booking_link ? `Enlace / Método de Cierre (${isSales ? 'Pago/Catálogo' : 'Agenda'}): ${business.payment_or_booking_link}` : ''}
-${business.closing_objective ? `Instrucción de Cierre: ${business.closing_objective}` : ''}
+${business.payment_or_booking_link ? `Enlace / Método de Cierre: ${business.payment_or_booking_link}` : ''}
 `.trim();
 
-  return `Eres el empleado estrella y asistente virtual oficial en WhatsApp de "${business.name}".
+  return `Eres el empleado estrella y asistente virtual oficial en WhatsApp de "${business.name || 'nuestro negocio'}".
 
 === ROL Y OBJETIVO PRINCIPAL ===
 ${mainGoalText}
-Tu tono de voz: ${business.bot_personality || 'amigable, profesional y persuasivo'}.
+Tu tono de voz: ${business.bot_personality || 'amigable, profesional, atento y persuasivo'}.
 
 === DATOS DEL NEGOCIO ===
 ${businessInfo}
@@ -150,28 +156,39 @@ ${hasKnowledge
   : ''
 }
 
-REGLAS ABSOLUTAS (NO LAS ROMPES NUNCA POR NINGÚN MOTIVO):
-1. Eres un EMPLEADO VIRTUAL FIDEL: Atiendes cualquier pregunta de atención al cliente con amabilidad, pero SIEMPRE mantienes el enfoque en CERRAR al cliente (${isSales ? 'Vender/Cotizar' : 'Agendar cita'}).
-2. PRECISIÓN TOTAL DE PRODUCTOS Y PRECIOS: SOLO puedes cotizar, recomendar o mencionar los productos y servicios presentes en el CATÁLOGO OFICIAL de arriba. NUNCA inventes productos, platillos, promociones ni precios.
-3. Si el usuario pregunta por un producto que NO está en el catálogo, responde amablemente: "Por el momento no ofrecemos [producto], pero con gusto te puedo recomendar: [opción disponible del catálogo]."
-4. Si no tienes la información exacta sobre algo, responde amablemente: "Esa información no la tengo a la mano, pero con gusto te conecto con nuestro equipo para ayudarte 😊".
-5. Si hay una imagen aplicable en el catálogo, escribe: [ENVIAR_IMAGEN: nombre_exacto]
-6. Si el cliente muestra intención clara de comprar, pagar o agendar, incluye al final: [LEAD_CALIENTE]
-7. Respuestas breves, directas y profesionales (máximo 4 líneas).
-8. Usa máximo 1 o 2 emojis por mensaje.
-9. Saluda solo en el primer mensaje de la conversación.
-10. Si te preguntan sobre temas ajenos al negocio (política, chistes, etc.), redirige respetuosamente de vuelta a los servicios del negocio.`;
+REGLAS ABSOLUTAS:
+1. Eres un EMPLEADO VIRTUAL FIDEL: Atiendes cualquier pregunta con amabilidad y mantienes el enfoque en atender al cliente.
+2. PRECISIÓN TOTAL: SOLO cotizas productos/servicios de tu negocio. NUNCA inventes productos ni precios.
+3. Si no tienes la información exacta, responde amablemente indicando que consultarás con el equipo.
+4. Respuestas breves, directas y profesionales (máximo 4 líneas). Usa máximo 1 o 2 emojis por mensaje.`;
+};
+
+// ─── Respuesta Asistente Humana (Sin Excusas Técnicas) ───────────────────────
+const buildHumanAssistantReply = (userMessage, business, products = []) => {
+  const busName = business?.name || 'nuestro negocio';
+  const greeting = business?.greeting_msg || `¡Hola! 👋 Te damos la bienvenida a ${busName}.`;
+
+  if (Array.isArray(products) && products.length > 0) {
+    const top = products.slice(0, 3).map(p => `• ${p.name}: $${Number(p.price || 0).toLocaleString('es-CO')} ${p.currency || 'COP'}`).join('\n');
+    return `${greeting}\n\nTe comparto algunos de nuestros productos/servicios principales:\n${top}\n\n¿En qué te gustaría que te colabore hoy?`;
+  }
+
+  return `${greeting} ¿En qué te puedo ayudar hoy? Con gusto te brindo toda la información que necesites.`;
 };
 
 // ─── 6. Función principal RAG + Groq ─────────────────────────────────────────
 const askGroq = async (userMessage, business, knowledge, chatHistory = [], products = []) => {
+  const safeBusiness = business || {
+    name: 'Asistente Virtual',
+    category: 'General',
+    city: 'Medellín',
+    bot_personality: 'amigable, profesional, atento y experto',
+  };
+
   try {
-    // RAG: buscar los chunks más relevantes con multi-query
     const relevantKnowledge = await ragSearch(userMessage, knowledge);
+    const systemPrompt = buildSystemPrompt(safeBusiness, relevantKnowledge, knowledge, products);
 
-    const systemPrompt = buildSystemPrompt(business, relevantKnowledge, knowledge, products);
-
-    // Historial de conversación (últimos 8 intercambios)
     const messages = [
       { role: 'system', content: systemPrompt },
       ...chatHistory.slice(-8).map(m => ({
@@ -181,36 +198,39 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
       { role: 'user', content: userMessage },
     ];
 
-    // Intentar con modelo inteligente, fallback a rápido
-    let response;
-    try {
-      response = await groq.chat.completions.create({
-        model: MODEL_SMART,
-        messages,
-        max_tokens: 400,
-        temperature: 0.2, // muy bajo para evitar alucinaciones
-      });
-    } catch (modelErr) {
-      // Fallback al modelo rápido si el inteligente falla
-      console.warn('[Groq] Fallback a modelo fast:', modelErr.message);
-      response = await groq.chat.completions.create({
-        model: MODEL_FAST,
-        messages,
-        max_tokens: 350,
-        temperature: 0.2,
-      });
+    const client = getGroqClient();
+    let fullReply = null;
+    let tokensUsed = 0;
+
+    if (client) {
+      for (const modelName of CANDIDATE_MODELS) {
+        try {
+          const response = await client.chat.completions.create({
+            model: modelName,
+            messages,
+            max_tokens: 400,
+            temperature: 0.2,
+          });
+
+          if (response?.choices?.[0]?.message?.content) {
+            fullReply = response.choices[0].message.content;
+            tokensUsed = response.usage?.total_tokens || 0;
+            break;
+          }
+        } catch (modelErr) {
+          console.warn(`[Groq] Modelo ${modelName} no disponible:`, modelErr.message);
+        }
+      }
     }
 
-    const fullReply = response.choices[0]?.message?.content ||
-      'Disculpa, no puedo responder en este momento. Intenta de nuevo en un momento 🙏';
-    const tokensUsed = response.usage?.total_tokens || 0;
+    if (!fullReply) {
+      fullReply = buildHumanAssistantReply(userMessage, safeBusiness, products);
+    }
 
-    // Detectar marcadores especiales
     const isLeadHot = fullReply.includes('[LEAD_CALIENTE]');
     const imageMatch = fullReply.match(/\[ENVIAR_IMAGEN:\s*(.+?)\]/i);
     const imageName = imageMatch ? imageMatch[1].trim() : null;
 
-    // Limpiar marcadores del mensaje visible
     const reply = fullReply
       .replace('[LEAD_CALIENTE]', '')
       .replace(/\[ENVIAR_IMAGEN:[^\]]+\]/gi, '')
@@ -218,11 +238,10 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
 
     return { reply, isLeadHot, tokensUsed, imageName, ragChunksUsed: relevantKnowledge.length };
   } catch (err) {
-    console.error('[Groq] Error completo:', err.message, err.stack);
-    const busName = business?.name || 'nuestro negocio';
-    const fallbackText = business?.greeting_msg || `¡Hola! 👋 Te damos la bienvenida a ${busName}. ¿En qué te podemos colaborar hoy?`;
+    console.error('[Groq] Error en askGroq:', err.message);
+    const reply = buildHumanAssistantReply(userMessage, safeBusiness, products);
     return {
-      reply: fallbackText,
+      reply,
       isLeadHot: false,
       tokensUsed: 0,
       imageName: null,
