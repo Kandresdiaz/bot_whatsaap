@@ -355,9 +355,9 @@ export default function AdminClientsPage() {
                   value={payForm.plan}
                   onChange={e => setPayForm(p => ({ ...p, plan: e.target.value, amount: PLAN_PRICES[e.target.value] || 120000 }))}
                 >
-                  <option value="starter">Básico - $120.000 COP / mes (~$30 USD)</option>
-                  <option value="pro">Profesional - $250.000 COP / mes (~$62 USD)</option>
-                  <option value="business">Business / Agencia - $450.000 COP / mes (~$112 USD)</option>
+                  <option value="starter">Básico - $120.000 COP / mes (Vender O Agendar + Captura de Datos)</option>
+                  <option value="pro">Profesional - $250.000 COP / mes (Vender Y Agendar + Catálogo RAG + Lead Alert)</option>
+                  <option value="business">Business / Agencia - $450.000 COP / mes (Multi-número + White-Label + Done-For-You)</option>
                 </select>
               </div>
 
@@ -519,9 +519,9 @@ export default function AdminClientsPage() {
                 <div>
                   <label style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4, display: 'block' }}>Plan</label>
                   <select className="input" value={newClientForm.plan} onChange={e => setNewClientForm({ ...newClientForm, plan: e.target.value })}>
-                    <option value="starter">Básico ($120k COP / ~$30 USD)</option>
-                    <option value="pro">Profesional ($250k COP / ~$62 USD)</option>
-                    <option value="business">Business / Agencia ($450k COP / ~$112 USD)</option>
+                    <option value="starter">Básico ($120k - Vender O Agendar + Captura Datos)</option>
+                    <option value="pro">Profesional ($250k - Vender Y Agendar + Catálogo RAG)</option>
+                    <option value="business">Business / Agencia ($450k - Multi-línea + Done-For-You)</option>
                   </select>
                 </div>
                 <div>

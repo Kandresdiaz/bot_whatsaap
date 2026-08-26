@@ -167,13 +167,13 @@ WhatsApp → Baileys (protocolo directo, sin API de Meta)
 
 ---
 
-## Precios del SaaS
+## Precios del SaaS y Estructura de Funcionalidades
 
-| Plan | Precio COP/mes | USD aprox | Incluye |
+| Plan | Precio COP/mes | USD aprox | Flujos & Funcionalidades Clave |
 |---|---|---|---|
-| Básico | $120.000 | ~$30 | 1 número WA, RAG Agente 24/7, resp. ilimitadas, 20 docs FAQs |
-| Profesional | $250.000 | ~$62 | 1 número WA, RAG Catálogo + Citas + Leads calientes + 100 docs |
-| Business / Agencia | $450.000 | ~$112 | Múltiples números, White-label, Prompting Done-For-You, Soporte VIP |
+| **Básico** | $120.000 | ~$30 | **1 Flujo a elegir (Vender O Agendar):** Captura de datos básicos (Nombre, Tel, Producto/Servicio), Respuestas RAG 24/7, 1 número WA, 20 docs FAQs. |
+| **Profesional** | $250.000 | ~$62 | **Ambos Flujos Activos (Vender Y Agendar):** Catálogo interactivo de Productos/Servicios RAG + Agendador de Citas + Captura de Lead Caliente con alerta instantánea + 100 docs. |
+| **Business / Agencia** | $450.000 | ~$112 | **Múltiples líneas & Adaptación por Nicho:** Múltiples números WA, White-label, Prompting y RAG a la medida (Done-For-You), Soporte Prioritario. |
 
 ---
 
