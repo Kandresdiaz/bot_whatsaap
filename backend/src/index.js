@@ -71,6 +71,16 @@ app.get('/api/debug/version', (req, res) => {
   });
 });
 
+app.get('/api/debug/test-groq', async (req, res) => {
+  try {
+    const { askGroq } = require('./ai/groq');
+    const result = await askGroq('Hola', { name: 'BotWA Demo', category: 'Pruebas' }, [], [], []);
+    res.json({ success: true, result });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message, stack: err.stack });
+  }
+});
+
 // ── Cron ─────────────────────────────────────────────────────────────────────
 try {
   const { checkRenewals } = require('./jobs/renewalChecker');

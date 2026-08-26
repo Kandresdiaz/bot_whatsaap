@@ -218,9 +218,11 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
 
     return { reply, isLeadHot, tokensUsed, imageName, ragChunksUsed: relevantKnowledge.length };
   } catch (err) {
-    console.error('[Groq] Error:', err.message);
+    console.error('[Groq] Error completo:', err.message, err.stack);
+    const busName = business?.name || 'nuestro negocio';
+    const fallbackText = business?.greeting_msg || `¡Hola! 👋 Te damos la bienvenida a ${busName}. ¿En qué te podemos colaborar hoy?`;
     return {
-      reply: 'Disculpa, tengo un problema técnico momentáneo. Por favor intenta de nuevo en unos minutos 🙏',
+      reply: fallbackText,
       isLeadHot: false,
       tokensUsed: 0,
       imageName: null,
