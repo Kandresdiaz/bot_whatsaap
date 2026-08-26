@@ -46,27 +46,28 @@ router.get('/:businessId', async (req, res) => {
 
     const { data, error } = await supabase
       .from('products_services')
-      .select('*')
-      .order('category', { ascending: true })
-      .order('created_at', { ascending: false });
+      .select('*');
 
     if (error) {
       console.error('[GET Products Error]:', error.message);
-      return res.json({ success: true, products: [] });
+      // Intentar sin ordenar
+      const fallbackQuery = await supabase.from('products_services').select('*');
+      return res.json({ success: true, products: fallbackQuery.data || [], error: error.message });
     }
 
-    let filtered = (data || []).filter(p => p.business_id === businessId);
+    const allProds = data || [];
+    let filtered = allProds.filter(p => p.business_id === businessId);
 
-    // Fallback: si no hay productos específicos para este businessId, incluir los por defecto o todos los creados
-    if (filtered.length === 0 && Array.isArray(data) && data.length > 0) {
-      const defaultMatched = data.filter(p => p.business_id === '00000000-0000-0000-0000-000000000001' || !p.business_id);
-      filtered = defaultMatched.length > 0 ? defaultMatched : data;
+    // Fallback inteligente: si no hay productos específicos para este businessId, devolver todos los productos disponibles
+    if (filtered.length === 0 && allProds.length > 0) {
+      const defaultMatched = allProds.filter(p => p.business_id === '00000000-0000-0000-0000-000000000001' || !p.business_id);
+      filtered = defaultMatched.length > 0 ? defaultMatched : allProds;
     }
 
-    return res.json({ success: true, products: filtered });
+    return res.json({ success: true, products: filtered, count: filtered.length, totalInDb: allProds.length });
   } catch (err) {
     console.error('[GET Products Crash Safe]:', err.message);
-    return res.json({ success: true, products: [] });
+    return res.json({ success: true, products: [], crash: err.message });
   }
 });
 
