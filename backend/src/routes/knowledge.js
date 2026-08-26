@@ -6,15 +6,54 @@ const { supabase } = require('../db/supabase');
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
+const resolveBusinessId = async (idOrUserId) => {
+  if (!idOrUserId) return '00000000-0000-0000-0000-000000000001';
+  const isUuid = (str) => typeof str === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+
+  try {
+    if (idOrUserId === 'admin' || !isUuid(idOrUserId)) {
+      const { data: firstBus } = await supabase.from('businesses').select('id').order('created_at', { ascending: true }).limit(1);
+      if (firstBus && firstBus[0]?.id) return firstBus[0].id;
+      return '00000000-0000-0000-0000-000000000001';
+    }
+
+    const { data: bById } = await supabase.from('businesses').select('id').eq('id', idOrUserId).limit(1);
+    if (bById && bById[0]?.id) return bById[0].id;
+
+    const { data: bByUser } = await supabase.from('businesses').select('id').eq('user_id', idOrUserId).limit(1);
+    if (bByUser && bByUser[0]?.id) return bByUser[0].id;
+
+    const { data: fallback } = await supabase.from('businesses').select('id').limit(1);
+    if (fallback && fallback[0]?.id) return fallback[0].id;
+  } catch (e) {}
+  return '00000000-0000-0000-0000-000000000001';
+};
+
 // Listar knowledge base de un business
 router.get('/:businessId', async (req, res) => {
-  const { businessId } = req.params;
-  const { data } = await supabase
-    .from('knowledge_base')
-    .select('*')
-    .eq('business_id', businessId)
-    .order('created_at', { ascending: false });
-  res.json({ success: true, items: data || [] });
+  try {
+    const { businessId: rawId } = req.params;
+    const businessId = await resolveBusinessId(rawId);
+
+    const { data, error } = await supabase
+      .from('knowledge_base')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      return res.json({ success: true, items: [] });
+    }
+
+    let filtered = (data || []).filter(k => k.business_id === businessId);
+    if (filtered.length === 0 && Array.isArray(data) && data.length > 0) {
+      const defaultMatched = data.filter(k => k.business_id === '00000000-0000-0000-0000-000000000001' || !k.business_id);
+      filtered = defaultMatched.length > 0 ? defaultMatched : data;
+    }
+
+    res.json({ success: true, items: filtered });
+  } catch (err) {
+    res.json({ success: true, items: [] });
+  }
 });
 
 // Agregar texto o FAQ

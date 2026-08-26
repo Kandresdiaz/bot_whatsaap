@@ -55,11 +55,12 @@ router.get('/:businessId', async (req, res) => {
       return res.json({ success: true, products: [] });
     }
 
-    // Filtrar en memoria para evitar sintaxisPostgREST invalida
-    let filtered = data || [];
-    if (businessId && Array.isArray(data)) {
-      const matched = data.filter(p => p.business_id === businessId || !p.business_id);
-      if (matched.length > 0) filtered = matched;
+    let filtered = (data || []).filter(p => p.business_id === businessId);
+
+    // Fallback: si no hay productos específicos para este businessId, incluir los por defecto o todos los creados
+    if (filtered.length === 0 && Array.isArray(data) && data.length > 0) {
+      const defaultMatched = data.filter(p => p.business_id === '00000000-0000-0000-0000-000000000001' || !p.business_id);
+      filtered = defaultMatched.length > 0 ? defaultMatched : data;
     }
 
     return res.json({ success: true, products: filtered });
