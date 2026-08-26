@@ -192,7 +192,7 @@ export default function ConnectPage() {
           onClick={() => setIsWizardOpen(true)}
           style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, border: '1px solid var(--border)' }}
         >
-          ⚙️ {business?.is_configured ? 'Editar Datos del Negocio' : ' Configurar Bot (Wizard)'}
+          ⚙️ {business?.is_configured ? 'Editar Negocio' : 'Configurar Bot'}
         </button>
       </div>
 
@@ -213,16 +213,16 @@ export default function ConnectPage() {
 
         <div className="card" style={{ flex: 1, minWidth: 200 }}>
           <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>Acciones</div>
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {status !== 'connected' && (
               <button className="btn btn-primary" onClick={() => startSession(true)}>
                 {status === 'connecting' ? (
                   <>
-                    <span className="spinner" style={{ width: 16, height: 16, marginRight: 6 }} />
-                    Iniciando... (Clic para forzar nuevo QR)
+                    <span className="spinner" style={{ width: 14, height: 14, marginRight: 4 }} />
+                    Iniciando QR...
                   </>
                 ) : (
-                  '🔌 Conectar WhatsApp / Obtener QR'
+                  '🔌 Conectar WhatsApp'
                 )}
               </button>
             )}
@@ -243,7 +243,7 @@ export default function ConnectPage() {
                 style={{ fontSize: 13 }}
                 title="Genera un QR limpio para descargar todo el historial antiguo de WhatsApp"
               >
-                🔄 Re-vincular con nuevo QR (Historial)
+                🔄 Re-vincular QR
               </button>
             )}
           </div>
@@ -311,27 +311,27 @@ export default function ConnectPage() {
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 16 }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 16 }}>
             <button
               className="btn btn-primary"
               onClick={() => setIsWizardOpen(true)}
               style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}
             >
-              ⚙️ {business?.is_configured ? 'Editar Configuración del Negocio' : 'Configurar Preguntas & Bot'}
+              ⚙️ {business?.is_configured ? 'Editar Negocio' : 'Configurar Bot'}
             </button>
             <a
               href="/dashboard/knowledge"
               className="btn btn-ghost"
               style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, border: '1px solid rgba(255,255,255,0.1)' }}
             >
-              📚 Base de Conocimiento (RAG)
+              📚 Knowledge Base
             </a>
             <a
               href="/dashboard/conversations"
               className="btn btn-success"
               style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}
             >
-              💬 Mis Conversaciones →
+              💬 Conversaciones →
             </a>
           </div>
         </div>

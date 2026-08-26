@@ -58,7 +58,7 @@ html, body {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 9px 14px;
+  padding: 8px 14px;
   border-radius: 10px;
   font-size: 13px;
   font-weight: 700;
@@ -70,11 +70,11 @@ html, body {
   max-width: 100%;
   box-sizing: border-box;
   text-align: center;
-  word-break: break-word;
-  overflow-wrap: break-word;
-  white-space: normal;
-  line-height: 1.35;
-  flex-shrink: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.25;
+  flex-shrink: 0;
 }
 
 /* Botón primario: alto contraste blanco sobre gradiente azul */

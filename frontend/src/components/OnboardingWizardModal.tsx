@@ -400,9 +400,9 @@ export default function OnboardingWizardModal({ isOpen, onClose, onSave, initial
               className="btn btn-success"
               onClick={handleFinish}
               disabled={saving}
-              style={{ padding: '11px 26px', fontSize: 14, fontWeight: 700 }}
+              style={{ padding: '10px 20px', fontSize: 13, fontWeight: 700 }}
             >
-              {saving ? 'Guardando...' : '🚀 Guardar y Conectar WhatsApp'}
+              {saving ? 'Guardando...' : '🚀 Finalizar y Conectar'}
             </button>
           )}
         </div>

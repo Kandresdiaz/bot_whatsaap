@@ -150,12 +150,12 @@ export default function KnowledgePage() {
             background: 'linear-gradient(90deg, #1A6BFF, #00CFFF)',
             border: 'none',
             fontWeight: 700,
-            fontSize: 14,
-            padding: '10px 18px',
+            fontSize: 13,
+            padding: '9px 16px',
             boxShadow: '0 4px 15px rgba(0, 207, 255, 0.25)',
           }}
         >
-          {generatingFaqs ? '⚡ Analizando chats reales...' : '✨ Analizar Chats y Generar FAQs con IA'}
+          {generatingFaqs ? '⚡ Analizando...' : '✨ Generar FAQs con IA'}
         </button>
       </div>
 
@@ -167,11 +167,11 @@ export default function KnowledgePage() {
           background: 'rgba(0, 207, 255, 0.05)',
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-            <h3 style={{ fontWeight: 700, fontSize: 16, color: '#00CFFF' }}>
+            <h3 style={{ fontWeight: 700, fontSize: 15, color: '#00CFFF' }}>
               💡 Preguntas Frecuentes Detectadas en tus Chats ({suggestedFaqs.length})
             </h3>
-            <button className="btn btn-ghost" style={{ fontSize: 12 }} onClick={() => setSuggestedFaqs([])}>
-              Descartar todas
+            <button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={() => setSuggestedFaqs([])}>
+              Descartar
             </button>
           </div>
           <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16 }}>
@@ -199,10 +199,10 @@ export default function KnowledgePage() {
                 </div>
                 <button
                   className="btn btn-success"
-                  style={{ width: '100%', justifyContent: 'center', fontSize: 13, padding: '8px 12px' }}
+                  style={{ width: '100%', justifyContent: 'center', fontSize: 12, padding: '8px 12px' }}
                   onClick={() => approveFaq(faq)}
                 >
-                  ✅ Aprobar e Incorporar a la IA
+                  ✅ Aprobar FAQ
                 </button>
               </div>
             ))}
@@ -240,7 +240,7 @@ export default function KnowledgePage() {
               <input className="input" placeholder="Título (ej: Sobre el negocio)" value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))} />
               <textarea className="input" placeholder="Pega aquí toda la información del negocio: descripción, servicios, precios, horarios, ubicación, etc." value={form.content} onChange={e => setForm(p => ({ ...p, content: e.target.value }))} style={{ minHeight: 150 }} />
               <button className="btn btn-primary" onClick={addText} disabled={loading || !businessId}>
-                {loading ? 'Guardando...' : 'Guardar texto'}
+                {loading ? 'Guardando...' : 'Guardar Texto'}
               </button>
             </div>
           )}
@@ -250,7 +250,7 @@ export default function KnowledgePage() {
               <input className="input" placeholder="Pregunta (ej: ¿Cuál es el precio?)" value={form.question} onChange={e => setForm(p => ({ ...p, question: e.target.value }))} />
               <textarea className="input" placeholder="Respuesta completa..." value={form.answer} onChange={e => setForm(p => ({ ...p, answer: e.target.value }))} />
               <button className="btn btn-primary" onClick={addFaq} disabled={loading || !businessId}>
-                {loading ? 'Guardando...' : 'Agregar FAQ'}
+                {loading ? 'Guardando...' : 'Guardar FAQ'}
               </button>
             </div>
           )}
@@ -272,7 +272,7 @@ export default function KnowledgePage() {
                 <input id="pdf-input" type="file" accept=".pdf" style={{ display: 'none' }} onChange={e => setFile(e.target.files?.[0] || null)} />
               </div>
               <button className="btn btn-primary" onClick={uploadPdf} disabled={loading || !file || !businessId}>
-                {loading ? 'Procesando PDF...' : 'Subir y procesar PDF'}
+                {loading ? 'Procesando...' : 'Subir PDF'}
               </button>
             </div>
           )}
@@ -290,7 +290,7 @@ export default function KnowledgePage() {
               )}
               <textarea className="input" placeholder="Descripción detallada (precio, características, disponibilidad...)" value={form.imageDesc} onChange={e => setForm(p => ({ ...p, imageDesc: e.target.value }))} style={{ minHeight: 80 }} />
               <button className="btn btn-primary" onClick={addImage} disabled={loading || !businessId || !form.title || !form.imageUrl}>
-                {loading ? 'Guardando...' : '🖼️ Guardar imagen'}
+                {loading ? 'Guardando...' : '🖼️ Guardar Imagen'}
               </button>
             </div>
           )}
