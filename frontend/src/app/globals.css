@@ -481,6 +481,53 @@ input:checked + .toggle-slider:before { transform: translateX(20px); background:
     display: flex !important;
   }
 
+  /* Re-ordenar headers de página en columna */
+  .page-header {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 12px !important;
+  }
+  .page-header .btn {
+    width: 100% !important;
+    justify-content: center !important;
+  }
+
+  /* Filas de botones de acción en tarjetas */
+  .action-buttons-row {
+    flex-direction: column !important;
+    width: 100% !important;
+    gap: 8px !important;
+  }
+  .action-buttons-row .btn {
+    width: 100% !important;
+    justify-content: center !important;
+  }
+
+  /* Barras de búsqueda y filtros */
+  .filter-bar-responsive {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 10px !important;
+  }
+  .filter-bar-responsive input,
+  .filter-bar-responsive select {
+    width: 100% !important;
+    min-width: 100% !important;
+  }
+
+  /* Banner de alerta */
+  .alert-banner-responsive {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 10px !important;
+  }
+  .alert-banner-responsive .btn,
+  .alert-banner-responsive a {
+    width: 100% !important;
+    justify-content: center !important;
+    text-align: center !important;
+  }
+
   .stats-grid { grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
   .stat-card { padding: 14px; border-radius: 12px; }
   .stat-value { font-size: 22px; }

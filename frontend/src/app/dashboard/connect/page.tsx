@@ -213,7 +213,7 @@ export default function ConnectPage() {
 
         <div className="card" style={{ flex: 1, minWidth: 200 }}>
           <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>Acciones</div>
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <div className="action-buttons-row" style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             {status !== 'connected' && (
               <button className="btn btn-primary btn-mobile-full" onClick={() => startSession(true)}>
                 {status === 'connecting' ? (
@@ -311,7 +311,7 @@ export default function ConnectPage() {
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 16 }}>
+          <div className="action-buttons-row" style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 16 }}>
             <button
               className="btn btn-primary btn-mobile-full"
               onClick={() => setIsWizardOpen(true)}

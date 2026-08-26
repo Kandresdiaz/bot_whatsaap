@@ -206,7 +206,7 @@ export default function AdminClientsPage() {
       </div>
 
       {/* Buscador y Filtros */}
-      <div className="card" style={{ background: '#0C1527', borderColor: '#1E293B', padding: 14, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+      <div className="card filter-bar-responsive" style={{ background: '#0C1527', borderColor: '#1E293B', padding: 14, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
         <input
           type="text"
           className="input"

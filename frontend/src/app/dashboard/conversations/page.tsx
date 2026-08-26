@@ -512,7 +512,7 @@ export default function ConversationsPage() {
     <div className="conversations-container" style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 64px)', gap: 8, background: '#080E1F' }}>
       {/* Alerta de WhatsApp Desconectado / Pendiente */}
       {sessionStatus !== 'connected' && (
-        <div style={{
+        <div className="alert-banner-responsive" style={{
           background: 'rgba(234,179,8,0.12)',
           border: '1px solid rgba(234,179,8,0.3)',
           borderRadius: 10,
@@ -537,7 +537,7 @@ export default function ConversationsPage() {
 
       {/* Alerta de Bot Global Pausado */}
       {!globalBotEnabled && (
-        <div style={{
+        <div className="alert-banner-responsive" style={{
           background: 'rgba(239,68,68,0.12)',
           border: '1px solid rgba(239,68,68,0.3)',
           borderRadius: 10,

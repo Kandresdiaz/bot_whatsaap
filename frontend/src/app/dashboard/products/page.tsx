@@ -262,7 +262,7 @@ export default function ProductsPage() {
       </div>
 
       {/* Barra de Búsqueda y Filtros */}
-      <div className="card" style={{ background: '#0C1527', borderColor: '#1E293B', padding: 14, display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', justifyContent: 'space-between' }}>
+      <div className="card filter-bar-responsive" style={{ background: '#0C1527', borderColor: '#1E293B', padding: 14, display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', gap: 10, flex: 1, minWidth: 200, flexWrap: 'wrap' }}>
           <input
             type="text"
