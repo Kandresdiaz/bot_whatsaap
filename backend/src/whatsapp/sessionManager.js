@@ -793,9 +793,9 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
   const sessionDir = path.join(SESSIONS_DIR, userId);
   if (!fs.existsSync(sessionDir)) fs.mkdirSync(sessionDir, { recursive: true });
 
-  // Guardar estado inicial en memoria inmediatamente
+  // Guardar estado inicial en memoria inmediatamente (bot activo por defecto)
   const prevSession = sessions.get(userId) || {};
-  sessions.set(userId, { status: 'connecting', businessId, sock: null, qr: null, bot_enabled: prevSession.bot_enabled !== undefined ? prevSession.bot_enabled : false });
+  sessions.set(userId, { status: 'connecting', businessId, sock: null, qr: null, bot_enabled: prevSession.bot_enabled !== undefined ? prevSession.bot_enabled : true });
   sessions.set(validUserId, sessions.get(userId));
   if (validUserId === ADMIN_UUID) sessions.set('admin', sessions.get(userId));
 
@@ -1384,39 +1384,40 @@ const sendMessage = async (userId, to, text) => {
 };
 
 const getGlobalBotStatus = async (userId) => {
-  const session = getSession(userId);
-  if (session && typeof session.bot_enabled === 'boolean') {
-    return session.bot_enabled;
+  const validUserId = getValidUserId(userId);
+  const session = getSession(userId) || getSession(validUserId);
+
+  if (!supabase) {
+    return session?.bot_enabled !== undefined ? session.bot_enabled : true;
   }
-  if (!supabase) return false;
 
   try {
-    const validUserId = getValidUserId(userId);
     const { data: sess } = await supabase
       .from('whatsapp_sessions')
       .select('bot_enabled')
       .eq('user_id', validUserId)
-      .maybeSingle();
+      .limit(1);
 
-    let enabled = false;
-    if (sess && typeof sess.bot_enabled === 'boolean') {
-      enabled = sess.bot_enabled;
-    } else {
-      const { data: bus } = await supabase
-        .from('businesses')
-        .select('bot_enabled')
-        .eq('user_id', validUserId)
-        .maybeSingle();
-      if (bus && typeof bus.bot_enabled === 'boolean') {
-        enabled = bus.bot_enabled;
-      }
+    if (sess && sess.length > 0 && typeof sess[0].bot_enabled === 'boolean') {
+      if (session) session.bot_enabled = sess[0].bot_enabled;
+      return sess[0].bot_enabled;
     }
 
-    const currentS = getSession(userId);
-    if (currentS) currentS.bot_enabled = enabled;
+    const { data: bus } = await supabase
+      .from('businesses')
+      .select('bot_enabled')
+      .eq('user_id', validUserId)
+      .limit(1);
+
+    if (bus && bus.length > 0 && typeof bus[0].bot_enabled === 'boolean') {
+      if (session) session.bot_enabled = bus[0].bot_enabled;
+      return bus[0].bot_enabled;
+    }
+
+    const enabled = session?.bot_enabled !== undefined ? session.bot_enabled : true;
     return enabled;
   } catch (e) {
-    return false;
+    return session?.bot_enabled !== undefined ? session.bot_enabled : true;
   }
 };
 
