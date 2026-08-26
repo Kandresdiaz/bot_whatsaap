@@ -8,11 +8,17 @@ const CANDIDATE_MODELS = [
   'mixtral-8x7b-32768'
 ];
 
+const cleanApiKey = (key) => {
+  if (!key) return '';
+  return key.trim().replace(/^['"]|['"]$/g, '');
+};
+
 const getGroqClient = () => {
-  const apiKey = process.env.GROQ_API_KEY;
-  if (!apiKey || !apiKey.trim()) return null;
+  const rawKey = process.env.GROQ_API_KEY;
+  const apiKey = cleanApiKey(rawKey);
+  if (!apiKey) return null;
   try {
-    return new Groq({ apiKey: apiKey.trim() });
+    return new Groq({ apiKey });
   } catch (e) {
     console.error('[Groq] Error instanciando SDK:', e.message);
     return null;
@@ -169,8 +175,8 @@ const buildHumanAssistantReply = (userMessage, business, products = []) => {
   const greeting = business?.greeting_msg || `¡Hola! 👋 Te damos la bienvenida a ${busName}.`;
 
   if (Array.isArray(products) && products.length > 0) {
-    const top = products.slice(0, 3).map(p => `• ${p.name}: $${Number(p.price || 0).toLocaleString('es-CO')} ${p.currency || 'COP'}`).join('\n');
-    return `${greeting}\n\nTe comparto algunos de nuestros productos/servicios principales:\n${top}\n\n¿En qué te gustaría que te colabore hoy?`;
+    const top = products.map(p => `• *${p.name}*: $${Number(p.price || 0).toLocaleString('es-CO')} ${p.currency || 'COP'}${p.description ? ` (${p.description})` : ''}`).join('\n');
+    return `${greeting}\n\nCon gusto te presento nuestros productos/servicios disponibles:\n\n${top}\n\n¿Deseas cotizar o adquirir alguno de nuestros planes?`;
   }
 
   return `${greeting} ¿En qué te puedo ayudar hoy? Con gusto te brindo toda la información que necesites.`;
