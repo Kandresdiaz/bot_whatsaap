@@ -485,6 +485,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-26** | Merge branch 'main' of https://github.com/Kandresdiaz/bot_whatsaap (`7d8379e`) | Auto-deploy |
 
+| **2026-08-26** | fix: resolver error 404 en ruta /admin/clients del panel admin (`224d17a`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
