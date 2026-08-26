@@ -57,8 +57,8 @@ html, body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 8px 14px;
+  gap: 8px;
+  padding: 10px 16px;
   border-radius: 10px;
   font-size: 13px;
   font-weight: 700;
@@ -70,11 +70,10 @@ html, body {
   max-width: 100%;
   box-sizing: border-box;
   text-align: center;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  line-height: 1.25;
-  flex-shrink: 0;
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  line-height: 1.35;
 }
 
 /* Botón primario: alto contraste blanco sobre gradiente azul */
@@ -475,6 +474,11 @@ input:checked + .toggle-slider:before { transform: translateX(20px); background:
     margin-left: 0 !important;
     padding: 14px !important;
     width: 100% !important;
+  }
+
+  .btn-mobile-full {
+    width: 100% !important;
+    display: flex !important;
   }
 
   .stats-grid { grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }

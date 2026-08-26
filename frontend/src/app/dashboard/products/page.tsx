@@ -237,7 +237,7 @@ export default function ProductsPage() {
         </div>
 
         <button
-          className="btn btn-primary"
+          className="btn btn-primary btn-mobile-full"
           onClick={openCreateModal}
           style={{ fontSize: 13, padding: '10px 18px', display: 'flex', alignItems: 'center', gap: 8 }}
         >

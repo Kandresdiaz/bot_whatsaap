@@ -529,8 +529,8 @@ export default function ConversationsPage() {
             <span style={{ fontSize: 18 }}>📱</span>
             <span><strong>WhatsApp no vinculado:</strong> Para ver tus chats y permitir que el bot responda, debes vincular tu WhatsApp escaneando el QR.</span>
           </div>
-          <a href="/dashboard/connect" className="btn btn-primary" style={{ fontSize: 12, padding: '4px 12px', textDecoration: 'none' }}>
-            🔌 Escanear QR Ahora
+          <a href="/dashboard/connect" className="btn btn-primary" style={{ fontSize: 12, padding: '5px 12px', textDecoration: 'none' }}>
+            🔌 Escanear QR
           </a>
         </div>
       )}
@@ -554,8 +554,8 @@ export default function ConversationsPage() {
             <span style={{ fontSize: 18 }}>⏸️</span>
             <span><strong>Bot Global Pausado:</strong> La IA no responderá automáticamente en ningún chat. WhatsApp sigue totalmente activo.</span>
           </div>
-          <button className="btn btn-success" style={{ fontSize: 12, padding: '4px 12px' }} onClick={toggleGlobalBot} disabled={togglingGlobal}>
-            ▶️ Reanudar Bot Global
+          <button className="btn btn-success" style={{ fontSize: 12, padding: '5px 12px' }} onClick={toggleGlobalBot} disabled={togglingGlobal}>
+            ▶️ Reanudar Bot
           </button>
         </div>
       )}
@@ -589,7 +589,7 @@ export default function ConversationsPage() {
                   onClick={() => setNewPhoneModal(true)}
                   title="Abrir conversación con un número"
                 >
-                  ➕ Nuevo
+                  ➕ Nuevo Chat
                 </button>
                 <button
                   className="btn btn-ghost"

@@ -188,11 +188,11 @@ export default function ConnectPage() {
           <p className="page-subtitle">Escanea el QR con tu WhatsApp para activar el bot 24/7</p>
         </div>
         <button
-          className="btn btn-ghost"
+          className="btn btn-ghost btn-mobile-full"
           onClick={() => setIsWizardOpen(true)}
           style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, border: '1px solid var(--border)' }}
         >
-          ⚙️ {business?.is_configured ? 'Editar Negocio' : 'Configurar Bot'}
+          ⚙️ {business?.is_configured ? 'Editar Datos del Negocio' : 'Configurar Bot (Wizard)'}
         </button>
       </div>
 
@@ -213,29 +213,29 @@ export default function ConnectPage() {
 
         <div className="card" style={{ flex: 1, minWidth: 200 }}>
           <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>Acciones</div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             {status !== 'connected' && (
-              <button className="btn btn-primary" onClick={() => startSession(true)}>
+              <button className="btn btn-primary btn-mobile-full" onClick={() => startSession(true)}>
                 {status === 'connecting' ? (
                   <>
-                    <span className="spinner" style={{ width: 14, height: 14, marginRight: 4 }} />
-                    Iniciando QR...
+                    <span className="spinner" style={{ width: 14, height: 14, marginRight: 6 }} />
+                    Iniciando... (Clic para forzar nuevo QR)
                   </>
                 ) : (
-                  '🔌 Conectar WhatsApp'
+                  '🔌 Conectar WhatsApp / Obtener QR'
                 )}
               </button>
             )}
 
             {(status === 'qr_ready' || status === 'connected') && (
-              <button className="btn btn-danger" onClick={stopSession}>
+              <button className="btn btn-danger btn-mobile-full" onClick={stopSession}>
                 ⏹ Desconectar
               </button>
             )}
 
             {status === 'connected' && (
               <button
-                className="btn btn-ghost"
+                className="btn btn-ghost btn-mobile-full"
                 onClick={async () => {
                   await stopSession();
                   setTimeout(() => startSession(true), 500);
@@ -243,7 +243,7 @@ export default function ConnectPage() {
                 style={{ fontSize: 13 }}
                 title="Genera un QR limpio para descargar todo el historial antiguo de WhatsApp"
               >
-                🔄 Re-vincular QR
+                🔄 Re-vincular con nuevo QR (Historial)
               </button>
             )}
           </div>
@@ -288,7 +288,7 @@ export default function ConnectPage() {
             <span className="dot dot-yellow" /> Esperando escaneo... (expira en ~60s)
           </div>
           <button className="btn btn-ghost" onClick={() => startSession(true)} style={{ fontSize: 13 }}>
-            🔄 Regenerar QR
+            🔄 Regenerar Código QR
           </button>
         </div>
       )}
@@ -311,27 +311,27 @@ export default function ConnectPage() {
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 16 }}>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 16 }}>
             <button
-              className="btn btn-primary"
+              className="btn btn-primary btn-mobile-full"
               onClick={() => setIsWizardOpen(true)}
               style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}
             >
-              ⚙️ {business?.is_configured ? 'Editar Negocio' : 'Configurar Bot'}
+              ⚙️ {business?.is_configured ? 'Editar Configuración del Negocio' : 'Configurar Preguntas & Bot'}
             </button>
             <a
               href="/dashboard/knowledge"
-              className="btn btn-ghost"
+              className="btn btn-ghost btn-mobile-full"
               style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, border: '1px solid rgba(255,255,255,0.1)' }}
             >
-              📚 Knowledge Base
+              📚 Base de Conocimiento (RAG)
             </a>
             <a
               href="/dashboard/conversations"
-              className="btn btn-success"
+              className="btn btn-success btn-mobile-full"
               style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}
             >
-              💬 Conversaciones →
+              💬 Ver Conversaciones →
             </a>
           </div>
         </div>
