@@ -18,6 +18,8 @@ export default function AuthCallbackPage() {
         const googleUser = session.user;
         const backendUrl = 'https://bot-whatsaap-tkjd.onrender.com';
 
+        setStatus('Sincronizando cuenta con el servidor...');
+
         const res = await fetch(`${backendUrl}/api/auth/google`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -42,7 +44,7 @@ export default function AuthCallbackPage() {
             } else {
               window.location.href = '/dashboard';
             }
-          }, 500);
+          }, 300);
         } else {
           setStatus(`Error: ${data.error || 'No se pudo vincular la cuenta'}`);
           setTimeout(() => router.push('/login'), 3500);
@@ -56,27 +58,44 @@ export default function AuthCallbackPage() {
 
     const handleCallback = async () => {
       try {
-        const { data: { session }, error } = await supabase.auth.getSession();
+        // 1. Intercambiar código PKCE si viene en la URL (?code=...)
+        if (typeof window !== 'undefined') {
+          const searchParams = new URLSearchParams(window.location.search);
+          const code = searchParams.get('code');
+
+          if (code) {
+            setStatus('Confirmando acceso con Google...');
+            const { data: exchangeData } = await supabase.auth.exchangeCodeForSession(code);
+            if (exchangeData?.session) {
+              await processSession(exchangeData.session);
+              return;
+            }
+          }
+        }
+
+        // 2. Obtener sesión de Supabase si ya existe o está en hash
+        const { data: { session } } = await supabase.auth.getSession();
         if (session) {
           await processSession(session);
-        } else {
-          // Escuchar cambios de estado en caso de hash/redirect diferido
-          const { data: authListener } = supabase.auth.onAuthStateChange(async (event, currentSession) => {
-            if (currentSession?.user) {
-              await processSession(currentSession);
-            }
-          });
-
-          // Timeout de seguridad si no hay sesión
-          setTimeout(() => {
-            if (!processed) {
-              setStatus('No se encontró sesión activa de Google. Redirigiendo a login...');
-              router.push('/login');
-            }
-          }, 5000);
+          return;
         }
+
+        // 3. Listener asíncrono para cambios de autenticación
+        const { data: authListener } = supabase.auth.onAuthStateChange(async (event, currentSession) => {
+          if (currentSession?.user && !processed) {
+            await processSession(currentSession);
+          }
+        });
+
+        // 4. Timeout amplio (15 segundos) para dar tiempo al servidor de responder
+        setTimeout(() => {
+          if (!processed) {
+            setStatus('No se pudo completar el acceso. Redirigiendo a login...');
+            router.push('/login');
+          }
+        }, 15000);
       } catch (e: any) {
-        console.error(e);
+        console.error('Error en handleCallback:', e);
         setStatus('Error al autenticar. Redirigiendo...');
         setTimeout(() => router.push('/login'), 3000);
       }
