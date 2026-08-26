@@ -265,7 +265,7 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
   try {
     let query = supabase.from('knowledge_base').select('id, title, content, type, file_url').eq('is_active', true);
     if (business?.id) {
-      query = query.or(`business_id.eq.${business.id},business_id.is.null`);
+      query = query.eq('business_id', business.id);
     }
     const { data } = await query;
     knowledge = data || [];
@@ -276,7 +276,7 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
   try {
     let pQuery = supabase.from('products_services').select('name, description, price, currency, category, image_url').eq('is_active', true).order('category', { ascending: true });
     if (business?.id) {
-      pQuery = pQuery.or(`business_id.eq.${business.id},business_id.is.null`);
+      pQuery = pQuery.eq('business_id', business.id);
     }
     const { data: prods } = await pQuery;
     products = prods || [];
