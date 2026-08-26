@@ -552,6 +552,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-26** | fix: resolver business_id relacional con fallback a catalogos por defecto en productos y KB (`22ab26c`) | Auto-deploy |
 
+| **2026-08-26** | debug: simplificar consulta Supabase de productos y retornar count/totalInDb para diagnostico (`1d62792`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
