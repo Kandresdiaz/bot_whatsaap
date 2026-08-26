@@ -535,6 +535,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-26** | fix: resolver 'admin' y cualquier id en resolveBusinessId para desplegar productos en la vista de Productos y Servicios (`74e4358`) | Auto-deploy |
 
+| **2026-08-26** | fix(ui): mostrar configuracion activa mantenida y eliminar preguntas innecesarias al conectar (`03fee52`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
