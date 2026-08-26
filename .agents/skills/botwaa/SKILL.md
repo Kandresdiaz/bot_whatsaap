@@ -538,6 +538,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-26** | fix: eliminar sintaxis PostgREST .or invalida en products.js para asegurar desplegado de productos 200 OK (`66ba453`) | Auto-deploy |
 
+| **2026-08-26** | chore: sync local files and test-groq updates (`343d116`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
