@@ -546,6 +546,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-26** | fix: corregir useEffect y fallback de carga de productos en frontend para despliegue instantaneo en Vercel (`3967dcd`) | Auto-deploy |
 
+| **2026-08-26** | feat: auto-sembrar productos y base de conocimiento por defecto en Supabase para cualquier usuario/negocio (`0e13df7`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
