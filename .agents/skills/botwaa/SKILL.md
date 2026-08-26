@@ -515,6 +515,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-26** | fix(ui): ensure full text visibility on mobile buttons with full width layout (`db9e0f5`) | Auto-deploy |
 
+| **2026-08-26** | fix(ui): re-order header and action containers into vertical stacks for mobile (`a49592a`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
