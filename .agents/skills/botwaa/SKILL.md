@@ -537,6 +537,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-26** | fix(ui): mostrar configuracion activa mantenida y eliminar preguntas innecesarias al conectar (`03fee52`) | Auto-deploy |
 
+| **2026-08-26** | fix: eliminar sintaxis PostgREST .or invalida en products.js para asegurar desplegado de productos 200 OK (`66ba453`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
