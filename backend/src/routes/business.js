@@ -1,34 +1,47 @@
 const express = require('express');
 const router = express.Router();
 const { supabase } = require('../db/supabase');
+const { seedDefaultProductsAndKB } = require('../db/seedHelper');
 
-// Helper para obtener el userId válido
-const getTargetUserId = (userId) => {
+const isUuid = (str) => typeof str === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+
+// Helper para obtener una lista de UUIDs válidos para buscar en Supabase
+const getValidUserUuids = (userId) => {
+  const set = new Set();
+
+  if (isUuid(userId)) {
+    set.add(userId);
+  }
+
   try {
     const { getValidUserId } = require('../whatsapp/sessionManager');
-    return getValidUserId(userId);
-  } catch (_) {
-    return (!userId || userId === 'admin') ? '00000000-0000-0000-0000-000000000001' : userId;
-  }
-};
+    const resolved = getValidUserId(userId);
+    if (isUuid(resolved)) set.add(resolved);
+  } catch (_) {}
 
-const { seedDefaultProductsAndKB } = require('../db/seedHelper');
+  // UUID por defecto de admin
+  set.add('00000000-0000-0000-0000-000000000001');
+
+  return Array.from(set);
+};
 
 // Obtener o crear business del usuario
 router.get('/:userId', async (req, res) => {
   const { userId } = req.params;
-  const targetId = getTargetUserId(userId);
-  
+  const validUuids = getValidUserUuids(userId);
+
   try {
+    // Buscar negocio por cualquiera de los UUIDs válidos (nunca pasar strings no-UUID como 'admin')
     let { data } = await supabase
       .from('businesses')
       .select('*')
-      .or(`user_id.eq.${userId},user_id.eq.${targetId}`)
+      .in('user_id', validUuids)
       .order('created_at', { ascending: false })
       .limit(1);
 
     let business = (data && data.length > 0) ? data[0] : null;
 
+    // Fallback: si no encuentra por user_id, buscar el negocio más reciente configurado en la DB
     if (!business) {
       const { data: fallback } = await supabase
         .from('businesses')
@@ -40,18 +53,20 @@ router.get('/:userId', async (req, res) => {
       }
     }
 
-    if (!business && targetId && targetId !== 'admin') {
+    // Si aún así no existe ningún negocio en la DB, crear uno nuevo
+    if (!business) {
+      const defaultUserId = validUuids[0] || '00000000-0000-0000-0000-000000000001';
       const { data: newBus } = await supabase.from('businesses').insert({
-        user_id: targetId,
-        name: 'Mi Negocio',
-        category: 'General',
+        user_id: defaultUserId,
+        name: 'BotWA',
+        category: 'Asesoría / Consultoría',
         city: 'Colombia',
         timezone: 'America/Bogota',
-        bot_personality: 'amigable, profesional y experto',
+        bot_personality: 'persuasivo',
         active_hours_start: '08:00',
-        active_hours_end: '22:00',
-        active_days: [0, 1, 2, 3, 4, 5, 6],
-        is_configured: false,
+        active_hours_end: '20:00',
+        active_days: [1, 2, 3, 4, 5, 6],
+        is_configured: true,
       }).select().single();
       business = newBus;
     }
@@ -62,6 +77,7 @@ router.get('/:userId', async (req, res) => {
 
     res.json({ success: true, business });
   } catch (e) {
+    console.error('[BUSINESS GET] Error:', e.message);
     res.json({ success: false, error: e.message });
   }
 });
@@ -69,15 +85,25 @@ router.get('/:userId', async (req, res) => {
 // Crear o actualizar business
 router.post('/:userId', async (req, res) => {
   const { userId } = req.params;
-  const targetId = getTargetUserId(userId);
+  const validUuids = getValidUserUuids(userId);
   const fields = req.body;
 
   try {
-    const { data: existing } = await supabase
+    let { data: existing } = await supabase
       .from('businesses')
       .select('id')
-      .or(`user_id.eq.${userId},user_id.eq.${targetId}`)
+      .in('user_id', validUuids)
+      .order('created_at', { ascending: false })
       .limit(1);
+
+    if (!existing || existing.length === 0) {
+      const { data: fallback } = await supabase
+        .from('businesses')
+        .select('id')
+        .order('created_at', { ascending: false })
+        .limit(1);
+      existing = fallback;
+    }
 
     let result;
     const configData = { ...fields, is_configured: true };
@@ -85,7 +111,8 @@ router.post('/:userId', async (req, res) => {
     if (existing && existing.length > 0) {
       result = await supabase.from('businesses').update(configData).eq('id', existing[0].id).select().single();
     } else {
-      result = await supabase.from('businesses').insert({ ...configData, user_id: targetId }).select().single();
+      const targetUserId = validUuids[0] || '00000000-0000-0000-0000-000000000001';
+      result = await supabase.from('businesses').insert({ ...configData, user_id: targetUserId }).select().single();
     }
 
     if (result.data?.id) {
@@ -94,9 +121,9 @@ router.post('/:userId', async (req, res) => {
 
     res.json({ success: !result.error, business: result.data, error: result.error?.message });
   } catch (e) {
+    console.error('[BUSINESS POST] Error:', e.message);
     res.json({ success: false, error: e.message });
   }
 });
 
 module.exports = router;
-
