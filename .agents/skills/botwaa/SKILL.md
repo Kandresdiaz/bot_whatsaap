@@ -513,6 +513,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-26** | fix(ui): polish button labels and single-line button styling for mobile (`e2d990c`) | Auto-deploy |
 
+| **2026-08-26** | fix(ui): ensure full text visibility on mobile buttons with full width layout (`db9e0f5`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
