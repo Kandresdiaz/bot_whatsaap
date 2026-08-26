@@ -525,6 +525,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-26** | fix: mejorar resiliencia de Groq AI con fallback de negocio y endpoint test-groq (`e96a0cb`) | Auto-deploy |
 
+| **2026-08-26** | fix: eliminar mensajes de error técnico y forzar siempre respuestas de asistente humano con catálogo y 5 modelos Groq de respaldo (`f9b6188`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
