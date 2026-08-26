@@ -5,8 +5,9 @@ import { useEffect } from 'react';
 import Link from 'next/link';
 
 const navItems = [
-  { href: '/admin', icon: '🏠', label: 'Dashboard' },
+  { href: '/admin', icon: '📊', label: 'Dashboard Admin' },
   { href: '/admin/clients', icon: '👥', label: 'Clientes' },
+  { href: '/admin/payments', icon: '💳', label: 'Historial de Pagos' },
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -27,7 +28,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   return (
     <div>
       <aside className="sidebar">
-        <div className="sidebar-logo">🛡️ Admin</div>
+        <div className="sidebar-logo">🛡️ Admin BotWA</div>
         <nav className="sidebar-nav">
           {navItems.map(item => (
             <Link key={item.href} href={item.href} className={`nav-link ${pathname === item.href ? 'active' : ''}`}>
@@ -37,8 +38,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           ))}
         </nav>
         <div style={{ padding: '16px 12px', borderTop: '1px solid var(--border)' }}>
-          <Link href="/dashboard" className="nav-link" style={{ color: 'var(--accent-light)', marginBottom: 8 }}>
-            <span>🤖</span> Modo Bot (Demo)
+          <Link href="/dashboard" className="nav-link" style={{ color: '#00CFFF', marginBottom: 8 }}>
+            <span>🤖</span> Vista Dashboard Bot
           </Link>
           <button className="nav-link" onClick={logout} style={{ color: '#ef4444' }}>
             <span>🚪</span> Cerrar sesión
