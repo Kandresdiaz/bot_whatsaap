@@ -542,6 +542,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-26** | fix: update Groq active model IDs list to include llama-3.1-70b-versatile and mixtral (`23b8ca3`) | Auto-deploy |
 
+| **2026-08-26** | feat: registrar planes 120k/250k/450k en Supabase, vista dashboard y captura de leads RAG (`74f943b`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
