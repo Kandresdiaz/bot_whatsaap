@@ -10,12 +10,11 @@ export default function AuthCallbackPage() {
   useEffect(() => {
     let processed = false;
 
-    const processSession = async (session: any) => {
-      if (processed || !session?.user) return;
+    const processSession = async (sessionUser: any) => {
+      if (processed || !sessionUser) return;
       processed = true;
 
       try {
-        const googleUser = session.user;
         const backendUrl = 'https://bot-whatsaap-tkjd.onrender.com';
 
         setStatus('Cargando tu panel de control...');
@@ -24,9 +23,9 @@ export default function AuthCallbackPage() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            id: googleUser.id,
-            email: googleUser.email,
-            name: googleUser.user_metadata?.full_name || googleUser.user_metadata?.name || googleUser.email?.split('@')[0],
+            id: sessionUser.id,
+            email: sessionUser.email,
+            name: sessionUser.user_metadata?.full_name || sessionUser.user_metadata?.name || sessionUser.email?.split('@')[0],
           }),
         });
 
@@ -40,59 +39,98 @@ export default function AuthCallbackPage() {
 
           setTimeout(() => {
             window.location.href = '/dashboard';
-          }, 300);
+          }, 200);
         } else {
           setStatus(`Error: ${data.error || 'No se pudo vincular la cuenta'}`);
-          setTimeout(() => router.push('/login'), 3500);
+          setTimeout(() => router.push('/login'), 3000);
         }
       } catch (err: any) {
         console.error('Error al procesar callback:', err);
         setStatus('Error de conexión con el servidor. Redirigiendo a login...');
-        setTimeout(() => router.push('/login'), 3500);
+        setTimeout(() => router.push('/login'), 3000);
       }
     };
 
     const handleCallback = async () => {
       try {
-        // 1. Intercambiar código PKCE si viene en la URL (?code=...)
-        if (typeof window !== 'undefined') {
-          const searchParams = new URLSearchParams(window.location.search);
-          const code = searchParams.get('code');
+        if (typeof window === 'undefined') return;
 
-          if (code) {
-            setStatus('Confirmando acceso con Google...');
-            const { data: exchangeData } = await supabase.auth.exchangeCodeForSession(code);
-            if (exchangeData?.session) {
-              await processSession(exchangeData.session);
+        // Estrategia 1: Leer Hash de la URL (#access_token=...)
+        if (window.location.hash) {
+          const hashParams = new URLSearchParams(window.location.hash.substring(1));
+          const accessToken = hashParams.get('access_token');
+          if (accessToken) {
+            setStatus('Verificando token de acceso...');
+            const { data: userData } = await supabase.auth.getUser(accessToken);
+            if (userData?.user) {
+              await processSession(userData.user);
               return;
             }
           }
         }
 
-        // 2. Obtener sesión de Supabase si ya existe o está en hash de la URL
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session) {
-          await processSession(session);
+        // Estrategia 2: Leer código PKCE de la URL (?code=...)
+        if (window.location.search) {
+          const searchParams = new URLSearchParams(window.location.search);
+          const code = searchParams.get('code');
+          if (code) {
+            setStatus('Confirmando acceso de Google...');
+            try {
+              const { data: exchangeData } = await supabase.auth.exchangeCodeForSession(code);
+              if (exchangeData?.session?.user) {
+                await processSession(exchangeData.session.user);
+                return;
+              }
+            } catch (pkceErr) {
+              console.error('Error en PKCE exchange:', pkceErr);
+            }
+          }
+        }
+
+        // Estrategia 3: Obtener usuario / sesión activa de cliente Supabase
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          await processSession(user);
           return;
         }
 
-        // 3. Listener asíncrono para cambios de autenticación
-        const { data: authListener } = supabase.auth.onAuthStateChange(async (event, currentSession) => {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          await processSession(session.user);
+          return;
+        }
+
+        // Estrategia 4: Escuchar cambios de sesión de Supabase
+        const { data: authSubscription } = supabase.auth.onAuthStateChange(async (event, currentSession) => {
           if (currentSession?.user && !processed) {
-            await processSession(currentSession);
+            await processSession(currentSession.user);
           }
         });
 
-        // 4. Timeout amplio (15 segundos) para dar tiempo al servidor de responder
-        setTimeout(() => {
-          if (!processed) {
-            setStatus('No se pudo completar el acceso. Redirigiendo a login...');
-            router.push('/login');
+        // Polling de respaldo cada segundo por 6 segundos
+        let attempts = 0;
+        const interval = setInterval(async () => {
+          attempts++;
+          if (processed) {
+            clearInterval(interval);
+            return;
           }
-        }, 15000);
+          const { data: { user: pollUser } } = await supabase.auth.getUser();
+          if (pollUser) {
+            clearInterval(interval);
+            await processSession(pollUser);
+          } else if (attempts >= 6) {
+            clearInterval(interval);
+            if (!processed) {
+              setStatus('No se pudo verificar la sesión de Google. Redirigiendo...');
+              router.push('/login');
+            }
+          }
+        }, 1000);
+
       } catch (e: any) {
-        console.error('Error en handleCallback:', e);
-        setStatus('Error al autenticar. Redirigiendo...');
+        console.error('Error general en handleCallback:', e);
+        setStatus('Error al autenticar. Redirigiendo a login...');
         setTimeout(() => router.push('/login'), 3000);
       }
     };
