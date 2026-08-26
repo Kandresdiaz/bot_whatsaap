@@ -509,6 +509,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-26** | Merge branch 'main' of https://github.com/Kandresdiaz/bot_whatsaap (`ff4e4ed`) | Auto-deploy |
 
+| **2026-08-26** | fix: complete mobile responsive layout fixes, mobile topbar menu and button word wrapping (`983cd4e`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
