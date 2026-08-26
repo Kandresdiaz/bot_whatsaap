@@ -8,7 +8,7 @@ const ADMIN_UUID = '00000000-0000-0000-0000-000000000001';
 const checkIsAdmin = (email, dbUserIsAdmin) => {
   if (dbUserIsAdmin === true) return true;
   if (!email) return false;
-  const rawAdminEmails = process.env.SUPER_ADMIN_EMAILS || process.env.ADMIN_EMAIL || 'admin@bot.com';
+  const rawAdminEmails = process.env.SUPER_ADMIN_EMAILS || process.env.ADMIN_EMAIL || 'admin@bot.com,kevina0416@gmail.com';
   const adminList = rawAdminEmails.split(',').map(e => e.trim().toLowerCase());
   return adminList.includes(email.trim().toLowerCase());
 };
