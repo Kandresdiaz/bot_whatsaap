@@ -33,6 +33,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const BACKEND = 'https://bot-whatsaap-tkjd.onrender.com';
   const headers = { 'Content-Type': 'application/json', 'x-admin-key': process.env.NEXT_PUBLIC_ADMIN_KEY || 'admin123' };
 
+  // Redirigir a login si no hay usuario autenticado
+  useEffect(() => {
+    if (!loading && !user) {
+      router.push('/login');
+    }
+  }, [user, loading, router]);
+
   // Cargar lista de clientes si es Admin
   useEffect(() => {
     if (!user?.is_admin) return;
