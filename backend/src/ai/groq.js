@@ -239,6 +239,14 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
     return { reply, isLeadHot, tokensUsed, imageName, ragChunksUsed: relevantKnowledge.length };
   } catch (err) {
     console.error('[Groq] Error en askGroq:', err.message);
+    try {
+      const { notifySystemAlert } = require('../whatsapp/notifier');
+      notifySystemAlert('GROQ_API_ERROR', {
+        message: err.message,
+        businessName: safeBusiness?.name
+      });
+    } catch (_) {}
+
     const reply = buildHumanAssistantReply(userMessage, safeBusiness, products);
     return {
       reply,
