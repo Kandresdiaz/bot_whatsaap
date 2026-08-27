@@ -580,6 +580,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-27** | feat: modulo de cache de respuestas IA con Redis y RAM para ahorro total de tokens (0 tokens en preguntas frecuentes y repetidas) (`bee9425`) | Auto-deploy |
 
+| **2026-08-27** | fix: indestructible contact bot_active persistence and prompt guidelines for non-business messages (v1.0.9) (`632db95`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
