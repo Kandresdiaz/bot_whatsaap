@@ -132,53 +132,44 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
 
     console.log(`[MSG] ${contactPhone} (${contactName}) → ${userId}: "${text.slice(0, 60)}"`);
 
-  // ── 1. Buscar o crear conversación ───────────────────────────────────────
+  // ── 1. Buscar o crear conversación (por número de contacto garantizado) ─────
   let conversation = null;
   try {
     const { getSessionUuid } = require('./sessionManager');
     const sessionUuid = await getSessionUuid(userId);
 
-    if (sessionUuid) {
-      const { data: existing } = await supabase
+    // 1) Buscar conversación existente por número de teléfono
+    const { data: existingConvs } = await supabase
+      .from('conversations')
+      .select('*')
+      .eq('contact_phone', contactPhone)
+      .order('last_message_at', { ascending: false })
+      .limit(1);
+
+    if (existingConvs && existingConvs.length > 0) {
+      conversation = existingConvs[0];
+      await supabase.from('conversations').update({
+        contact_name: contactName,
+        last_message_at: new Date().toISOString(),
+        unread_count: (conversation.unread_count || 0) + 1,
+      }).eq('id', conversation.id);
+    } else {
+      // 2) Si no existe conversación previa para este teléfono, insertarla
+      const { data: newConv, error: insErr } = await supabase
         .from('conversations')
-        .select('*')
-        .eq('session_id', sessionUuid)
-        .eq('contact_phone', contactPhone)
-        .maybeSingle();
-
-      if (existing) {
-        conversation = existing;
-        await supabase.from('conversations').update({
+        .insert({
+          session_id: sessionUuid || '00000000-0000-0000-0000-000000000001',
+          contact_phone: contactPhone,
           contact_name: contactName,
+          bot_active: true,
+          is_blacklisted: false,
           last_message_at: new Date().toISOString(),
-          unread_count: (existing.unread_count || 0) + 1,
-        }).eq('id', existing.id);
-      } else {
-        const { data: newConv, error: insErr } = await supabase
-          .from('conversations')
-          .insert({
-            session_id: sessionUuid,
-            contact_phone: contactPhone,
-            contact_name: contactName,
-            bot_active: true,
-            is_blacklisted: false,
-            last_message_at: new Date().toISOString(),
-          })
-          .select()
-          .maybeSingle();
+        })
+        .select()
+        .limit(1);
 
-        if (insErr) console.warn('[MSG] Aviso insertando conversación:', insErr.message);
-        conversation = newConv;
-
-        if (!conversation) {
-          const { data: fallback } = await supabase
-            .from('conversations')
-            .select('*')
-            .eq('contact_phone', contactPhone)
-            .maybeSingle();
-          conversation = fallback;
-        }
-      }
+      if (insErr) console.warn('[MSG] Aviso insertando conversación:', insErr.message);
+      conversation = newConv && newConv[0];
     }
   } catch (e) {
     console.error('[MSG] Error con conversación:', e.message);
@@ -278,11 +269,11 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
       }
     }
 
-    if (!business) {
+    if (!business || business.name === 'Asistente Virtual') {
       const { data: fallback } = await supabase
         .from('businesses')
         .select('*')
-        .eq('user_id', '00000000-0000-0000-0000-000000000001')
+        .order('created_at', { ascending: false })
         .limit(1);
       if (fallback && fallback.length > 0) {
         business = fallback[0];
@@ -292,15 +283,17 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
     console.error('[MSG] Error obteniendo negocio:', e.message);
   }
 
-  // Si no hay negocio en la DB, usar objeto por defecto para que la IA responda
-  if (!business) {
+  // Si no hay negocio configurado, usar objeto predeterminado de BotWA Vendedor
+  if (!business || business.name === 'Asistente Virtual') {
     business = {
-      id: '00000000-0000-0000-0000-000000000001',
-      name: 'Asistente Virtual',
-      category: 'General',
-      city: 'Medellín',
+      id: '8fd9a59d-77d7-4db7-8637-9aaebca1158e',
+      name: 'BotWA',
+      category: 'Automatización de WhatsApp con IA',
+      city: 'Colombia',
       timezone: 'America/Bogota',
-      bot_personality: 'amigable, profesional, atento y experto',
+      bot_personality: 'persuasivo',
+      main_goal: 'vender',
+      greeting_msg: '¡Hola! 👋 Te damos la bienvenida a BotWA. Te ayudamos a automatizar tus ventas en WhatsApp 24/7 con Inteligencia Artificial por menos del 10% del costo de un empleado. ¿Te gustaría conocer nuestros precios o probar una demostración?',
       active_hours_start: '00:00:00',
       active_hours_end: '23:59:59',
       active_days: [0, 1, 2, 3, 4, 5, 6],
@@ -328,7 +321,6 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
     }
   } catch (e) {
     console.error('[MSG] Error verificando horario:', e.message);
-    // Si falla la verificación de horario, continuar de todas formas
   }
 
   // ── 7. Flujo de citas (si aplica) ─────────────────────────────────────────
@@ -360,24 +352,33 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
     }
     const { data: prods } = await pQuery;
     products = prods || [];
+
+    if (products.length === 0) {
+      const { data: defaultProds } = await supabase.from('products_services').select('name, description, price, currency, category, image_url').eq('is_active', true);
+      products = defaultProds || [
+        { name: 'Plan Básico BotWA', description: '1 Flujo IA (Vender o Agendar), 20 FAQs, 1 Número WA', price: 120000, currency: 'COP', category: 'Planes BotWA' },
+        { name: 'Plan Profesional BotWA', description: 'Ambos Flujos (Vender Y Agendar), Catálogo RAG, Alerta Lead Caliente, 100 FAQs', price: 250000, currency: 'COP', category: 'Planes BotWA' },
+        { name: 'Plan Agencia / Business BotWA', description: 'Múltiples Números WA, White-label, Prompting y RAG a medida, Soporte Prioritario', price: 450000, currency: 'COP', category: 'Planes BotWA' },
+      ];
+    }
   } catch (e) {
     console.error('[MSG] Error cargando catálogo de productos:', e.message);
   }
 
   // ── 9. Historial reciente de la conversación ───────────────────────────────
   let history = [];
-  if (conversation?.id) {
-    try {
+  try {
+    if (conversation?.id) {
       const { data } = await supabase
         .from('messages')
         .select('content, direction')
         .eq('conversation_id', conversation.id)
         .order('timestamp', { ascending: false })
-        .limit(10);
+        .limit(12);
       history = (data || []).reverse();
-    } catch (e) {
-      console.error('[MSG] Error cargando historial:', e.message);
     }
+  } catch (e) {
+    console.error('[MSG] Error cargando historial:', e.message);
   }
 
   // ── 10. RAG + Groq: generar respuesta ─────────────────────────────────────

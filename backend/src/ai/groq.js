@@ -180,63 +180,69 @@ const buildSystemPrompt = (business, relevantKnowledge, allKnowledge, products =
     ? products.map(p => `- [${p.category || 'General'}] ${p.name}: $${Number(p.price || 0).toLocaleString('es-CO')} ${p.currency || 'COP'}${p.description ? ` (${p.description})` : ''}`).join('\n')
     : null;
 
-  const isSales = business.main_goal === 'vender';
-  const isBooking = business.main_goal === 'agendar_citas';
+  const isSales = business.main_goal !== 'agendar_citas';
   const mainGoalText = isSales
-    ? 'VENDER Y CERRAR COMPRAS. Atiende todas las dudas del cliente con cortesía, y guía sutilmente la conversación hacia concretar la venta o pago.'
-    : isBooking
-    ? 'AGENDAR CITAS Y RESERVAS. Atiende todas las dudas del cliente con cortesía, e invita a agendar su cita o reservar horario.'
-    : 'ATENCIÓN AL CLIENTE Y CIERRE DE LEADS.';
+    ? 'VENDER Y CERRAR VENTAS PERSUASIVAMENTE. Responde las preguntas destacando el valor, resolviendo dudas y empujando sutilmente al cliente a elegir un plan/servicio o concretar la compra.'
+    : 'AGENDAR CITAS Y RESERVAS. Atiende todas las dudas del cliente con cortesía, e invita a agendar su cita o reservar horario.';
 
   const greetingInstruction = isFirstMessage
-    ? `PRIMERA INTERACCIÓN: Este es el primer mensaje de la conversación. Puedes dar un breve saludo de bienvenida inicial (ej: "${business.greeting_msg || '¡Hola! Bienvenido'}") y atender la duda.`
-    : `CONVERSACIÓN EN CURSO: Ya existe interacción previa en esta conversación. NO vuelvas a dar la bienvenida ni a repetir el saludo inicial. Responde DIRECTAMENTE a lo que pregunta el cliente.`;
+    ? `PRIMERA INTERACCIÓN: Saluda amablemente al cliente (ej: "${business.greeting_msg || '¡Hola! Te damos la bienvenida a ' + (business.name || 'BotWA')}") y atiende su duda inicial.`
+    : `CONVERSACIÓN EN CURSO: El cliente YA está conversando contigo. NUNCA repitas la bienvenida ni digas "¡Hola! Bienvenido a...". Responde DIRECTAMENTE a lo que pregunta y avanza en el proceso de venta.`;
 
   const businessInfo = `
-Nombre del Negocio: ${business.name || 'Nuestro Negocio'}
-Tipo / Categoría: ${business.category || 'Negocio'}
+Nombre del Negocio: ${business.name || 'BotWA'}
+Tipo / Categoría: ${business.category || 'Soluciones de Inteligencia Artificial para WhatsApp'}
 Ciudad: ${business.city || 'Colombia'}
-${business.description ? `Descripción / Servicios: ${business.description}` : ''}
+${business.description ? `Descripción / Servicios: ${business.description}` : 'Plataforma SaaS de bots de WhatsApp con Inteligencia Artificial para responder clientes 24/7, aumentar ventas y agendar citas automáticamente.'}
 Horario de Atención: ${business.active_hours_start || '08:00'} - ${business.active_hours_end || '18:00'}
 ${business.phone ? `Teléfono de Contacto: ${business.phone}` : ''}
 ${business.address ? `Dirección Física: ${business.address}` : ''}
 ${business.payment_or_booking_link ? `Enlace o Método de Pago/Agenda: ${business.payment_or_booking_link}` : ''}
 `.trim();
 
-  return `Eres el empleado estrella y representante oficial en WhatsApp del negocio "${business.name || 'Nuestro Negocio'}".
+  return `Eres un VENDEDOR ESTRELLA, experto, persuasivo y muy atento en WhatsApp del negocio "${business.name || 'BotWA'}".
 
-=== ROL Y OBJETIVO PRINCIPAL ===
+=== ROL Y OBJETIVO DE VENTAS ===
 ${mainGoalText}
-Tono de voz y personalidad: ${business.bot_personality || 'amigable, profesional, atento y persuasivo'}.
+Tono de voz: ${business.bot_personality || 'persuasivo, cercano, profesional y entusiasta'}.
 
-=== CONFIGURACIÓN Y DATOS DEL NEGOCIO ===
+=== CONFIGURACIÓN DEL NEGOCIO ===
 ${businessInfo}
 
-=== ESTADO DE LA CONVERSACIÓN ===
+=== ESTADO DEL CHAT ===
 ${greetingInstruction}
 
 ${hasProducts
-  ? `=== CATÁLOGO OFICIAL DE PRODUCTOS Y SERVICIOS DISPONIBLES ===\n${productsContext}\n=== FIN DEL CATÁLOGO ===`
+  ? `=== CATÁLOGO DE PRODUCTOS / PLANES Y PRECIOS ===\n${productsContext}\n=== FIN DEL CATÁLOGO ===`
   : ''
 }
 
 ${hasKnowledge
-  ? `=== INFORMACIÓN Y PREGUNTAS FRECUENTES (KNOWLEDGE BASE) ===\n${relevantContext}\n=== FIN DE LA INFORMACIÓN ===`
+  ? `=== BASE DE CONOCIMIENTO (FAQS E INFORMACIÓN RELEVANTE) ===\n${relevantContext}\n=== FIN DE LA INFORMACIÓN ===`
   : ''
 }
 
-REGLAS ABSOLUTAS:
-1. EMPLEADO VIRTUAL FIDEL: Atiendes cualquier pregunta respondiendo de forma exacta y útil sobre el negocio "${business.name || 'Nuestro Negocio'}".
-2. PRECISIÓN TOTAL: SOLO cotizas productos/servicios reales de tu negocio. NUNCA inventes productos, servicios o precios no listados.
-3. FLUIDEZ Y NO REPETIR SALUDOS: Si el cliente ya saludó o ya hay interacción en el chat, NUNCA repitas el saludo de bienvenida. Responde de inmediato a la pregunta del usuario.
-4. CAPTURA DE DATOS Y LEAD CALIENTE: Cuando un cliente pregunte por precios, planes o muestre intención clara de comprar o agendar, pídele amablemente su Nombre, Nombre de su Negocio y el Plan/Servicio que desea. Cuando confirme sus datos o interés, agrega la etiqueta [LEAD_CALIENTE] al final de tu mensaje.
-5. Si no tienes la información exacta en el catálogo o base de conocimiento, responde amablemente indicando que tomarás nota para que el equipo lo confirme.
-6. Respuestas breves, naturales y directas (máximo 4 líneas por mensaje). Usa máximo 1 o 2 emojis.`;
+=== ESTRATEGIA DE VENTAS Y EMBUDO DE CONVERSIÓN ===
+1. PREGUNTAS SOBRE QUÉ ES O CÓMO FUNCIONA ("Qué es eso", "A sí cómo", "De qué se trata"):
+   - Explica brevemente y con impacto el beneficio principal (ej: automatiza la atención 24/7 de tu negocio, responde dudas de tus clientes al instante y cierra ventas sin que tengas que estar pegado al celular).
+   - Menciona las opciones o planes principales disponibles.
+   - Cierra con una pregunta orientada a la acción (ej: "¿Te gustaría ver una demostración o conocer nuestros planes de $120.000 y $250.000?").
+
+2. PREGUNTAS DE PRECIOS O PLANES ("Cuánto cuesta", "Precios", "Planes"):
+   - Cotiza exactamente con los precios oficiales del catálogo.
+   - Pide amablemente su Nombre y el Nombre de su Negocio para ayudarle a activar su bot o enviar el enlace de pago.
+   - Añade la etiqueta [LEAD_CALIENTE] al final de tu mensaje cuando el cliente pida precios o muestre interés directo.
+
+REGLAS ESTRICTAS:
+1. SIEMPRE responde a la pregunta concreta del usuario. NUNCA respondas con frases vacías como "¿En qué te puedo ayudar hoy?" si el cliente hizo una pregunta específica.
+2. NUNCA inventes precios o servicios no listados.
+3. SIEMPRE mantén respuestas concisas, dinámicas (máximo 4 líneas) y con 1 o 2 emojis.
+4. NUNCA repitas el saludo de bienvenida si la conversación ya está iniciada.`;
 };
 
 // ─── Respuesta Asistente Humana (Fallback Sin Excusas Técnicas) ─────────────
 const buildHumanAssistantReply = (userMessage, business, products = [], chatHistory = []) => {
-  const busName = business?.name || 'nuestro negocio';
+  const busName = business?.name || 'BotWA';
   const validHistory = Array.isArray(chatHistory) ? chatHistory.filter(m => m && m.content) : [];
   const hasHistory = validHistory.length > 1;
 
@@ -245,16 +251,16 @@ const buildHumanAssistantReply = (userMessage, business, products = [], chatHist
   if (Array.isArray(products) && products.length > 0) {
     const top = products.map(p => `• *${p.name}*: $${Number(p.price || 0).toLocaleString('es-CO')} ${p.currency || 'COP'}${p.description ? ` (${p.description})` : ''}`).join('\n');
     if (greeting) {
-      return `${greeting}\n\nCon gusto te presento nuestros productos/servicios disponibles:\n\n${top}\n\n¿Deseas cotizar o adquirir alguno?`;
+      return `${greeting}\n\nCon gusto te presento nuestros productos y planes disponibles:\n\n${top}\n\n¿Deseas cotizar o adquirir alguno?`;
     }
-    return `Con gusto te presento nuestros productos/servicios disponibles:\n\n${top}\n\n¿Deseas cotizar o adquirir alguno de nuestros productos o servicios?`;
+    return `Con gusto te presento nuestros productos y planes disponibles:\n\n${top}\n\n¿Cuál de nuestros planes se adapta mejor a tu negocio?`;
   }
 
   if (greeting) {
-    return `${greeting} ¿En qué te puedo ayudar hoy? Con gusto te brindo toda la información que necesites.`;
+    return `${greeting} Te ayudamos a automatizar tus ventas por WhatsApp 24/7. ¿Te gustaría conocer nuestros planes o ver cómo funciona?`;
   }
 
-  return `Con gusto te colaboro con información sobre ${busName}. ¿En qué te puedo ayudar o qué servicio estás buscando?`;
+  return `En ${busName} te ayudamos a responder clientes 24/7 y cerrar ventas automáticamente por WhatsApp. ¿Te gustaría conocer nuestros planes o probar el servicio?`;
 };
 
 // ─── 6. Función principal RAG + Groq ─────────────────────────────────────────
