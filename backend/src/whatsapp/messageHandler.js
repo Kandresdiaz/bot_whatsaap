@@ -49,14 +49,73 @@ const safeQuery = async (fn) => {
 
 // ─── Handler principal ────────────────────────────────────────────────────────
 const handleIncomingMessage = async (sock, msg, userId, businessId) => {
+  if (!msg || !msg.key) return;
+
+  // ── 0. FILTRO RIGUROSO: Solo chats privados 1 a 1 de usuarios reales ────────
   const jid = msg.key.remoteJid || '';
-  const isGroup = jid.endsWith('@g.us');
-  if (isGroup) return;
+
+  // A) Ignorar mensajes enviados por el propio número del usuario/bot
+  if (msg.key.fromMe) return;
+
+  // B) Ignorar Grupos de WhatsApp (por JID, participant, o formato)
+  const isGroup = jid.endsWith('@g.us')
+    || jid.includes('@g.us')
+    || Boolean(msg.key.participant)
+    || (jid.length > 15 && jid.includes('-'));
+
+  if (isGroup) {
+    console.log(`[MSG Filter] 🛑 Ignorando mensaje de grupo: ${jid}`);
+    return;
+  }
+
+  // C) Ignorar Estados/Historias, Listas de Difusión, Canales (Newsletters), Llamadas y Servicio
+  if (
+    jid === 'status@broadcast' ||
+    jid.endsWith('@broadcast') ||
+    jid.endsWith('@newsletter') ||
+    jid.endsWith('@call') ||
+    msg.broadcast ||
+    jid.startsWith('0@') ||
+    jid.startsWith('13135550002@')
+  ) {
+    console.log(`[MSG Filter] 🛑 Ignorando estado/difusión/canal/sistema: ${jid}`);
+    return;
+  }
+
+  // D) Exigir que sea un JID de usuario individual (@s.whatsapp.net o @lid)
+  if (!jid.endsWith('@s.whatsapp.net') && !jid.endsWith('@lid')) {
+    console.log(`[MSG Filter] 🛑 Ignorando JID no individual: ${jid}`);
+    return;
+  }
+
+  // E) Ignorar stubs/notificaciones de sistema (llamadas perdidas, notificaciones de grupos, etc.)
+  if (msg.messageStubType || msg.stubType) return;
+
+  // F) Ignorar eventos no-texto (reacciones de emojis, ediciones, eliminaciones, encuestas, etc.)
+  const rawMsg = msg.message;
+  if (!rawMsg) return;
+  if (
+    rawMsg.reactionMessage ||
+    rawMsg.protocolMessage ||
+    rawMsg.pollUpdateMessage ||
+    rawMsg.pinInChatMessage ||
+    rawMsg.keepInChatMessage ||
+    rawMsg.callLogMesssage ||
+    rawMsg.scheduledCallCreationMessage
+  ) {
+    return;
+  }
 
   const { resolvePhoneAndJid } = require('./sessionManager');
   const resolved = resolvePhoneAndJid(jid);
+
+  if (resolved.isGroup) {
+    console.log(`[MSG Filter] 🛑 Ignorando grupo resuelto: ${jid}`);
+    return;
+  }
+
   const contactPhone = resolved.phone;
-  if (!contactPhone) return;
+  if (!contactPhone || contactPhone.includes('-')) return;
 
   const { enqueueIncomingMessage } = require('../queues/messageQueue');
 
@@ -65,7 +124,13 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
     const text = extractText(msg).trim();
     if (!text) return;
 
-  console.log(`[MSG] ${contactPhone} (${contactName}) → ${userId}: "${text.slice(0, 60)}"`);
+    // G) Ignorar placeholders de sistema entre corchetes (ej: [Sticker], [Ubicación], [Contacto])
+    if (text.startsWith('[') && text.endsWith(']')) {
+      console.log(`[MSG Filter] 🛑 Ignorando adjunto no de texto (${text}) de ${contactPhone}`);
+      return;
+    }
+
+    console.log(`[MSG] ${contactPhone} (${contactName}) → ${userId}: "${text.slice(0, 60)}"`);
 
   // ── 1. Buscar o crear conversación ───────────────────────────────────────
   let conversation = null;

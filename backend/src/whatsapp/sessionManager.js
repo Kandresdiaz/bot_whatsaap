@@ -480,7 +480,7 @@ const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts =
             session_id: sessionUuid,
             contact_phone: contactPhone,
             contact_name: contactName || contactPhone,
-            bot_active: true,
+            bot_active: !isGroup,
             is_blacklisted: false,
             unread_count: chat.unreadCount || 0,
             last_message_at: ts,
@@ -507,7 +507,7 @@ const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts =
             session_id: sessionUuid,
             contact_phone: contactPhone,
             contact_name: contactName || contactPhone,
-            bot_active: true,
+            bot_active: !isGroup,
             is_blacklisted: false,
             unread_count: 0,
             last_message_at: new Date().toISOString(),
@@ -535,7 +535,7 @@ const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts =
             session_id: sessionUuid,
             contact_phone: contactPhone,
             contact_name: pushName,
-            bot_active: true,
+            bot_active: !isGroup,
             is_blacklisted: false,
             last_message_at: msgTime,
           });
@@ -1200,8 +1200,8 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
         continue;
       }
 
-      // Si es mensaje entrante del cliente
-      if (handleIncomingMessage && !msg.key.fromMe) {
+      // Si es mensaje entrante en tiempo real del cliente (solo 'notify', ignorar historial 'append')
+      if (type === 'notify' && handleIncomingMessage && !msg.key.fromMe) {
         try {
           await handleIncomingMessage(sock, msg, userId, businessId);
         } catch (err) {
