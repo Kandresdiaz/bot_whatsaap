@@ -578,6 +578,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-27** | feat: motor de cierre de ventas, embudo persuasivo y garantia de historial por telefono de contacto (`03870b4`) | Auto-deploy |
 
+| **2026-08-27** | feat: modulo de cache de respuestas IA con Redis y RAM para ahorro total de tokens (0 tokens en preguntas frecuentes y repetidas) (`bee9425`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
