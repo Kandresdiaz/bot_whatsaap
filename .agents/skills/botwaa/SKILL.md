@@ -564,6 +564,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-27** | chore: cleanup test files (`e80c95d`) | Auto-deploy |
 
+| **2026-08-27** | chore: remove test files (`38d54c3`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
