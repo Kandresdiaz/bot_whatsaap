@@ -3,7 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
 
-// Versión del Frontend: 1.0.7 (Responsive total para móviles y todas las pantallas)
+// Versión del Frontend: 1.0.8 (Filtro estricto de chats 1-a-1 y desactivación del bot para grupos y difusiones)
 const inter = Inter({ subsets: ["latin"] });
 
 export const viewport: Viewport = {
