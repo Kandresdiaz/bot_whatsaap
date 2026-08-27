@@ -59,19 +59,7 @@ router.get('/:userId', async (req, res) => {
 
     let business = (data && data.length > 0) ? data[0] : null;
 
-    // 2. Fallback: Buscar cualquier negocio existente en la tabla
-    if (!business) {
-      const { data: allBus } = await supabase
-        .from('businesses')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(1);
-      if (allBus && allBus.length > 0) {
-        business = allBus[0];
-      }
-    }
-
-    // 3. Fallback: Intentar crear si la tabla estuviese vacía
+    // 2. Si no existe, crear un registro propio para este usuario
     if (!business) {
       const defaultUserId = validUuids[0] || '00000000-0000-0000-0000-000000000001';
       const { data: newBus } = await supabase.from('businesses').insert({
@@ -117,21 +105,12 @@ router.post('/:userId', async (req, res) => {
   delete fields.is_configured;
 
   try {
-    let { data: existing } = await supabase
+    const { data: existing } = await supabase
       .from('businesses')
       .select('id')
       .in('user_id', validUuids)
       .order('created_at', { ascending: false })
       .limit(1);
-
-    if (!existing || existing.length === 0) {
-      const { data: fallback } = await supabase
-        .from('businesses')
-        .select('id')
-        .order('created_at', { ascending: false })
-        .limit(1);
-      existing = fallback;
-    }
 
     let result;
     const configData = { ...fields };

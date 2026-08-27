@@ -254,20 +254,35 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
   try {
     const { getValidUserId } = require('./sessionManager');
     const validUserId = getValidUserId(userId);
+    const isUuid = (str) => typeof str === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
 
-    const { data: bData } = await supabase
-      .from('businesses')
-      .select('*')
-      .or(`user_id.eq.${userId},user_id.eq.${validUserId}`)
-      .limit(1);
+    if (businessId && isUuid(businessId)) {
+      const { data: bById } = await supabase
+        .from('businesses')
+        .select('*')
+        .eq('id', businessId)
+        .limit(1);
+      if (bById && bById.length > 0) business = bById[0];
+    }
 
-    if (bData && bData.length > 0) {
-      business = bData[0];
-    } else {
+    if (!business) {
+      const { data: bData } = await supabase
+        .from('businesses')
+        .select('*')
+        .or(`user_id.eq.${userId},user_id.eq.${validUserId}`)
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (bData && bData.length > 0) {
+        business = bData[0];
+      }
+    }
+
+    if (!business) {
       const { data: fallback } = await supabase
         .from('businesses')
         .select('*')
-        .order('created_at', { ascending: false })
+        .eq('user_id', '00000000-0000-0000-0000-000000000001')
         .limit(1);
       if (fallback && fallback.length > 0) {
         business = fallback[0];

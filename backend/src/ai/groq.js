@@ -1,16 +1,16 @@
 const Groq = require('groq-sdk');
 
 const CANDIDATE_MODELS = [
-  'llama-3.1-70b-versatile',
-  'llama-3.1-8b-instant',
   'llama-3.3-70b-versatile',
+  'llama-3.1-8b-instant',
   'mixtral-8x7b-32768',
   'gemma2-9b-it',
   'llama-3.2-11b-vision-preview',
   'llama-3.2-3b-preview',
   'llama-3.2-1b-preview',
   'deepseek-r1-distill-llama-70b',
-  'qwen-2.5-coder-32b'
+  'qwen-2.5-coder-32b',
+  'llama-3.1-70b-versatile'
 ];
 
 const cleanApiKey = (key) => {
@@ -61,7 +61,7 @@ const generateSubQueries = async (userMessage) => {
 
   try {
     const response = await client.chat.completions.create({
-      model: 'llama-3.1-8b-instant',
+      model: 'llama-3.3-70b-versatile',
       messages: [
         {
           role: 'system',
@@ -120,7 +120,7 @@ const buildKnowledgeContext = (knowledge) => {
 };
 
 // ─── 5. System prompt con info del negocio ────────────────────────────────────
-const buildSystemPrompt = (business, relevantKnowledge, allKnowledge, products = []) => {
+const buildSystemPrompt = (business, relevantKnowledge, allKnowledge, products = [], isFirstMessage = true) => {
   const relevantContext = buildKnowledgeContext(relevantKnowledge);
   const hasKnowledge = !!relevantContext;
 
@@ -137,25 +137,32 @@ const buildSystemPrompt = (business, relevantKnowledge, allKnowledge, products =
     ? 'AGENDAR CITAS Y RESERVAS. Atiende todas las dudas del cliente con cortesía, e invita a agendar su cita o reservar horario.'
     : 'ATENCIÓN AL CLIENTE Y CIERRE DE LEADS.';
 
+  const greetingInstruction = isFirstMessage
+    ? `PRIMERA INTERACCIÓN: Este es el primer mensaje de la conversación. Puedes dar un breve saludo de bienvenida inicial (ej: "${business.greeting_msg || '¡Hola! Bienvenido'}") y atender la duda.`
+    : `CONVERSACIÓN EN CURSO: Ya existe interacción previa en esta conversación. NO vuelvas a dar la bienvenida ni a repetir el saludo inicial. Responde DIRECTAMENTE a lo que pregunta el cliente.`;
+
   const businessInfo = `
-Nombre: ${business.name || 'Nuestro Negocio'}
+Nombre del Negocio: ${business.name || 'Nuestro Negocio'}
 Tipo / Categoría: ${business.category || 'Negocio'}
 Ciudad: ${business.city || 'Colombia'}
 ${business.description ? `Descripción / Servicios: ${business.description}` : ''}
 Horario de Atención: ${business.active_hours_start || '08:00'} - ${business.active_hours_end || '18:00'}
-${business.phone ? `Teléfono: ${business.phone}` : ''}
-${business.address ? `Dirección: ${business.address}` : ''}
-${business.payment_or_booking_link ? `Enlace / Método de Cierre: ${business.payment_or_booking_link}` : ''}
+${business.phone ? `Teléfono de Contacto: ${business.phone}` : ''}
+${business.address ? `Dirección Física: ${business.address}` : ''}
+${business.payment_or_booking_link ? `Enlace o Método de Pago/Agenda: ${business.payment_or_booking_link}` : ''}
 `.trim();
 
-  return `Eres el empleado estrella y asistente virtual oficial en WhatsApp de "${business.name || 'nuestro negocio'}".
+  return `Eres el empleado estrella y representante oficial en WhatsApp del negocio "${business.name || 'Nuestro Negocio'}".
 
 === ROL Y OBJETIVO PRINCIPAL ===
 ${mainGoalText}
-Tu tono de voz: ${business.bot_personality || 'amigable, profesional, atento y persuasivo'}.
+Tono de voz y personalidad: ${business.bot_personality || 'amigable, profesional, atento y persuasivo'}.
 
-=== DATOS DEL NEGOCIO ===
+=== CONFIGURACIÓN Y DATOS DEL NEGOCIO ===
 ${businessInfo}
+
+=== ESTADO DE LA CONVERSACIÓN ===
+${greetingInstruction}
 
 ${hasProducts
   ? `=== CATÁLOGO OFICIAL DE PRODUCTOS Y SERVICIOS DISPONIBLES ===\n${productsContext}\n=== FIN DEL CATÁLOGO ===`
@@ -163,29 +170,40 @@ ${hasProducts
 }
 
 ${hasKnowledge
-  ? `=== INFORMACIÓN ADICIONAL ENCONTRADA (KNOWLEDGE BASE) ===\n${relevantContext}\n=== FIN DE LA INFORMACIÓN ===`
+  ? `=== INFORMACIÓN Y PREGUNTAS FRECUENTES (KNOWLEDGE BASE) ===\n${relevantContext}\n=== FIN DE LA INFORMACIÓN ===`
   : ''
 }
 
 REGLAS ABSOLUTAS:
-1. Eres un EMPLEADO VIRTUAL FIDEL: Atiendes cualquier pregunta con amabilidad y mantienes el enfoque en atender al cliente.
-2. PRECISIÓN TOTAL: SOLO cotizas productos/servicios de tu negocio. NUNCA inventes productos ni precios.
-3. CAPTURA DE DATOS Y LEAD CALIENTE: Cuando un cliente pregunte por planes, precios o muestre interés en comprar o agendar, pídele amablemente su Nombre, Nombre de su Negocio y el Plan/Servicio que necesita. Cuando el cliente proporcione sus datos o confirme su interés, agrega la etiqueta [LEAD_CALIENTE] al final de tu respuesta para notificar al equipo inmediatamente.
-4. Si no tienes la información exacta, responde amablemente indicando que consultarás con el equipo.
-5. Respuestas breves, directas y profesionales (máximo 4 líneas). Usa máximo 1 o 2 emojis por mensaje.`;
+1. EMPLEADO VIRTUAL FIDEL: Atiendes cualquier pregunta respondiendo de forma exacta y útil sobre el negocio "${business.name || 'Nuestro Negocio'}".
+2. PRECISIÓN TOTAL: SOLO cotizas productos/servicios reales de tu negocio. NUNCA inventes productos, servicios o precios no listados.
+3. FLUIDEZ Y NO REPETIR SALUDOS: Si el cliente ya saludó o ya hay interacción en el chat, NUNCA repitas el saludo de bienvenida. Responde de inmediato a la pregunta del usuario.
+4. CAPTURA DE DATOS Y LEAD CALIENTE: Cuando un cliente pregunte por precios, planes o muestre intención clara de comprar o agendar, pídele amablemente su Nombre, Nombre de su Negocio y el Plan/Servicio que desea. Cuando confirme sus datos o interés, agrega la etiqueta [LEAD_CALIENTE] al final de tu mensaje.
+5. Si no tienes la información exacta en el catálogo o base de conocimiento, responde amablemente indicando que tomarás nota para que el equipo lo confirme.
+6. Respuestas breves, naturales y directas (máximo 4 líneas por mensaje). Usa máximo 1 o 2 emojis.`;
 };
 
-// ─── Respuesta Asistente Humana (Sin Excusas Técnicas) ───────────────────────
-const buildHumanAssistantReply = (userMessage, business, products = []) => {
+// ─── Respuesta Asistente Humana (Fallback Sin Excusas Técnicas) ─────────────
+const buildHumanAssistantReply = (userMessage, business, products = [], chatHistory = []) => {
   const busName = business?.name || 'nuestro negocio';
-  const greeting = business?.greeting_msg || `¡Hola! 👋 Te damos la bienvenida a ${busName}.`;
+  const validHistory = Array.isArray(chatHistory) ? chatHistory.filter(m => m && m.content) : [];
+  const hasHistory = validHistory.length > 1;
+
+  const greeting = (!hasHistory && business?.greeting_msg) ? business.greeting_msg : '';
 
   if (Array.isArray(products) && products.length > 0) {
     const top = products.map(p => `• *${p.name}*: $${Number(p.price || 0).toLocaleString('es-CO')} ${p.currency || 'COP'}${p.description ? ` (${p.description})` : ''}`).join('\n');
-    return `${greeting}\n\nCon gusto te presento nuestros productos/servicios disponibles:\n\n${top}\n\n¿Deseas cotizar o adquirir alguno de nuestros planes?`;
+    if (greeting) {
+      return `${greeting}\n\nCon gusto te presento nuestros productos/servicios disponibles:\n\n${top}\n\n¿Deseas cotizar o adquirir alguno?`;
+    }
+    return `Con gusto te presento nuestros productos/servicios disponibles:\n\n${top}\n\n¿Deseas cotizar o adquirir alguno de nuestros productos o servicios?`;
   }
 
-  return `${greeting} ¿En qué te puedo ayudar hoy? Con gusto te brindo toda la información que necesites.`;
+  if (greeting) {
+    return `${greeting} ¿En qué te puedo ayudar hoy? Con gusto te brindo toda la información que necesites.`;
+  }
+
+  return `Con gusto te colaboro con información sobre ${busName}. ¿En qué te puedo ayudar o qué servicio estás buscando?`;
 };
 
 // ─── 6. Función principal RAG + Groq ─────────────────────────────────────────
@@ -193,17 +211,30 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
   const safeBusiness = business || {
     name: 'Asistente Virtual',
     category: 'General',
-    city: 'Medellín',
+    city: 'Colombia',
     bot_personality: 'amigable, profesional, atento y experto',
   };
 
   try {
+    const validHistory = Array.isArray(chatHistory) ? chatHistory.filter(m => m && m.content) : [];
+    
+    // Si la historia ya incluye el mensaje actual como último elemento (recién insertado en DB), lo filtramos
+    let formattedHistory = validHistory;
+    if (formattedHistory.length > 0) {
+      const lastMsg = formattedHistory[formattedHistory.length - 1];
+      if (lastMsg.direction === 'inbound' && lastMsg.content.trim().toLowerCase() === userMessage.trim().toLowerCase()) {
+        formattedHistory = formattedHistory.slice(0, -1);
+      }
+    }
+
+    const isFirstMessage = formattedHistory.length === 0;
+
     const relevantKnowledge = await ragSearch(userMessage, knowledge);
-    const systemPrompt = buildSystemPrompt(safeBusiness, relevantKnowledge, knowledge, products);
+    const systemPrompt = buildSystemPrompt(safeBusiness, relevantKnowledge, knowledge, products, isFirstMessage);
 
     const messages = [
       { role: 'system', content: systemPrompt },
-      ...chatHistory.slice(-8).map(m => ({
+      ...formattedHistory.slice(-8).map(m => ({
         role: m.direction === 'inbound' ? 'user' : 'assistant',
         content: m.content,
       })),
@@ -236,7 +267,7 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
     }
 
     if (!fullReply) {
-      fullReply = buildHumanAssistantReply(userMessage, safeBusiness, products);
+      fullReply = buildHumanAssistantReply(userMessage, safeBusiness, products, chatHistory);
     }
 
     const isLeadHot = fullReply.includes('[LEAD_CALIENTE]');
@@ -259,7 +290,7 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
       });
     } catch (_) {}
 
-    const reply = buildHumanAssistantReply(userMessage, safeBusiness, products);
+    const reply = buildHumanAssistantReply(userMessage, safeBusiness, products, chatHistory);
     return {
       reply,
       isLeadHot: false,
