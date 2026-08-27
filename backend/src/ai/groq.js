@@ -160,6 +160,13 @@ const ragSearch = async (userMessage, knowledge) => {
 };
 
 // ─── 4. Formatear contexto RAG ────────────────────────────────────────────────
+const isSimpleGreeting = (text) => {
+  if (!text || typeof text !== 'string') return false;
+  const norm = text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, '').trim();
+  const greetings = ['hola', 'buenas', 'bueno dia', 'buenos dias', 'buenas tarde', 'buenas tardes', 'buenas noche', 'buenas noches', 'hola buenas', 'hola que mas', 'que mas'];
+  return greetings.includes(norm) || norm.length <= 4;
+};
+
 const buildKnowledgeContext = (knowledge) => {
   if (!knowledge?.length) return null;
 
@@ -171,7 +178,7 @@ const buildKnowledgeContext = (knowledge) => {
 };
 
 // ─── 5. System prompt con info del negocio ────────────────────────────────────
-const buildSystemPrompt = (business, relevantKnowledge, allKnowledge, products = [], isFirstMessage = true) => {
+const buildSystemPrompt = (business, relevantKnowledge, allKnowledge, products = [], isFirstMessage = true, userMessage = '') => {
   const relevantContext = buildKnowledgeContext(relevantKnowledge);
   const hasKnowledge = !!relevantContext;
 
@@ -185,9 +192,13 @@ const buildSystemPrompt = (business, relevantKnowledge, allKnowledge, products =
     ? 'VENDER Y CERRAR VENTAS PERSUASIVAMENTE. Responde las preguntas destacando el valor, resolviendo dudas y empujando sutilmente al cliente a elegir un plan/servicio o concretar la compra.'
     : 'AGENDAR CITAS Y RESERVAS. Atiende todas las dudas del cliente con cortesía, e invita a agendar su cita o reservar horario.';
 
-  const greetingInstruction = isFirstMessage
-    ? `PRIMERA INTERACCIÓN: Saluda amablemente al cliente (ej: "${business.greeting_msg || '¡Hola! Te damos la bienvenida a ' + (business.name || 'BotWA')}") y atiende su duda inicial.`
-    : `CONVERSACIÓN EN CURSO: El cliente YA está conversando contigo. NUNCA repitas la bienvenida ni digas "¡Hola! Bienvenido a...". Responde DIRECTAMENTE a lo que pregunta y avanza en el proceso de venta.`;
+  const isGreetingOnly = isFirstMessage && isSimpleGreeting(userMessage);
+
+  const greetingInstruction = isGreetingOnly
+    ? `PRIMERA INTERACCIÓN (SALUDO SIMPLE): El cliente solo saludó. Usa EXACTAMENTE su mensaje de saludo configurado: "${business.greeting_msg || '¡Hola! 👋 Te damos la bienvenida a ' + (business.name || 'BotWA') + '. ¿En qué te podemos ayudar hoy?'}" y pregúntale qué información busca. NO le muestres el catálogo de precios todavía a menos que él lo haya pedido.`
+    : isFirstMessage
+    ? `PRIMERA INTERACCIÓN (CON PREGUNTA): Saluda brevemente con "${business.greeting_msg || '¡Hola! Bienvenido'}" y responde a la pregunta específica del cliente.`
+    : `CONVERSACIÓN EN CURSO: El cliente YA está conversando contigo. NUNCA repitas la bienvenida ni digas "¡Hola! Bienvenido a...". Responde DIRECTAMENTE a lo que pregunta y avanza en la conversación.`;
 
   const businessInfo = `
 Nombre del Negocio: ${business.name || 'BotWA'}
@@ -223,22 +234,22 @@ ${hasKnowledge
 }
 
 === ESTRATEGIA DE VENTAS Y EMBUDO DE CONVERSIÓN ===
-1. PREGUNTAS SOBRE QUÉ ES O CÓMO FUNCIONA ("Qué es eso", "A sí cómo", "De qué se trata"):
-   - Explica brevemente y con impacto el beneficio principal (ej: automatiza la atención 24/7 de tu negocio, responde dudas de tus clientes al instante y cierra ventas sin que tengas que estar pegado al celular).
-   - Menciona las opciones o planes principales disponibles.
-   - Cierra con una pregunta orientada a la acción (ej: "¿Te gustaría ver una demostración o conocer nuestros planes de $120.000 y $250.000?").
+1. SALUDOS SIMPLES ("Hola", "Buenas"):
+   - Responde con el saludo del negocio y pregunta en qué le puedes colaborar. NO des precios aún.
 
-2. PREGUNTAS DE PRECIOS O PLANES ("Cuánto cuesta", "Precios", "Planes"):
-   - Cotiza exactamente con los precios oficiales del catálogo.
-   - Pide amablemente su Nombre y el Nombre de su Negocio para ayudarle a activar su bot o enviar el enlace de pago.
-   - Añade la etiqueta [LEAD_CALIENTE] al final de tu mensaje cuando el cliente pida precios o muestre interés directo.
+2. PREGUNTAS SOBRE QUÉ ES O CÓMO FUNCIONA ("Qué es eso", "A sí cómo", "De qué se trata"):
+   - Explica el beneficio principal (automatizar atención 24/7 y cerrar ventas sin personal costoso).
+   - Menciona que hay opciones desde $120.000 y pregunta si desea conocer los planes o ver una demo.
+
+3. PREGUNTAS DE PRECIOS O PLANES ("Cuánto cuesta", "Precios", "Planes"):
+   - Cotiza exactamente los precios del catálogo.
+   - Solicita su Nombre y Nombre de su Negocio y agrega [LEAD_CALIENTE] al final del mensaje.
 
 REGLAS ESTRICTAS:
-1. SIEMPRE responde a la pregunta concreta del usuario. NUNCA respondas con frases vacías como "¿En qué te puedo ayudar hoy?" si el cliente hizo una pregunta específica.
+1. SIEMPRE responde a la pregunta concreta del usuario. NUNCA respondas con frases vacías si el cliente hizo una pregunta específica.
 2. NUNCA inventes precios o servicios no listados.
 3. SIEMPRE mantén respuestas concisas, dinámicas (máximo 4 líneas) y con 1 o 2 emojis.
-4. NUNCA repitas el saludo de bienvenida si la conversación ya está iniciada.
-5. MENSAJES CASUALES / AJENOS AL NEGOCIO: Si el mensaje es una charla casual entre conocidos, broma, o algo ajeno a los productos/servicios, responde brevemente con cortesía aclarando tu rol como asistente del negocio "${business.name || 'nuestro negocio'}" para orientar al cliente.`;
+4. NUNCA repitas el saludo de bienvenida si la conversación ya está iniciada.`;
 };
 
 // ─── Respuesta Asistente Humana (Fallback Sin Excusas Técnicas) ─────────────
@@ -247,18 +258,13 @@ const buildHumanAssistantReply = (userMessage, business, products = [], chatHist
   const validHistory = Array.isArray(chatHistory) ? chatHistory.filter(m => m && m.content) : [];
   const hasHistory = validHistory.length > 1;
 
-  const greeting = (!hasHistory && business?.greeting_msg) ? business.greeting_msg : '';
+  if (!hasHistory && isSimpleGreeting(userMessage)) {
+    return business?.greeting_msg || `¡Hola! 👋 Te damos la bienvenida a ${busName}. ¿En qué te podemos ayudar hoy?`;
+  }
 
   if (Array.isArray(products) && products.length > 0) {
     const top = products.map(p => `• *${p.name}*: $${Number(p.price || 0).toLocaleString('es-CO')} ${p.currency || 'COP'}${p.description ? ` (${p.description})` : ''}`).join('\n');
-    if (greeting) {
-      return `${greeting}\n\nCon gusto te presento nuestros productos y planes disponibles:\n\n${top}\n\n¿Deseas cotizar o adquirir alguno?`;
-    }
-    return `Con gusto te presento nuestros productos y planes disponibles:\n\n${top}\n\n¿Cuál de nuestros planes se adapta mejor a tu negocio?`;
-  }
-
-  if (greeting) {
-    return `${greeting} Te ayudamos a automatizar tus ventas por WhatsApp 24/7. ¿Te gustaría conocer nuestros planes o ver cómo funciona?`;
+    return `Con gusto te presento nuestros productos y planes disponibles en ${busName}:\n\n${top}\n\n¿Cuál de nuestros planes se adapta mejor a tu negocio?`;
   }
 
   return `En ${busName} te ayudamos a responder clientes 24/7 y cerrar ventas automáticamente por WhatsApp. ¿Te gustaría conocer nuestros planes o probar el servicio?`;
@@ -321,7 +327,7 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
     const isFirstMessage = formattedHistory.length === 0;
 
     const relevantKnowledge = await ragSearch(userMessage, knowledge);
-    const systemPrompt = buildSystemPrompt(safeBusiness, relevantKnowledge, knowledge, products, isFirstMessage);
+    const systemPrompt = buildSystemPrompt(safeBusiness, relevantKnowledge, knowledge, products, isFirstMessage, userMessage);
 
     const messages = [
       { role: 'system', content: systemPrompt },
