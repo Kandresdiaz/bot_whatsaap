@@ -218,8 +218,26 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
     isGlobalBotEnabled = await getGlobalBotStatus(userId);
   } catch (_) {}
 
-  if (!isGlobalBotEnabled || conversation?.is_blacklisted || (conversation && !conversation.bot_active)) {
-    console.log(`[MSG] Bot no responde (Global ON: ${isGlobalBotEnabled}, Chat Bot ON: ${conversation?.bot_active}, Blacklist: ${conversation?.is_blacklisted}) para ${contactPhone}`);
+  // Verificar estado del bot para esta conversación y para este teléfono en DB
+  let isChatBotActive = conversation ? conversation.bot_active : true;
+  let isBlacklisted = conversation ? conversation.is_blacklisted : false;
+
+  try {
+    const { data: dbCheck } = await supabase
+      .from('conversations')
+      .select('bot_active, is_blacklisted')
+      .eq('contact_phone', contactPhone);
+
+    if (dbCheck && dbCheck.length > 0) {
+      for (const row of dbCheck) {
+        if (row.bot_active === false) isChatBotActive = false;
+        if (row.is_blacklisted === true) isBlacklisted = true;
+      }
+    }
+  } catch (_) {}
+
+  if (!isGlobalBotEnabled || isBlacklisted || !isChatBotActive) {
+    console.log(`[MSG] 🛑 Bot NO responde para ${contactPhone} (Global ON: ${isGlobalBotEnabled}, Chat Bot ON: ${isChatBotActive}, Blacklist: ${isBlacklisted})`);
     if (global.io) {
       try {
         const { emitToUserRooms, getSessionUuid } = require('./sessionManager');

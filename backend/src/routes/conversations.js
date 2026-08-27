@@ -406,41 +406,41 @@ router.patch('/:conversationId/toggle-bot', async (req, res) => {
     const { conversationId } = req.params;
     const { bot_active, phone: reqPhone, userId } = req.body;
 
+    const cleanPhone = (reqPhone || conversationId || '').toString().replace('ram_', '').replace(/[^0-9]/g, '');
+
     if (isUuid(conversationId)) {
       await supabase
         .from('conversations')
         .update({ bot_active })
         .eq('id', conversationId);
-    } else {
-      const cleanPhone = (reqPhone || conversationId || '').toString().replace('ram_', '').replace(/[^0-9]/g, '');
-      if (cleanPhone) {
-        const { data: existing } = await supabase
+    }
+
+    if (cleanPhone) {
+      const { data: existing } = await supabase
+        .from('conversations')
+        .select('id')
+        .eq('contact_phone', cleanPhone);
+
+      if (existing && existing.length > 0) {
+        await supabase
           .from('conversations')
-          .select('id')
-          .eq('contact_phone', cleanPhone)
-          .maybeSingle();
+          .update({ bot_active })
+          .eq('contact_phone', cleanPhone);
+      } else {
+        const { getSessionUuid, getValidUserId } = require('../whatsapp/sessionManager');
+        const validUserId = getValidUserId(userId || 'admin');
+        const sessionUuid = await getSessionUuid(validUserId);
 
-        if (existing?.id) {
-          await supabase
-            .from('conversations')
-            .update({ bot_active })
-            .eq('id', existing.id);
-        } else {
-          const { getSessionUuid, getValidUserId } = require('../whatsapp/sessionManager');
-          const validUserId = getValidUserId(userId || 'admin');
-          const sessionUuid = await getSessionUuid(validUserId);
-
-          await supabase
-            .from('conversations')
-            .insert({
-              session_id: sessionUuid,
-              contact_phone: cleanPhone,
-              contact_name: cleanPhone,
-              bot_active,
-              is_blacklisted: false,
-              last_message_at: new Date().toISOString(),
-            });
-        }
+        await supabase
+          .from('conversations')
+          .insert({
+            session_id: sessionUuid,
+            contact_phone: cleanPhone,
+            contact_name: cleanPhone,
+            bot_active,
+            is_blacklisted: false,
+            last_message_at: new Date().toISOString(),
+          });
       }
     }
     res.json({ success: true, bot_active });
@@ -456,6 +456,8 @@ router.patch('/:conversationId/blacklist', async (req, res) => {
     const { conversationId } = req.params;
     const { blacklisted, reason, phone: reqPhone, userId } = req.body;
 
+    const cleanPhone = (reqPhone || conversationId || '').toString().replace('ram_', '').replace(/[^0-9]/g, '');
+
     if (isUuid(conversationId)) {
       await supabase
         .from('conversations')
@@ -465,41 +467,39 @@ router.patch('/:conversationId/blacklist', async (req, res) => {
           bot_active: !blacklisted,
         })
         .eq('id', conversationId);
-    } else {
-      const cleanPhone = (reqPhone || conversationId || '').toString().replace('ram_', '').replace(/[^0-9]/g, '');
-      if (cleanPhone) {
-        const { data: existing } = await supabase
+    }
+
+    if (cleanPhone) {
+      const { data: existing } = await supabase
+        .from('conversations')
+        .select('id')
+        .eq('contact_phone', cleanPhone);
+
+      if (existing && existing.length > 0) {
+        await supabase
           .from('conversations')
-          .select('id')
-          .eq('contact_phone', cleanPhone)
-          .maybeSingle();
+          .update({
+            is_blacklisted: blacklisted,
+            blacklist_reason: reason || null,
+            bot_active: !blacklisted,
+          })
+          .eq('contact_phone', cleanPhone);
+      } else {
+        const { getSessionUuid, getValidUserId } = require('../whatsapp/sessionManager');
+        const validUserId = getValidUserId(userId || 'admin');
+        const sessionUuid = await getSessionUuid(validUserId);
 
-        if (existing?.id) {
-          await supabase
-            .from('conversations')
-            .update({
-              is_blacklisted: blacklisted,
-              blacklist_reason: reason || null,
-              bot_active: !blacklisted,
-            })
-            .eq('id', existing.id);
-        } else {
-          const { getSessionUuid, getValidUserId } = require('../whatsapp/sessionManager');
-          const validUserId = getValidUserId(userId || 'admin');
-          const sessionUuid = await getSessionUuid(validUserId);
-
-          await supabase
-            .from('conversations')
-            .insert({
-              session_id: sessionUuid,
-              contact_phone: cleanPhone,
-              contact_name: cleanPhone,
-              bot_active: !blacklisted,
-              is_blacklisted: blacklisted,
-              blacklist_reason: reason || null,
-              last_message_at: new Date().toISOString(),
-            });
-        }
+        await supabase
+          .from('conversations')
+          .insert({
+            session_id: sessionUuid,
+            contact_phone: cleanPhone,
+            contact_name: cleanPhone,
+            bot_active: !blacklisted,
+            is_blacklisted: blacklisted,
+            blacklist_reason: reason || null,
+            last_message_at: new Date().toISOString(),
+          });
       }
     }
     res.json({ success: true });
