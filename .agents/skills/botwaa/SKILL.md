@@ -562,6 +562,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-26** | fix(business): validate UUIDs before querying Supabase to prevent 22P02 Postgres errors (`a49af7d`) | Auto-deploy |
 
+| **2026-08-27** | chore: cleanup test files (`e80c95d`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
