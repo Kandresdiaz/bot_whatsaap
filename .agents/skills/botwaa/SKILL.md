@@ -572,6 +572,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-27** | build: trigger Vercel and Render production rebuild (layout v1.0.8) (`ca86f8a`) | Auto-deploy |
 
+| **2026-08-27** | fix: prompt flow improvements and indestructible toggle-bot/blacklist persistence (`83df152`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
