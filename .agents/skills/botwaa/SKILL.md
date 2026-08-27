@@ -582,6 +582,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-27** | fix: indestructible contact bot_active persistence and prompt guidelines for non-business messages (v1.0.9) (`632db95`) | Auto-deploy |
 
+| **2026-08-27** | fix: 0ms RAM+DB silence when Bot OFF toggled and default OFF badge for groups (v1.1.0) (`3c1788d`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
