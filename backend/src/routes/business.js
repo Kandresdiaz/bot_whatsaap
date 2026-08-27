@@ -66,7 +66,6 @@ router.get('/:userId', async (req, res) => {
         active_hours_start: '08:00',
         active_hours_end: '20:00',
         active_days: [1, 2, 3, 4, 5, 6],
-        is_configured: true,
       }).select().single();
       business = newBus;
     }
@@ -86,7 +85,8 @@ router.get('/:userId', async (req, res) => {
 router.post('/:userId', async (req, res) => {
   const { userId } = req.params;
   const validUuids = getValidUserUuids(userId);
-  const fields = req.body;
+  const fields = { ...req.body };
+  delete fields.is_configured;
 
   try {
     let { data: existing } = await supabase
@@ -106,7 +106,7 @@ router.post('/:userId', async (req, res) => {
     }
 
     let result;
-    const configData = { ...fields, is_configured: true };
+    const configData = { ...fields };
 
     if (existing && existing.length > 0) {
       result = await supabase.from('businesses').update(configData).eq('id', existing[0].id).select().single();

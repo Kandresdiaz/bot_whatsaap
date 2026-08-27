@@ -24,12 +24,13 @@ export default function ConnectPage() {
   // Cargar info del negocio al montar
   useEffect(() => {
     if (!effectiveUserId) return;
-    fetch(`${BACKEND}/api/business/${effectiveUserId}`)
+    fetch(`${BACKEND}/api/business/${effectiveUserId}`, { cache: 'no-store' })
       .then(r => r.json())
       .then(d => {
         if (d.business) {
           setBusiness(d.business);
-          if (!d.business.is_configured) {
+          const isConfigured = !!(d.business.name && d.business.name.trim() !== '' && d.business.name !== 'Mi Negocio');
+          if (!isConfigured) {
             setIsWizardOpen(true);
           }
         } else {
@@ -41,7 +42,8 @@ export default function ConnectPage() {
 
   // Si WhatsApp se conecta y el negocio NO está configurado aún, abrir el Wizard de configuración
   useEffect(() => {
-    if (status === 'connected' && business && !business.is_configured) {
+    const isConfigured = !!(business?.name && business.name.trim() !== '' && business.name !== 'Mi Negocio');
+    if (status === 'connected' && business && !isConfigured) {
       setIsWizardOpen(true);
     }
   }, [status, business]);
