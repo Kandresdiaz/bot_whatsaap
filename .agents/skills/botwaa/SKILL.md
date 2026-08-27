@@ -570,6 +570,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-27** | fix: deshabilitar bot para grupos, difusiones, canales, estados y llamadas (`df9348d`) | Auto-deploy |
 
+| **2026-08-27** | build: trigger Vercel and Render production rebuild (layout v1.0.8) (`ca86f8a`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
