@@ -566,6 +566,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-27** | chore: remove test files (`38d54c3`) | Auto-deploy |
 
+| **2026-08-27** | fix(business): guarantee non-null BotWA business response with indestructible fallback object (`ca857fd`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
