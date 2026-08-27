@@ -574,6 +574,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-27** | fix: prompt flow improvements and indestructible toggle-bot/blacklist persistence (`83df152`) | Auto-deploy |
 
+| **2026-08-27** | fix: autodeteccion dinamica de modelos Groq activos (groq/compound, qwen3.8) y limpieza de think tags para IA en vivo (`985401e`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
