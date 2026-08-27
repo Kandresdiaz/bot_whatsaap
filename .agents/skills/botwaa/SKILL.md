@@ -586,6 +586,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-27** | feat: multi-tenant contact bot status isolation (v1.1.1) (`0620c69`) | Auto-deploy |
 
+| **2026-08-27** | fix: absolute bot_active persistence on GET conversations and active chat sync (v1.1.1) (`2192b68`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
