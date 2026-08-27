@@ -1453,18 +1453,26 @@ const setGlobalBotStatus = async (userId, bot_enabled, io = null) => {
 
 const disabledBotPhones = new Set();
 
-const setContactBotStatus = (phone, botActive) => {
+const setContactBotStatus = (phone, botActive, userId = null) => {
   const cleanPhone = (phone || '').toString().replace('ram_', '').replace(/[^0-9]/g, '');
   if (!cleanPhone) return;
+  const validUserId = userId ? getValidUserId(userId) : null;
+  const userKey = validUserId ? `${validUserId}_${cleanPhone}` : null;
+
   if (botActive === false) {
     disabledBotPhones.add(cleanPhone);
+    if (userKey) disabledBotPhones.add(userKey);
   } else {
     disabledBotPhones.delete(cleanPhone);
+    if (userKey) disabledBotPhones.delete(userKey);
   }
 };
 
-const isContactBotDisabled = (phone) => {
+const isContactBotDisabled = (phone, userId = null) => {
   const cleanPhone = (phone || '').toString().replace('ram_', '').replace(/[^0-9]/g, '');
+  if (!cleanPhone) return false;
+  const validUserId = userId ? getValidUserId(userId) : null;
+  if (validUserId && disabledBotPhones.has(`${validUserId}_${cleanPhone}`)) return true;
   return disabledBotPhones.has(cleanPhone);
 };
 
