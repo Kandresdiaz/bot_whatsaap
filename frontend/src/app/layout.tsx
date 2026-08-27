@@ -3,7 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
 
-// Versión del Frontend: 1.0.9 (Persistencia indestructible de bot desactivado por teléfono y filtro estricto)
+// Versión del Frontend: 1.1.0 (Silenciamiento ultrarrápido RAM+DB al presionar Bot: OFF y badge de Grupo OFF por defecto)
 const inter = Inter({ subsets: ["latin"] });
 
 export const viewport: Viewport = {

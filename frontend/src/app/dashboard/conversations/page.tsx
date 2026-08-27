@@ -788,7 +788,11 @@ export default function ConversationsPage() {
                       <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                         {conv.is_lead && <span className="badge badge-purple" style={{ fontSize: 9, padding: '1px 5px' }}>🔥 Lead</span>}
                         {conv.is_blacklisted && <span className="badge badge-red" style={{ fontSize: 9, padding: '1px 5px' }}>🚫 Silenciado</span>}
-                        {!conv.bot_active && !conv.is_blacklisted && <span className="badge badge-yellow" style={{ fontSize: 9, padding: '1px 5px' }}>⏸ Personal</span>}
+                        {(conv.contact_phone?.includes('-') || conv.contact_name?.toLowerCase().includes('grupo')) ? (
+                          <span className="badge badge-yellow" style={{ fontSize: 9, padding: '1px 5px' }}>👥 Grupo (Bot OFF)</span>
+                        ) : (
+                          !conv.bot_active && !conv.is_blacklisted && <span className="badge badge-yellow" style={{ fontSize: 9, padding: '1px 5px' }}>⏸ Personal</span>
+                        )}
                       </div>
 
                       {/* Pill de mensajes no leídos */}

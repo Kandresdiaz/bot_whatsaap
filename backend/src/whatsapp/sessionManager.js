@@ -1451,6 +1451,23 @@ const setGlobalBotStatus = async (userId, bot_enabled, io = null) => {
   return bot_enabled;
 };
 
+const disabledBotPhones = new Set();
+
+const setContactBotStatus = (phone, botActive) => {
+  const cleanPhone = (phone || '').toString().replace('ram_', '').replace(/[^0-9]/g, '');
+  if (!cleanPhone) return;
+  if (botActive === false) {
+    disabledBotPhones.add(cleanPhone);
+  } else {
+    disabledBotPhones.delete(cleanPhone);
+  }
+};
+
+const isContactBotDisabled = (phone) => {
+  const cleanPhone = (phone || '').toString().replace('ram_', '').replace(/[^0-9]/g, '');
+  return disabledBotPhones.has(cleanPhone);
+};
+
 const isExplicitlyDisconnected = (userId) => {
   const validId = getValidUserId(userId);
   return userDisconnectedMap.has(userId) || userDisconnectedMap.has(validId);
@@ -1475,6 +1492,8 @@ module.exports = {
   isExplicitlyDisconnected,
   resolvePhoneAndJid,
   cleanPhoneFromJid,
+  setContactBotStatus,
+  isContactBotDisabled,
 };
 
 

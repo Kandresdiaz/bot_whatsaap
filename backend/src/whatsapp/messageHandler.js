@@ -214,8 +214,13 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
   // ── 3. Bot desactivado (Global o por Conversación) o Blacklist ──────────────
   let isGlobalBotEnabled = false;
   try {
-    const { getGlobalBotStatus } = require('./sessionManager');
+    const { getGlobalBotStatus, isContactBotDisabled } = require('./sessionManager');
     isGlobalBotEnabled = await getGlobalBotStatus(userId);
+
+    if (isContactBotDisabled(contactPhone)) {
+      console.log(`[MSG Filter] 🛑 Bot desactivado en RAM para contacto: ${contactPhone}`);
+      return;
+    }
   } catch (_) {}
 
   // Verificar estado del bot para esta conversación y para este teléfono en DB
