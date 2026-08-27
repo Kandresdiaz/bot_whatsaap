@@ -126,4 +126,21 @@ router.post('/:userId', async (req, res) => {
   }
 });
 
+router.get('/debug/test-db', async (req, res) => {
+  try {
+    const q1 = await supabase.from('businesses').select('*');
+    const q2 = await supabase.from('users').select('*');
+    res.json({
+      supabaseUrl: process.env.SUPABASE_URL || 'using default',
+      hasServiceKey: !!process.env.SUPABASE_SERVICE_KEY,
+      businesses: q1.data,
+      businessesErr: q1.error?.message,
+      users: q2.data,
+      usersErr: q2.error?.message,
+    });
+  } catch (e) {
+    res.json({ error: e.message });
+  }
+});
+
 module.exports = router;
