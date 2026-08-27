@@ -584,6 +584,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-27** | fix: 0ms RAM+DB silence when Bot OFF toggled and default OFF badge for groups (v1.1.0) (`3c1788d`) | Auto-deploy |
 
+| **2026-08-27** | feat: multi-tenant contact bot status isolation (v1.1.1) (`0620c69`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
