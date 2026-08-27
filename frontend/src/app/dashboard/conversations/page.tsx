@@ -201,6 +201,20 @@ export default function ConversationsPage() {
       const data = await res.json();
       if (data.conversations && Array.isArray(data.conversations)) {
         setConversations(data.conversations);
+
+        // Mantener sincronizado el estado del bot_active en el chat activo del panel derecho
+        if (activeRef.current) {
+          const currentPhone = activeRef.current.contact_phone;
+          const currentId = activeRef.current.id;
+          const updated = data.conversations.find((c: Conversation) => 
+            (currentId && c.id === currentId) || 
+            (currentPhone && c.contact_phone === currentPhone)
+          );
+
+          if (updated) {
+            setActive(prev => prev ? { ...prev, bot_active: updated.bot_active, is_blacklisted: updated.is_blacklisted } : null);
+          }
+        }
       }
     } catch (_) {}
   };

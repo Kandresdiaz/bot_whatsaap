@@ -115,12 +115,14 @@ router.get('/:sessionId', async (req, res) => {
             contactName = co?.name || co?.notify || co?.verifiedName || phone;
           }
 
+          const isGroupChat = resolved.isGroup || phone.includes('-') || (chat.id && chat.id.endsWith('@g.us')) || (contactName && contactName.toLowerCase().includes('grupo'));
+
           merged.push({
             id: `ram_${phone}`,
             session_id: sessionList[0] || validUserId,
             contact_phone: phone,
             contact_name: contactName,
-            bot_active: true,
+            bot_active: !isGroupChat,
             is_blacklisted: false,
             is_lead: false,
             unread_count: chat.unreadCount || 0,
@@ -163,17 +165,23 @@ router.get('/:sessionId', async (req, res) => {
       }
     } catch (_) {}
 
-    // 4. Enriquecer nombres desde contactos RAM
+    // 4. Enriquecer nombres desde contactos RAM y forzar bot_active = false para grupos y contactos desactivados en RAM/DB
     try {
-      if (store && store.contacts) {
-        for (const c of merged) {
-          const cleanP = c.contact_phone;
-          const cleanName = c.contact_name || '';
-          if (!cleanName || cleanName === cleanP) {
+      const { isContactBotDisabled } = require('../whatsapp/sessionManager');
+      for (const c of merged) {
+        const cleanP = c.contact_phone || '';
+        const cleanName = c.contact_name || '';
+        if (!cleanName || cleanName === cleanP) {
+          if (store && store.contacts) {
             const co = store.contacts.get(cleanP) || store.contacts.get(`${cleanP}@s.whatsapp.net`) || store.contacts.get(`${cleanP}@lid`);
             const betterName = co?.name || co?.notify || co?.verifiedName;
             if (betterName) c.contact_name = betterName;
           }
+        }
+
+        const isGroup = cleanP.includes('-') || (c.contact_name || '').toLowerCase().includes('grupo') || (c.id || '').endsWith('@g.us');
+        if (isGroup || isContactBotDisabled(cleanP, validUserId)) {
+          c.bot_active = false;
         }
       }
     } catch (_) {}
