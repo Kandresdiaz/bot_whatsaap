@@ -264,6 +264,8 @@ const buildHumanAssistantReply = (userMessage, business, products = [], chatHist
 };
 
 // ─── 6. Función principal RAG + Groq ─────────────────────────────────────────
+const { getCachedAiResponse, setCachedAiResponse, normalizeText } = require('./aiCache');
+
 const askGroq = async (userMessage, business, knowledge, chatHistory = [], products = []) => {
   const safeBusiness = business || {
     name: 'Asistente Virtual',
@@ -272,9 +274,41 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
     bot_personality: 'amigable, profesional, atento y experto',
   };
 
+  const normQuery = normalizeText(userMessage);
+
+  // ── 0. Coincidencia Directa de FAQ (0 Tokens Gastados) ───────────────────
+  if (Array.isArray(knowledge) && knowledge.length > 0) {
+    const directFaq = knowledge.find(k =>
+      k.type === 'faq' &&
+      k.title &&
+      normalizeText(k.title) === normQuery
+    );
+    if (directFaq && directFaq.content) {
+      console.log(`[RAG FAQ] ⚡ Coincidencia directa de FAQ: "${directFaq.title}" (0 tokens gastados)`);
+      return {
+        reply: directFaq.content,
+        isLeadHot: false,
+        tokensUsed: 0,
+        imageName: null,
+        ragChunksUsed: 1,
+      };
+    }
+  }
+
+  // ── 1. Caché Redis / RAM (0 Tokens Gastados) ────────────────────────────
+  const validHistory = Array.isArray(chatHistory) ? chatHistory.filter(m => m && m.content) : [];
+  const isFirstOrIsolated = validHistory.length <= 2;
+
+  if (isFirstOrIsolated) {
+    try {
+      const cached = await getCachedAiResponse(safeBusiness?.id, userMessage);
+      if (cached) {
+        return { ...cached, tokensUsed: 0 };
+      }
+    } catch (_) {}
+  }
+
   try {
-    const validHistory = Array.isArray(chatHistory) ? chatHistory.filter(m => m && m.content) : [];
-    
     let formattedHistory = validHistory;
     if (formattedHistory.length > 0) {
       const lastMsg = formattedHistory[formattedHistory.length - 1];
@@ -339,6 +373,16 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
       .replace('[LEAD_CALIENTE]', '')
       .replace(/\[ENVIAR_IMAGEN:[^\]]+\]/gi, '')
       .trim();
+
+    // Guardar respuesta en caché Redis/RAM para consumo 0 tokens en siguientes consultas iguales
+    if (reply && isFirstOrIsolated) {
+      setCachedAiResponse(safeBusiness?.id, userMessage, {
+        reply,
+        isLeadHot,
+        imageName,
+        ragChunksUsed: relevantKnowledge.length,
+      }).catch(() => {});
+    }
 
     return { reply, isLeadHot, tokensUsed, imageName, ragChunksUsed: relevantKnowledge.length };
   } catch (err) {
