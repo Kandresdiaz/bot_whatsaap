@@ -413,7 +413,7 @@ export default function ConversationsPage() {
     await fetch(`${BACKEND}/api/conversations/${conv.id}/toggle-bot`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ bot_active: newVal }),
+      body: JSON.stringify({ bot_active: newVal, phone: conv.contact_phone, userId: user?.id }),
     });
     setConversations(prev => prev.map(c => c.id === conv.id ? { ...c, bot_active: newVal } : c));
     if (active?.id === conv.id) setActive({ ...conv, bot_active: newVal });
@@ -424,7 +424,7 @@ export default function ConversationsPage() {
     await fetch(`${BACKEND}/api/conversations/${conv.id}/blacklist`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ blacklisted: newVal, reason }),
+      body: JSON.stringify({ blacklisted: newVal, reason, phone: conv.contact_phone, userId: user?.id }),
     });
     setConversations(prev => prev.map(c => c.id === conv.id ? { ...c, is_blacklisted: newVal } : c));
     if (active?.id === conv.id) setActive({ ...conv, is_blacklisted: newVal });
