@@ -1,17 +1,20 @@
 const Groq = require('groq-sdk');
 
 const CANDIDATE_MODELS = [
+  'groq/compound',
+  'groq/compound-mini',
+  'qwen/qwen3.8-27b',
+  'qwen/qwen3.6-27b',
+  'allam-2-7b',
+  'openai/gpt-oss-120b',
+  'openai/gpt-oss-20b',
   'llama-3.3-70b-versatile',
   'llama-3.1-8b-instant',
   'mixtral-8x7b-32768',
-  'gemma2-9b-it',
-  'llama-3.2-11b-vision-preview',
-  'llama-3.2-3b-preview',
-  'llama-3.2-1b-preview',
-  'deepseek-r1-distill-llama-70b',
-  'qwen-2.5-coder-32b',
-  'llama-3.1-70b-versatile'
 ];
+
+let cachedActiveModels = null;
+let lastFetchTime = 0;
 
 const cleanApiKey = (key) => {
   if (!key) return '';
@@ -28,6 +31,51 @@ const getGroqClient = () => {
     console.error('[Groq] Error instanciando SDK:', e.message);
     return null;
   }
+};
+
+const getActiveModels = async (client) => {
+  const now = Date.now();
+  if (cachedActiveModels && (now - lastFetchTime < 15 * 60 * 1000)) {
+    return cachedActiveModels;
+  }
+
+  if (!client) return CANDIDATE_MODELS;
+
+  try {
+    const list = await client.models.list();
+    const all = (list.data || []).map(m => m.id);
+    const validChatModels = all.filter(id =>
+      !id.includes('whisper') &&
+      !id.includes('guard') &&
+      !id.includes('orpheus')
+    );
+
+    if (validChatModels.length > 0) {
+      validChatModels.sort((a, b) => {
+        const getPriority = (id) => {
+          if (id.includes('groq/compound')) return 1;
+          if (id.includes('qwen3.8')) return 2;
+          if (id.includes('qwen3.6')) return 3;
+          if (id.includes('qwen')) return 4;
+          if (id.includes('allam')) return 5;
+          if (id.includes('gpt-oss')) return 6;
+          if (id.includes('llama-3.3')) return 7;
+          if (id.includes('llama-3.1')) return 8;
+          return 99;
+        };
+        return getPriority(a) - getPriority(b);
+      });
+
+      cachedActiveModels = validChatModels;
+      lastFetchTime = now;
+      console.log('[Groq] Modelos de chat detectados:', cachedActiveModels);
+      return cachedActiveModels;
+    }
+  } catch (e) {
+    console.warn('[Groq] Error detectando modelos (usando fallback estático):', e.message);
+  }
+
+  return CANDIDATE_MODELS;
 };
 
 // ─── 1. RAG: Buscar chunks relevantes de la knowledge base ───────────────────
@@ -60,8 +108,11 @@ const generateSubQueries = async (userMessage) => {
   if (!client) return [userMessage];
 
   try {
+    const models = await getActiveModels(client);
+    const modelToUse = models[0] || 'groq/compound';
+
     const response = await client.chat.completions.create({
-      model: 'llama-3.3-70b-versatile',
+      model: modelToUse,
       messages: [
         {
           role: 'system',
@@ -218,7 +269,6 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
   try {
     const validHistory = Array.isArray(chatHistory) ? chatHistory.filter(m => m && m.content) : [];
     
-    // Si la historia ya incluye el mensaje actual como último elemento (recién insertado en DB), lo filtramos
     let formattedHistory = validHistory;
     if (formattedHistory.length > 0) {
       const lastMsg = formattedHistory[formattedHistory.length - 1];
@@ -246,7 +296,8 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
     let tokensUsed = 0;
 
     if (client) {
-      for (const modelName of CANDIDATE_MODELS) {
+      const activeModels = await getActiveModels(client);
+      for (const modelName of activeModels) {
         try {
           const response = await client.chat.completions.create({
             model: modelName,
@@ -258,6 +309,7 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
           if (response?.choices?.[0]?.message?.content) {
             fullReply = response.choices[0].message.content;
             tokensUsed = response.usage?.total_tokens || 0;
+            console.log(`[Groq] ✅ Respuesta IA generada con modelo: ${modelName}`);
             break;
           }
         } catch (modelErr) {
@@ -269,6 +321,9 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
     if (!fullReply) {
       fullReply = buildHumanAssistantReply(userMessage, safeBusiness, products, chatHistory);
     }
+
+    // Sanitizar etiquetas internas y tags <think> de modelos de razonamiento
+    fullReply = fullReply.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
 
     const isLeadHot = fullReply.includes('[LEAD_CALIENTE]');
     const imageMatch = fullReply.match(/\[ENVIAR_IMAGEN:\s*(.+?)\]/i);
