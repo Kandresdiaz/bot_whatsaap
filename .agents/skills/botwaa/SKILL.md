@@ -568,6 +568,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-27** | fix(business): guarantee non-null BotWA business response with indestructible fallback object (`ca857fd`) | Auto-deploy |
 
+| **2026-08-27** | fix: deshabilitar bot para grupos, difusiones, canales, estados y llamadas (`df9348d`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
