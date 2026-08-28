@@ -608,6 +608,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-28** | feat: optimizacion de RAG multi-query contextual para FAQs y catalogo con blindaje anti-alucinacion estricto (`baacff2`) | Auto-deploy |
 
+| **2026-08-28** | feat: motor de cierre comercial y agendamiento conversacional con captura de datos en DB y cumplimiento de politicas Meta (`c8204b2`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
