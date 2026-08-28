@@ -167,6 +167,29 @@ const isSimpleGreeting = (text) => {
   return greetings.includes(norm) || norm.length <= 4;
 };
 
+const rankAndFilterProducts = (query, products) => {
+  if (!Array.isArray(products) || products.length <= 10) return products || [];
+  if (!query || typeof query !== 'string') return products.slice(0, 10);
+
+  const queryWords = query.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+  if (queryWords.length === 0) return products.slice(0, 10);
+
+  const scored = products.map(item => {
+    const text = `${item.name} ${item.category} ${item.description}`.toLowerCase();
+    let score = 0;
+    for (const word of queryWords) {
+      if (item.name.toLowerCase().includes(word)) score += 3;
+      if ((item.category || '').toLowerCase().includes(word)) score += 2;
+      if (text.includes(word)) score += 1;
+    }
+    return { ...item, score };
+  });
+
+  const matched = scored.filter(i => i.score > 0).sort((a, b) => b.score - a.score);
+  if (matched.length > 0) return matched.slice(0, 8);
+  return products.slice(0, 10);
+};
+
 const buildKnowledgeContext = (knowledge) => {
   if (!knowledge?.length) return null;
 
@@ -182,9 +205,10 @@ const buildSystemPrompt = (business, relevantKnowledge, allKnowledge, products =
   const relevantContext = buildKnowledgeContext(relevantKnowledge);
   const hasKnowledge = !!relevantContext;
 
-  const hasProducts = Array.isArray(products) && products.length > 0;
+  const filteredProducts = rankAndFilterProducts(userMessage, products);
+  const hasProducts = Array.isArray(filteredProducts) && filteredProducts.length > 0;
   const productsContext = hasProducts
-    ? products.map(p => `- [${p.category || 'General'}] ${p.name}: $${Number(p.price || 0).toLocaleString('es-CO')} ${p.currency || 'COP'}${p.description ? ` (${p.description})` : ''}`).join('\n')
+    ? filteredProducts.map(p => `- [${p.category || 'General'}] ${p.name}: $${Number(p.price || 0).toLocaleString('es-CO')} ${p.currency || 'COP'}${p.description ? ` (${p.description})` : ''}${p.image_url ? ` | Foto/Imagen: ${p.image_url}` : ''}`).join('\n')
     : null;
 
   const isSales = business.main_goal !== 'agendar_citas';
@@ -224,7 +248,7 @@ ${businessInfo}
 ${greetingInstruction}
 
 ${hasProducts
-  ? `=== CATÁLOGO DE PRODUCTOS / PLANES Y PRECIOS ===\n${productsContext}\n=== FIN DEL CATÁLOGO ===`
+  ? `=== CATÁLOGO DE PRODUCTOS / PLANES Y PRECIOS RELEVANTES ===\n${productsContext}\n=== FIN DEL CATÁLOGO ===`
   : ''
 }
 
@@ -233,9 +257,11 @@ ${hasKnowledge
   : ''
 }
 
-=== ESTRATEGIA DE VENTAS Y EMBUDO DE CONVERSIÓN ===
-1. SALUDOS SIMPLES ("Hola", "Buenas"):
-   - Responde con el saludo del negocio y pregunta en qué le puedes colaborar. NO des precios aún.
+=== ESTRATEGIA DE RECOMENDACIÓN Y EMBUDO DE CONVERSIÓN ===
+1. RECOMENDACIÓN INTELIGENTE Y VENTA CRUZADA (CROSS-SELLING):
+   - Si el cliente busca una necesidad o producto específico, recomiéndale la mejor opción del catálogo que resuelva su caso.
+   - Si pregunta por presupuesto (ej: "algo por $150.000"), destaca el producto/plan que mejor se ajuste a su presupuesto.
+   - Ofrece de forma sutil 1 alternativa complementaria o superior si ayuda a cerrar la venta.
 
 2. PREGUNTAS SOBRE QUÉ ES O CÓMO FUNCIONA ("Qué es eso", "A sí cómo", "De qué se trata"):
    - Explica el beneficio principal (automatizar atención 24/7 y cerrar ventas sin personal costoso).
@@ -244,6 +270,9 @@ ${hasKnowledge
 3. PREGUNTAS DE PRECIOS O PLANES ("Cuánto cuesta", "Precios", "Planes"):
    - Cotiza exactamente los precios del catálogo.
    - Solicita su Nombre y Nombre de su Negocio y agrega [LEAD_CALIENTE] al final del mensaje.
+
+4. SOLICITUD DE FOTOS O IMÁGENES ("Tienes fotos", "Muéstrame la foto de...", "Envíame la imagen"):
+   - Si el cliente solicita la foto de un producto/servicio listado que tenga foto en el catálogo, incluye al final de tu respuesta la etiqueta EXACTA: [ENVIAR_IMAGEN: Nombre del Producto].
 
 REGLAS ESTRICTAS:
 1. SIEMPRE responde a la pregunta concreta del usuario. NUNCA respondas con frases vacías si el cliente hizo una pregunta específica.
