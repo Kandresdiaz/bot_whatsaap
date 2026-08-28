@@ -78,34 +78,60 @@ const getActiveModels = async (client) => {
   return CANDIDATE_MODELS;
 };
 
+// ─── 0. Normalización de Texto para Búsqueda RAG ─────────────────────────────
+const normalizeSearchText = (text) => {
+  if (!text || typeof text !== 'string') return '';
+  return text
+    .toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+};
+
 // ─── 1. RAG: Buscar chunks relevantes de la knowledge base ───────────────────
 const searchKnowledge = (query, knowledge) => {
   if (!knowledge?.length) return [];
 
-  const queryWords = query.toLowerCase()
-    .split(/\s+/)
-    .filter(w => w.length > 2);
+  const normQuery = normalizeSearchText(query);
+  const queryWords = normQuery.split(/\s+/).filter(w => w.length >= 2);
+  if (queryWords.length === 0) return [];
 
   const scored = knowledge.map(item => {
-    const text = `${item.title} ${item.content}`.toLowerCase();
-    const score = queryWords.reduce((acc, word) => {
-      if (item.title.toLowerCase().includes(word)) return acc + 2;
-      if (text.includes(word)) return acc + 1;
-      return acc;
-    }, 0);
+    const normTitle = normalizeSearchText(item.title || '');
+    const normContent = normalizeSearchText(item.content || '');
+
+    let score = 0;
+    // Coincidencia exacta de frase
+    if (normTitle.includes(normQuery)) score += 8;
+    if (normContent.includes(normQuery)) score += 4;
+
+    // Coincidencia por palabras individuales
+    for (const word of queryWords) {
+      if (normTitle.includes(word)) score += item.type === 'faq' ? 4 : 3;
+      if (normContent.includes(word)) score += 1.5;
+    }
+
+    // Boost prioritario si es FAQ
+    if (item.type === 'faq' && score > 0) score += 1.5;
+
     return { ...item, score };
   });
 
   return scored
     .filter(i => i.score > 0)
     .sort((a, b) => b.score - a.score)
-    .slice(0, 5);
+    .slice(0, 6);
 };
 
-// ─── 2. Generar sub-consultas para encontrar más contexto ────────────────────
-const generateSubQueries = async (userMessage) => {
+// ─── 2. Generar sub-consultas contextuales con IA ────────────────────────────
+const generateSubQueries = async (userMessage, business = null) => {
   const client = getGroqClient();
   if (!client) return [userMessage];
+
+  const busName = business?.name || 'Negocio';
+  const busCategory = business?.category || 'Atención y Servicios';
+  const busGoal = business?.main_goal || 'vender';
 
   try {
     const models = await getActiveModels(client);
@@ -116,18 +142,22 @@ const generateSubQueries = async (userMessage) => {
       messages: [
         {
           role: 'system',
-          content: `Eres un asistente que genera consultas de búsqueda.
-Dado un mensaje de usuario, genera 2-3 sub-consultas alternativas que ayuden a buscar información relevante en una base de conocimiento.
-Responde SOLO con las sub-consultas separadas por "|", sin numeración ni explicación.`
+          content: `Eres un motor de búsqueda RAG para la base de conocimiento y catálogo del negocio "${busName}" (Giro: ${busCategory}, Objetivo: ${busGoal}).
+Dado el mensaje de un cliente de WhatsApp, genera de 2 a 3 consultas o términos clave alternativos (sinónimos comerciales, productos relacionados, dudas frecuentes o intención de compra/agenda) para buscar en la base de datos.
+Responde ÚNICAMENTE con las consultas separadas por "|", sin texto adicional ni números.`
         },
         { role: 'user', content: userMessage }
       ],
-      max_tokens: 80,
-      temperature: 0.3,
+      max_tokens: 100,
+      temperature: 0.2,
     });
 
     const raw = response.choices[0]?.message?.content || '';
-    const queries = raw.split('|').map(q => q.trim()).filter(q => q.length > 0);
+    const queries = raw
+      .replace(/<think>[\s\S]*?<\/think>/gi, '')
+      .split('|')
+      .map(q => q.trim())
+      .filter(q => q.length > 0);
     return queries.length > 0 ? queries : [userMessage];
   } catch (e) {
     return [userMessage];
@@ -135,10 +165,10 @@ Responde SOLO con las sub-consultas separadas por "|", sin numeración ni explic
 };
 
 // ─── 3. RAG Multi-Query ───────────────────────────────────────────────────────
-const ragSearch = async (userMessage, knowledge) => {
+const ragSearch = async (userMessage, knowledge, business = null) => {
   if (!knowledge?.length) return [];
 
-  const subQueries = await generateSubQueries(userMessage);
+  const subQueries = await generateSubQueries(userMessage, business);
   const allQueries = [userMessage, ...subQueries];
 
   const seenIds = new Set();
@@ -147,8 +177,9 @@ const ragSearch = async (userMessage, knowledge) => {
   for (const query of allQueries) {
     const results = searchKnowledge(query, knowledge);
     for (const item of results) {
-      if (!seenIds.has(item.id || item.title)) {
-        seenIds.add(item.id || item.title);
+      const key = item.id || item.title;
+      if (!seenIds.has(key)) {
+        seenIds.add(key);
         allResults.push(item);
       }
     }
@@ -156,31 +187,41 @@ const ragSearch = async (userMessage, knowledge) => {
 
   return allResults
     .sort((a, b) => (b.score || 0) - (a.score || 0))
-    .slice(0, 6);
+    .slice(0, 8);
 };
 
 // ─── 4. Formatear contexto RAG ────────────────────────────────────────────────
 const isSimpleGreeting = (text) => {
   if (!text || typeof text !== 'string') return false;
-  const norm = text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, '').trim();
+  const norm = normalizeSearchText(text);
   const greetings = ['hola', 'buenas', 'bueno dia', 'buenos dias', 'buenas tarde', 'buenas tardes', 'buenas noche', 'buenas noches', 'hola buenas', 'hola que mas', 'que mas'];
   return greetings.includes(norm) || norm.length <= 4;
 };
 
-const rankAndFilterProducts = (query, products) => {
+const rankAndFilterProducts = (query, products, subQueries = []) => {
   if (!Array.isArray(products) || products.length <= 10) return products || [];
   if (!query || typeof query !== 'string') return products.slice(0, 10);
 
-  const queryWords = query.toLowerCase().split(/\s+/).filter(w => w.length > 2);
-  if (queryWords.length === 0) return products.slice(0, 10);
+  const allSearchTerms = [query, ...(Array.isArray(subQueries) ? subQueries : [])];
+  const allWords = new Set();
+
+  for (const term of allSearchTerms) {
+    const norm = normalizeSearchText(term);
+    norm.split(/\s+/).filter(w => w.length >= 2).forEach(w => allWords.add(w));
+  }
+
+  if (allWords.size === 0) return products.slice(0, 10);
 
   const scored = products.map(item => {
-    const text = `${item.name} ${item.category} ${item.description}`.toLowerCase();
+    const normName = normalizeSearchText(item.name || '');
+    const normCat = normalizeSearchText(item.category || '');
+    const normDesc = normalizeSearchText(item.description || '');
+
     let score = 0;
-    for (const word of queryWords) {
-      if (item.name.toLowerCase().includes(word)) score += 3;
-      if ((item.category || '').toLowerCase().includes(word)) score += 2;
-      if (text.includes(word)) score += 1;
+    for (const word of allWords) {
+      if (normName.includes(word)) score += 4;
+      if (normCat.includes(word)) score += 2.5;
+      if (normDesc.includes(word)) score += 1;
     }
     return { ...item, score };
   });
@@ -194,14 +235,15 @@ const buildKnowledgeContext = (knowledge) => {
   if (!knowledge?.length) return null;
 
   return knowledge.map((k, i) => {
-    if (k.type === 'faq') return `[FAQ ${i+1}]\nPregunta: ${k.title}\nRespuesta: ${k.content}`;
-    if (k.type === 'image') return `[PRODUCTO/IMAGEN ${i+1}: ${k.title}]\n${k.content}${k.file_url ? `\nURL: ${k.file_url}` : ''}`;
-    return `[INFO ${i+1}: ${k.title}]\n${k.content}`;
+    if (k.type === 'faq') return `[PREGUNTA FRECUENTE (FAQ) OFICIAL ${i+1}]\nPregunta: ${k.title}\nRespuesta Autorizada: ${k.content}`;
+    if (k.type === 'image') return `[PRODUCTO CON IMAGEN/FOTO ${i+1}: ${k.title}]\nDescripción: ${k.content}${k.file_url ? `\nURL Foto: ${k.file_url}` : ''}`;
+    if (k.type === 'file') return `[GUÍA / DOCUMENTO ${i+1}: ${k.title}]\nContenido: ${k.content}`;
+    return `[INFORMACIÓN OFICIAL ${i+1}: ${k.title}]\n${k.content}`;
   }).join('\n\n---\n\n');
 };
 
 // ─── 5. System prompt con info del negocio ────────────────────────────────────
-const buildSystemPrompt = (business, relevantKnowledge, allKnowledge, products = [], isFirstMessage = true, userMessage = '') => {
+const buildSystemPrompt = (business, relevantKnowledge, allKnowledge, products = [], isFirstMessage = true, userMessage = '', subQueries = []) => {
   const busName = business?.name || 'BotWA';
   const busCategory = business?.category || 'Atención Comercial y Servicios';
   const busCity = business?.city || 'Colombia';
@@ -212,7 +254,7 @@ const buildSystemPrompt = (business, relevantKnowledge, allKnowledge, products =
   const relevantContext = buildKnowledgeContext(relevantKnowledge);
   const hasKnowledge = !!relevantContext;
 
-  const filteredProducts = rankAndFilterProducts(userMessage, products);
+  const filteredProducts = rankAndFilterProducts(userMessage, products, subQueries);
   const hasProducts = Array.isArray(filteredProducts) && filteredProducts.length > 0;
   const productsContext = hasProducts
     ? filteredProducts.map(p => `- [${p.category || 'General'}] ${p.name}: $${Number(p.price || 0).toLocaleString('es-CO')} ${p.currency || 'COP'}${p.description ? ` (${p.description})` : ''}${p.image_url ? ` | Foto/Imagen: ${p.image_url}` : ''}`).join('\n')
@@ -244,7 +286,7 @@ ${business?.payment_or_booking_link ? `Enlace o Método de Pago / Agenda: ${busi
   return `Eres el ASESOR Y VENDEDOR VIRTUAL OFICIAL Y EXCLUSIVO por WhatsApp del negocio "${busName}".
 
 ================================================================================
-🚨 REGLA DE ORO INQUEBRANTABLE: ENFOQUE 100% EN "${busName}" (CERO DESVIACIONES / ZERO OFF-TOPIC)
+🚨 REGLA DE ORO #1: ENFOQUE 100% EN "${busName}" (CERO DESVIACIONES / ZERO OFF-TOPIC)
 ================================================================================
 1. TU IDENTIDAD Y LÍMITES ESTRICTOS DE DOMINIO:
    - Representas ÚNICA Y EXCLUSIVAMENTE al negocio "${busName}" (${busCategory}).
@@ -270,6 +312,18 @@ ${business?.payment_or_booking_link ? `Enlace o Método de Pago / Agenda: ${busi
    - Si el cliente pide ayuda con una tarea o cálculo:
      ❌ MAL (PROHIBIDO): Resolver el problema o dar la fórmula.
      ✅ BIEN (CORRECTO): "¡Uff, recuerdos del colegio! 📚 Pero aquí en ${busName} mi especialidad es brindarte la mejor atención en ${busCategory}. ¿Te gustaría conocer nuestros servicios?"
+
+================================================================================
+🚨 REGLAS CRÍTICAS DE ANTI-ALUCINACIÓN Y FIDELIDAD A LA INFORMACIÓN (ZERO HALLUCINATION)
+================================================================================
+1. VERACIDAD ABSOLUTA EN PRECIOS Y PRODUCTOS:
+   - Solo puedes ofrecer los productos, planes o servicios que aparezcan en el === CATÁLOGO OFICIAL === o en la Base de Conocimiento.
+   - NUNCA inventes precios, descuentos, características técnicas o productos inexistentes.
+   - Si el cliente solicita un producto o servicio que no está listado, dile con cortesía: "Por el momento no contamos con ese producto/servicio específico en nuestro catálogo de ${busName}, pero con gusto te puedo ofrecer [mencionar alternativa del catálogo si existe]."
+
+2. FIDELIDAD A PREGUNTAS FRECUENTES (FAQs) Y BASE DE CONOCIMIENTO:
+   - Cuando el cliente haga una pregunta cuya respuesta esté en el bloque === BASE DE CONOCIMIENTO (FAQS E INFORMACIÓN DEL NEGOCIO) ===, responde utilizando con precisión la información oficial autorizada, redactándola en un tono natural, amable y fluido para WhatsApp.
+   - Si una pregunta del cliente NO se encuentra respondida en la base de datos ni en el catálogo, NO inventes una respuesta; indícale con amabilidad que consultarás con el equipo de ${busName} para confirmarle el dato exacto.
 
 === PERSONALIDAD Y TONO DE VOZ ===
 Tono configurado: ${personality}.
@@ -392,8 +446,9 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
 
     const isFirstMessage = formattedHistory.length === 0;
 
-    const relevantKnowledge = await ragSearch(userMessage, knowledge);
-    const systemPrompt = buildSystemPrompt(safeBusiness, relevantKnowledge, knowledge, products, isFirstMessage, userMessage);
+    const subQueries = await generateSubQueries(userMessage, safeBusiness);
+    const relevantKnowledge = await ragSearch(userMessage, knowledge, safeBusiness);
+    const systemPrompt = buildSystemPrompt(safeBusiness, relevantKnowledge, knowledge, products, isFirstMessage, userMessage, subQueries);
 
     const messages = [
       { role: 'system', content: systemPrompt },
