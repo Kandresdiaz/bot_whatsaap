@@ -167,9 +167,33 @@ router.get('/:sessionId', async (req, res) => {
 
     // 4. Enriquecer nombres desde contactos RAM y forzar bot_active = false para grupos y contactos desactivados en RAM/DB
     try {
-      const { isContactBotDisabled } = require('../whatsapp/sessionManager');
+      const { isContactBotDisabled, setContactBotStatus } = require('../whatsapp/sessionManager');
+
+      const disabledPhonesFromDb = new Set();
+      const blacklistedPhonesFromDb = new Set();
+
+      // Consultar en DB todos los números que tengan bot_active = false o is_blacklisted = true
+      const { data: disabledRows } = await supabase
+        .from('conversations')
+        .select('contact_phone, bot_active, is_blacklisted')
+        .or('bot_active.eq.false,is_blacklisted.eq.true');
+
+      if (disabledRows && disabledRows.length > 0) {
+        for (const r of disabledRows) {
+          const p = (r.contact_phone || '').replace(/[^0-9]/g, '');
+          if (!p) continue;
+          if (r.bot_active === false) {
+            disabledPhonesFromDb.add(p);
+            setContactBotStatus(p, false, validUserId);
+          }
+          if (r.is_blacklisted === true) {
+            blacklistedPhonesFromDb.add(p);
+          }
+        }
+      }
+
       for (const c of merged) {
-        const cleanP = c.contact_phone || '';
+        const cleanP = (c.contact_phone || '').replace(/[^0-9]/g, '');
         const cleanName = c.contact_name || '';
         if (!cleanName || cleanName === cleanP) {
           if (store && store.contacts) {
@@ -180,7 +204,11 @@ router.get('/:sessionId', async (req, res) => {
         }
 
         const isGroup = cleanP.includes('-') || (c.contact_name || '').toLowerCase().includes('grupo') || (c.id || '').endsWith('@g.us');
-        if (isGroup || isContactBotDisabled(cleanP, validUserId)) {
+        if (blacklistedPhonesFromDb.has(cleanP)) {
+          c.is_blacklisted = true;
+        }
+
+        if (isGroup || disabledPhonesFromDb.has(cleanP) || isContactBotDisabled(cleanP, validUserId)) {
           c.bot_active = false;
         }
       }
@@ -413,8 +441,13 @@ router.patch('/:conversationId/toggle-bot', async (req, res) => {
   try {
     const { conversationId } = req.params;
     const { bot_active, phone: reqPhone, userId } = req.body;
+    const { setContactBotStatus, getSessionUuid, getValidUserId } = require('../whatsapp/sessionManager');
 
     const cleanPhone = (reqPhone || conversationId || '').toString().replace('ram_', '').replace(/[^0-9]/g, '');
+
+    if (cleanPhone) {
+      setContactBotStatus(cleanPhone, bot_active, userId);
+    }
 
     if (isUuid(conversationId)) {
       await supabase
@@ -435,7 +468,6 @@ router.patch('/:conversationId/toggle-bot', async (req, res) => {
           .update({ bot_active })
           .eq('contact_phone', cleanPhone);
       } else {
-        const { getSessionUuid, getValidUserId } = require('../whatsapp/sessionManager');
         const validUserId = getValidUserId(userId || 'admin');
         const sessionUuid = await getSessionUuid(validUserId);
 
@@ -463,8 +495,13 @@ router.patch('/:conversationId/blacklist', async (req, res) => {
   try {
     const { conversationId } = req.params;
     const { blacklisted, reason, phone: reqPhone, userId } = req.body;
+    const { setContactBotStatus, getSessionUuid, getValidUserId } = require('../whatsapp/sessionManager');
 
     const cleanPhone = (reqPhone || conversationId || '').toString().replace('ram_', '').replace(/[^0-9]/g, '');
+
+    if (cleanPhone) {
+      setContactBotStatus(cleanPhone, !blacklisted, userId);
+    }
 
     if (isUuid(conversationId)) {
       await supabase
@@ -493,7 +530,6 @@ router.patch('/:conversationId/blacklist', async (req, res) => {
           })
           .eq('contact_phone', cleanPhone);
       } else {
-        const { getSessionUuid, getValidUserId } = require('../whatsapp/sessionManager');
         const validUserId = getValidUserId(userId || 'admin');
         const sessionUuid = await getSessionUuid(validUserId);
 
