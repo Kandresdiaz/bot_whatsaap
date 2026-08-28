@@ -598,6 +598,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-28** | feat: visualización de fotos de productos en dashboard y envío automático de imágenes multimedia en WhatsApp | Auto-deploy |
 
+| **2026-08-28** | feat: visualizacion de fotos de productos en dashboard y envio automatico de imagenes multimedia en WhatsApp (v1.1.4) (`095bc83`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
