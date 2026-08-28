@@ -590,6 +590,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-28** | chore: sync product search and UI improvements (`111c985`) | Auto-deploy |
 
+| **2026-08-28** | fix: permanent bot_active persistence across refreshes, tab switches and server restarts (v1.1.2) (`46fb499`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
