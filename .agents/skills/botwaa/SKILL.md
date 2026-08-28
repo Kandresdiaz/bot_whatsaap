@@ -588,6 +588,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-27** | fix: absolute bot_active persistence on GET conversations and active chat sync (v1.1.1) (`2192b68`) | Auto-deploy |
 
+| **2026-08-28** | chore: sync product search and UI improvements (`111c985`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
