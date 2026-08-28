@@ -268,6 +268,34 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
     return;
   }
 
+  // ── 3.5. Verificar estado de suscripción y prueba de 7 días ────────────────
+  try {
+    const { getValidUserId } = require('./sessionManager');
+    const validUserId = getValidUserId(userId);
+    const isUuid = (str) => typeof str === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+
+    if (validUserId && isUuid(validUserId)) {
+      const { data: u } = await supabase
+        .from('users')
+        .select('id, is_admin, status, subscription_status, trial_ends_at, paid_until')
+        .eq('id', validUserId)
+        .maybeSingle();
+
+      if (u && !u.is_admin) {
+        const now = new Date();
+        const isTrialActive = u.subscription_status === 'trialing' && u.trial_ends_at && new Date(u.trial_ends_at) > now;
+        const isPaidActive = (u.subscription_status === 'active' || u.status === 'active') && (!u.paid_until || new Date(u.paid_until) > now);
+
+        if (u.status === 'paused' || (!isTrialActive && !isPaidActive)) {
+          console.log(`[MSG] 🛑 Bot pausado para ${userId}: suscripción vencida o inactiva.`);
+          return;
+        }
+      }
+    }
+  } catch (subErr) {
+    console.warn('[MSG] Aviso verificando suscripción de usuario:', subErr.message);
+  }
+
   // ── 4. Rate limit anti-spam ───────────────────────────────────────────────
   if (isRateLimited(contactPhone)) return;
 
@@ -423,17 +451,47 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
   }
 
   // ── 10. RAG + Groq: generar respuesta ─────────────────────────────────────
-  const { reply, isLeadHot, tokensUsed, imageName, ragChunksUsed } = await askGroq(
+  const { reply, isLeadHot, tokensUsed, imageName, newAppointmentData, clientData, ragChunksUsed } = await askGroq(
     text, business, knowledge, history, products
   );
 
   console.log(`[RAG] Chunks usados: ${ragChunksUsed} | Tokens: ${tokensUsed}`);
 
-  // ── 11. Lead caliente → notificar al dueño ────────────────────────────────
+  // ── 11. Actualizar Nombre de Contacto si fue capturado en el Cierre ────────
+  const capturedName = clientData?.nombre || newAppointmentData?.nombre;
+  if (capturedName && conversation?.id && (conversation.contact_name === contactPhone || !conversation.contact_name)) {
+    await safeQuery(() => supabase.from('conversations').update({ contact_name: capturedName }).eq('id', conversation.id));
+  }
+
+  // ── 12. Registrar Cita Automática en Base de Datos (si aplica) ────────────
+  if (newAppointmentData && conversation?.id && business?.id) {
+    try {
+      const { data: newAppt } = await supabase.from('appointments').insert({
+        conversation_id: conversation.id,
+        business_id: business.id,
+        client_name: capturedName || contactName,
+        client_phone: contactPhone,
+        service: newAppointmentData.servicio || 'Servicio General',
+        appointment_date: newAppointmentData.fecha || new Date().toISOString().split('T')[0],
+        appointment_time: newAppointmentData.hora || '10:00:00',
+        status: 'confirmed',
+        notes: `Cita agendada por Bot IA para ${business.name}`,
+      }).select().limit(1);
+
+      if (newAppt && newAppt.length > 0 && global.io) {
+        const { emitToUserRooms } = require('./sessionManager');
+        emitToUserRooms(global.io, userId, 'new_appointment', newAppt[0]);
+      }
+    } catch (eAppt) {
+      console.error('[MSG] Error guardando cita automática:', eAppt.message);
+    }
+  }
+
+  // ── 13. Lead caliente / Cierre → notificar al dueño ────────────────────────
   if (isLeadHot && conversation?.id) {
     await safeQuery(() => supabase.from('conversations').update({ is_lead: true }).eq('id', conversation.id));
     try {
-      await notifyLead(business, contactPhone, contactName, text, conversation.id, sock, jid);
+      await notifyLead(business, contactPhone, capturedName || contactName, text, conversation.id, sock, jid, { newAppointmentData, clientData });
     } catch (e) {
       console.error('[MSG] Error notificando lead:', e.message);
     }

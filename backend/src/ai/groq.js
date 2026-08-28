@@ -344,17 +344,34 @@ ${hasKnowledge
   : ''
 }
 
-=== ESTRATEGIA COMERCIAL Y CIERRE ===
-1. ASESORÍA OFICIAL:
-   - Responde siempre basado en la información, productos y base de conocimiento de "${busName}".
-   - Si el cliente pregunta por precios o servicios, entrégale las opciones disponibles con claridad, precisión y amabilidad.
+=== ESTRATEGIA DE CIERRE PERSUASIVO Y CAPTURA DE DATOS (CONVERSIÓN Y CITAS) ===
+Tu rol es actuar como un asesor comercial y de atención de alto nivel. Cada interacción debe avanzar con empatía hacia un cierre concreto sin ser invasivo:
 
-2. CIERRE DE VENTA O AGENDAMIENTO:
-   - Cuando el cliente confirme que desea comprar, contratar o agendar ("me interesa", "lo quiero", "cómo compro", "dónde pago", "quiero agendar"):
-     * Guíalo con entusiasmo al siguiente paso.
-     * Si existe enlace de pago o reserva (${business?.payment_or_booking_link || 'disponible'}), compártelo para facilitar su compra o cita.
-     * Si se procesa manualmente o por transferencia, solicita con amabilidad sus datos necesarios (ej. Nombre completo, confirmación del pedido).
-     * Añade la etiqueta [LEAD_CALIENTE] al final de tu mensaje para alertar al panel del negocio.
+1. POLÍTICAS DE META Y PREVENCIÓN DE BANEOS (CERO SPAM / HUMANIZACIÓN):
+   - Nunca seas insistente, agresivo o desesperado ("no ser intenso").
+   - Mantén un tono cordial, servicial, consultivo y profesional.
+   - Responde SIEMPRE de forma directa (máximo 3 a 4 líneas por mensaje).
+   - Termina SIEMPRE con UN SOLO llamado a la acción (CTA) claro en forma de pregunta amable.
+
+${isSales ? `2. PROCESO DE CIERRE DE VENTAS PARA "${busName}":
+   - PASO 1 (Asesorar y presentar): Explica los beneficios clave del producto o plan adecuado del catálogo oficial de "${busName}" con su precio exacto en $ COP.
+   - PASO 2 (Pregunta de cierre): Invita al cliente a tomar una decisión con una pregunta suave y persuasiva.
+     * Ejemplos: "¿Te gustaría apartar tu pedido hoy mismo?", "¿Prefieres cancelar por transferencia bancaria o en línea?", "¿Te parece bien si tomamos tus datos para coordinar la entrega?"
+   - PASO 3 (Toma de datos para cerrar): Solicita los datos necesarios de forma ordenada:
+     1. Nombre completo
+     2. Ciudad / Dirección de entrega (o Correo si es servicio digital)
+     3. Método de pago preferido (o comparte el enlace: ${business?.payment_or_booking_link || 'disponible'})
+   - PASO 4 (Confirmación y registro): Cuando el cliente confirme la compra o entregue sus datos, felicítalo con calidez por su elección, confirma el resumen y añade al final de tu respuesta:
+     [LEAD_CALIENTE]
+     [DATOS_CLIENTE: {"nombre": "Nombre Cliente", "producto": "Producto Confirmado", "ciudad": "Ciudad/Dirección", "metodo_pago": "Método de Pago"}]`
+: `2. PROCESO DE AGENDAMIENTO DE CITAS / RESERVAS PARA "${busName}":
+   - PASO 1 (Identificar servicio): Confirma con amabilidad qué servicio del catálogo requiere.
+   - PASO 2 (Coordinar fecha y hora): Pregunta qué día y hora le queda más conveniente, dentro de los horarios de atención (${business?.active_hours_start || '08:00'} a ${business?.active_hours_end || '20:00'}).
+     * Ejemplos: "¿Qué día de esta semana te quedaría mejor?", "¿Te apartamos el turno para el jueves en la mañana o en la tarde?"
+   - PASO 3 (Toma de datos para apartar el cupo): Pide con cortesía su Nombre completo para registrar la reserva en la agenda.
+   - PASO 4 (Confirmación y registro): Al confirmar día, hora y nombre, dale una confirmación alegre y oficial ("¡Listo [Nombre]! Te hemos agendado para [Servicio] el [Fecha] a las [Hora] en ${busName} 🎉") e incluye al final:
+     [LEAD_CALIENTE]
+     [NUEVA_CITA: {"nombre": "Nombre Cliente", "servicio": "Servicio Agendado", "fecha": "YYYY-MM-DD", "hora": "HH:MM:SS"}]`}
 
 3. ENVÍO DE FOTOS O IMÁGENES:
    - Si el cliente solicita fotos o imágenes de un producto listado que cuente con foto, incluye al final de tu respuesta la etiqueta EXACTA: [ENVIAR_IMAGEN: Nombre del Producto].
@@ -417,6 +434,8 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
         isLeadHot: false,
         tokensUsed: 0,
         imageName: null,
+        newAppointmentData: null,
+        clientData: null,
         ragChunksUsed: 1,
       };
     }
@@ -493,13 +512,33 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
     // Sanitizar etiquetas internas y tags <think> de modelos de razonamiento
     fullReply = fullReply.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
 
-    const isLeadHot = fullReply.includes('[LEAD_CALIENTE]');
+    const isLeadHotFlag = fullReply.includes('[LEAD_CALIENTE]');
     const imageMatch = fullReply.match(/\[ENVIAR_IMAGEN:\s*(.+?)\]/i);
     const imageName = imageMatch ? imageMatch[1].trim() : null;
 
+    const apptMatch = fullReply.match(/\[NUEVA_CITA:\s*(\{[\s\S]*?\})\]/i);
+    let newAppointmentData = null;
+    if (apptMatch) {
+      try {
+        newAppointmentData = JSON.parse(apptMatch[1]);
+      } catch (_) {}
+    }
+
+    const clientDataMatch = fullReply.match(/\[DATOS_CLIENTE:\s*(\{[\s\S]*?\})\]/i);
+    let clientData = null;
+    if (clientDataMatch) {
+      try {
+        clientData = JSON.parse(clientDataMatch[1]);
+      } catch (_) {}
+    }
+
+    const isLeadHot = isLeadHotFlag || Boolean(newAppointmentData) || Boolean(clientData);
+
     const reply = fullReply
-      .replace('[LEAD_CALIENTE]', '')
+      .replace(/\[LEAD_CALIENTE\]/gi, '')
       .replace(/\[ENVIAR_IMAGEN:[^\]]+\]/gi, '')
+      .replace(/\[NUEVA_CITA:[^\]]+\]/gi, '')
+      .replace(/\[DATOS_CLIENTE:[^\]]+\]/gi, '')
       .trim();
 
     // Guardar respuesta en caché Redis/RAM para consumo 0 tokens en siguientes consultas iguales
@@ -508,11 +547,21 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
         reply,
         isLeadHot,
         imageName,
+        newAppointmentData,
+        clientData,
         ragChunksUsed: relevantKnowledge.length,
       }).catch(() => {});
     }
 
-    return { reply, isLeadHot, tokensUsed, imageName, ragChunksUsed: relevantKnowledge.length };
+    return {
+      reply,
+      isLeadHot,
+      tokensUsed,
+      imageName,
+      newAppointmentData,
+      clientData,
+      ragChunksUsed: relevantKnowledge.length
+    };
   } catch (err) {
     console.error('[Groq] Error en askGroq:', err.message);
     try {
@@ -529,6 +578,8 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
       isLeadHot: false,
       tokensUsed: 0,
       imageName: null,
+      newAppointmentData: null,
+      clientData: null,
       ragChunksUsed: 0,
     };
   }

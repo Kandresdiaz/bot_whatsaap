@@ -1,17 +1,27 @@
 // Notificador de alertas de leads y alertas internas del sistema
 
-const notifyLead = async (business, contactPhone, contactName, lastMessage, conversationId, sock, fromJid) => {
+const notifyLead = async (business, contactPhone, contactName, lastMessage, conversationId, sock, fromJid, extraData = null) => {
   try {
     const adminPhone = process.env.ADMIN_WHATSAPP;
     if (!adminPhone) return;
 
-    const dashboardUrl = `${process.env.FRONTEND_URL}/dashboard/conversations/${conversationId}`;
+    const dashboardUrl = `${process.env.FRONTEND_URL || 'https://bot-whatsaap.vercel.app'}/dashboard/conversations`;
 
-    const message = `🔔 *LEAD CALIENTE*\n\n` +
-      `🏢 Negocio: ${business.name}\n` +
-      `📱 Contacto: ${contactName} (${contactPhone})\n` +
-      `💬 Dijo: "${lastMessage}"\n\n` +
-      `👉 Ver conversación:\n${dashboardUrl}`;
+    let detailsText = '';
+    if (extraData?.newAppointmentData) {
+      const a = extraData.newAppointmentData;
+      detailsText = `\n\n📅 *NUEVA CITA AGENDADA*\n• Servicio: ${a.servicio || 'General'}\n• Fecha: ${a.fecha || 'Por coordinar'}\n• Hora: ${a.hora || 'Por coordinar'}\n• Nombre: ${a.nombre || contactName}`;
+    } else if (extraData?.clientData) {
+      const d = extraData.clientData;
+      detailsText = `\n\n🛒 *CIERRE DE VENTA / DATOS*\n• Nombre: ${d.nombre || contactName}\n• Producto/Plan: ${d.producto || 'Interesado'}${d.ciudad ? `\n• Ubicación: ${d.ciudad}` : ''}${d.metodo_pago ? `\n• Método Pago: ${d.metodo_pago}` : ''}`;
+    }
+
+    const message = `🔔 *LEAD CALIENTE / CIERRE CONCRETADO*\n\n` +
+      `🏢 Negocio: ${business?.name || 'BotWA'}\n` +
+      `📱 Contacto: ${contactName} (+${contactPhone})\n` +
+      `💬 Mensaje: "${lastMessage}"` +
+      detailsText +
+      `\n\n👉 *Ver en el Dashboard:*\n${dashboardUrl}`;
 
     const adminChatId = `${adminPhone}@s.whatsapp.net`;
     await sock.sendMessage(adminChatId, { text: message });
