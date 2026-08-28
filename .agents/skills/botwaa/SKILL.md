@@ -600,6 +600,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-28** | feat: visualizacion de fotos de productos en dashboard y envio automatico de imagenes multimedia en WhatsApp (v1.1.4) (`095bc83`) | Auto-deploy |
 
+| **2026-08-28** | fix: sincronizacion tiempo real panel derecho, soporte imagenes y prompt dinamico anti-desviacion (`ae7720f`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
