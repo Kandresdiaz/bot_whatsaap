@@ -606,6 +606,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-28** | feat: soporte multi-tenant universal para cualquier negocio con blindaje estricto y reorientacion empatica (`faa21e1`) | Auto-deploy |
 
+| **2026-08-28** | feat: optimizacion de RAG multi-query contextual para FAQs y catalogo con blindaje anti-alucinacion estricto (`baacff2`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
