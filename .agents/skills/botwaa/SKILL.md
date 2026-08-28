@@ -602,6 +602,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-28** | fix: sincronizacion tiempo real panel derecho, soporte imagenes y prompt dinamico anti-desviacion (`ae7720f`) | Auto-deploy |
 
+| **2026-08-28** | fix: blindaje estricto del prompt con guardrails de negocio y cero desviacion off-topic (`5fdc043`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
