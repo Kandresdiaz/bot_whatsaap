@@ -604,6 +604,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-28** | fix: blindaje estricto del prompt con guardrails de negocio y cero desviacion off-topic (`5fdc043`) | Auto-deploy |
 
+| **2026-08-28** | feat: soporte multi-tenant universal para cualquier negocio con blindaje estricto y reorientacion empatica (`faa21e1`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
