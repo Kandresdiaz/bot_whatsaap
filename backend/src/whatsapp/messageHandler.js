@@ -424,16 +424,46 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
   // ── 12. Anti-ban delay ─────────────────────────────────────────────────────
   await randomDelay();
 
-  // ── 13. Enviar imagen si el bot la detectó ─────────────────────────────────
-  if (imageName) {
-    const img = knowledge.find(k =>
+  // ── 13. Enviar imagen si el bot la detectó (KB o Productos) ───────────────
+  let targetImageSearch = imageName;
+  if (!targetImageSearch) {
+    const normMsg = text.toLowerCase();
+    const isRequestingImage = /foto|imagen|referencia|muéstrame|muestra|ver/i.test(normMsg);
+    if (isRequestingImage && Array.isArray(products)) {
+      const matchedProd = products.find(p => p.image_url && normMsg.includes(p.name.toLowerCase()));
+      if (matchedProd) {
+        targetImageSearch = matchedProd.name;
+      }
+    }
+  }
+
+  if (targetImageSearch) {
+    let imgUrl = null;
+    let caption = null;
+
+    const imgKB = knowledge.find(k =>
       k.type === 'image' &&
-      k.title.toLowerCase().includes(imageName.toLowerCase()) &&
+      k.title.toLowerCase().includes(targetImageSearch.toLowerCase()) &&
       k.file_url
     );
-    if (img?.file_url) {
+
+    if (imgKB?.file_url) {
+      imgUrl = imgKB.file_url;
+      caption = imgKB.content;
+    } else {
+      const prodImg = products.find(p =>
+        p.image_url &&
+        (p.name.toLowerCase().includes(targetImageSearch.toLowerCase()) || (p.category && p.category.toLowerCase().includes(targetImageSearch.toLowerCase())))
+      );
+      if (prodImg?.image_url) {
+        imgUrl = prodImg.image_url;
+        caption = `${prodImg.name} - $${Number(prodImg.price || 0).toLocaleString('es-CO')} ${prodImg.currency || 'COP'}`;
+      }
+    }
+
+    if (imgUrl) {
       try {
-        await sock.sendMessage(jid, { image: { url: img.file_url }, caption: img.content });
+        await sock.sendMessage(jid, { image: { url: imgUrl }, caption: caption || '' });
         await sleep(800);
       } catch (e) {
         console.error('[MSG] Error enviando imagen:', e.message);

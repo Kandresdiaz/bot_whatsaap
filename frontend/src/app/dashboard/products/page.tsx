@@ -387,10 +387,21 @@ export default function ProductsPage() {
                 borderColor: prod.is_active ? '#1E293B' : 'rgba(239,68,68,0.2)',
                 opacity: prod.is_active ? 1 : 0.75,
                 display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
-                padding: 16, gap: 12, transition: 'all 0.2s ease',
+                padding: 16, gap: 12, transition: 'all 0.2s ease', overflow: 'hidden',
               }}
             >
               <div>
+                {prod.image_url && (
+                  <div style={{ width: '100%', height: 140, borderRadius: 8, overflow: 'hidden', marginBottom: 12, background: '#080E1F', border: '1px solid #1E293B' }}>
+                    <img
+                      src={prod.image_url}
+                      alt={prod.name}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      onError={(e) => { e.currentTarget.parentElement!.style.display = 'none'; }}
+                    />
+                  </div>
+                )}
+
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
                   <span style={{
                     fontSize: 10, fontWeight: 700, textTransform: 'uppercase', padding: '2px 8px',
@@ -454,8 +465,20 @@ export default function ProductsPage() {
                 {filteredProducts.map(prod => (
                   <tr key={prod.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
                     <td style={{ padding: '12px 16px' }}>
-                      <div style={{ fontWeight: 700, color: '#f8fafc' }}>{prod.name}</div>
-                      {prod.description && <div style={{ fontSize: 11, color: '#94a3b8' }}>{prod.description.slice(0, 60)}...</div>}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        {prod.image_url && (
+                          <img
+                            src={prod.image_url}
+                            alt={prod.name}
+                            style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 6, border: '1px solid #1E293B', flexShrink: 0 }}
+                            onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                          />
+                        )}
+                        <div>
+                          <div style={{ fontWeight: 700, color: '#f8fafc' }}>{prod.name}</div>
+                          {prod.description && <div style={{ fontSize: 11, color: '#94a3b8' }}>{prod.description.slice(0, 60)}...</div>}
+                        </div>
+                      </div>
                     </td>
                     <td style={{ padding: '12px 16px', color: '#00CFFF' }}>{prod.category || 'General'}</td>
                     <td style={{ padding: '12px 16px', fontWeight: 700, color: '#f8fafc' }}>
@@ -535,12 +558,23 @@ export default function ProductsPage() {
 
               <div>
                 <label style={{ fontSize: 12, fontWeight: 600, color: '#94a3b8', display: 'block', marginBottom: 4 }}>
-                  URL de Imagen (Opcional)
+                  URL de Imagen / Foto de Referencia (Opcional)
                 </label>
                 <input
                   type="url" className="input" placeholder="https://ejemplo.com/foto.jpg"
                   value={formData.image_url} onChange={e => setFormData({ ...formData, image_url: e.target.value })}
                 />
+                {formData.image_url && (
+                  <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 10, background: '#080E1F', padding: 8, borderRadius: 8, border: '1px solid #1E293B' }}>
+                    <img
+                      src={formData.image_url}
+                      alt="Vista previa"
+                      style={{ width: 50, height: 50, objectFit: 'cover', borderRadius: 6, border: '1px solid #00CFFF' }}
+                      onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                    />
+                    <span style={{ fontSize: 11, color: '#00CFFF', fontWeight: 600 }}>📷 Vista previa de la foto del producto</span>
+                  </div>
+                )}
               </div>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingTop: 4 }}>
