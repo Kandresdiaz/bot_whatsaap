@@ -3,7 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
 
-// Versión del Frontend: 1.1.1 (Persistencia absoluta de bot_active por teléfono en GET, toggle y active chat sync)
+// Versión del Frontend: 1.1.2 (Persistencia permanente e imborrable de bot_active al recargar o salir del chat)
 const inter = Inter({ subsets: ["latin"] });
 
 export const viewport: Viewport = {

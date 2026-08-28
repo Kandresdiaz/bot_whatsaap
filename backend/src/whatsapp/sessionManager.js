@@ -426,13 +426,16 @@ const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts =
 
     const { data: existingConvs } = await supabase
       .from('conversations')
-      .select('id, session_id, contact_phone, contact_name, last_message_at')
+      .select('id, session_id, contact_phone, contact_name, last_message_at, bot_active, is_blacklisted')
       .in('session_id', userSessionIds.length > 0 ? userSessionIds : [sessionUuid]);
 
     const convMap = new Map();
     if (Array.isArray(existingConvs)) {
       for (const c of existingConvs) {
         convMap.set(c.contact_phone, c);
+        if (c.bot_active === false) {
+          setContactBotStatus(c.contact_phone, false, userId);
+        }
       }
     }
 
@@ -480,7 +483,7 @@ const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts =
             session_id: sessionUuid,
             contact_phone: contactPhone,
             contact_name: contactName || contactPhone,
-            bot_active: !isGroup,
+            bot_active: !isGroup && !isContactBotDisabled(contactPhone, userId),
             is_blacklisted: false,
             unread_count: chat.unreadCount || 0,
             last_message_at: ts,
@@ -507,7 +510,7 @@ const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts =
             session_id: sessionUuid,
             contact_phone: contactPhone,
             contact_name: contactName || contactPhone,
-            bot_active: !isGroup,
+            bot_active: !isGroup && !isContactBotDisabled(contactPhone, userId),
             is_blacklisted: false,
             unread_count: 0,
             last_message_at: new Date().toISOString(),
@@ -535,7 +538,7 @@ const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts =
             session_id: sessionUuid,
             contact_phone: contactPhone,
             contact_name: pushName,
-            bot_active: !isGroup,
+            bot_active: !isGroup && !isContactBotDisabled(contactPhone, userId),
             is_blacklisted: false,
             last_message_at: msgTime,
           });
