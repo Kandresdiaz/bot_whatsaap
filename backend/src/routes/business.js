@@ -124,6 +124,8 @@ router.post('/:userId', async (req, res) => {
 
     const resBus = result.data || DEFAULT_BOTWA_BUSINESS;
     if (resBus?.id) {
+      const { clearBusinessAiCache } = require('../ai/aiCache');
+      clearBusinessAiCache(resBus.id).catch(() => {});
       seedDefaultProductsAndKB(resBus.id).catch(e => console.error('[BUSINESS POST] Auto-seed error:', e.message));
     }
 

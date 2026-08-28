@@ -45,6 +45,13 @@ const defaultKnowledge = [
 const seedDefaultProductsAndKB = async (businessId) => {
   if (!businessId) return;
   try {
+    const { data: bus } = await supabase.from('businesses').select('name').eq('id', businessId).limit(1);
+    const busName = bus && bus[0]?.name;
+    // Solo sembrar planes de BotWA si el negocio es BotWA o no tiene nombre asignado
+    if (busName && busName !== 'BotWA' && busName !== 'Asistente Virtual') {
+      return;
+    }
+
     for (const prod of defaultProducts) {
       const payload = { ...prod, business_id: businessId };
       const { data: existing } = await supabase

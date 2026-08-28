@@ -394,7 +394,7 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
     const { data: prods } = await pQuery.order('category', { ascending: true }).limit(30);
     products = prods || [];
 
-    if (products.length === 0) {
+    if (products.length === 0 && (business?.name === 'BotWA' || !business?.name)) {
       const { data: defaultProds } = await supabase.from('products_services').select('name, description, price, currency, category, image_url').eq('is_active', true).limit(15);
       products = defaultProds || [
         { name: 'Plan Básico BotWA', description: '1 Flujo IA (Vender o Agendar), 20 FAQs, 1 Número WA', price: 120000, currency: 'COP', category: 'Planes BotWA' },
