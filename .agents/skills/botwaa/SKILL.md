@@ -592,6 +592,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-28** | fix: permanent bot_active persistence across refreshes, tab switches and server restarts (v1.1.2) (`46fb499`) | Auto-deploy |
 
+| **2026-08-28** | feat: busqueda SQL hibrida por rango de precios y scoring semantico para catalogos masivos en Supabase (`1f76e5c`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
