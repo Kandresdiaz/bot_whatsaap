@@ -260,28 +260,30 @@ router.get('/:conversationId/messages', async (req, res) => {
     }
 
     let dbMsgs = [];
-    if (realConvId) {
+    const convIdsToQuery = new Set();
+    if (realConvId) convIdsToQuery.add(realConvId);
+
+    if (cleanPhone) {
+      try {
+        const { data: relatedConvs } = await supabase.from('conversations').select('id').eq('contact_phone', cleanPhone);
+        if (relatedConvs && relatedConvs.length > 0) {
+          relatedConvs.forEach(c => convIdsToQuery.add(c.id));
+        }
+      } catch (_) {}
+    }
+
+    if (convIdsToQuery.size > 0) {
       const { data } = await supabase
         .from('messages')
         .select('*')
-        .eq('conversation_id', realConvId)
+        .in('conversation_id', Array.from(convIdsToQuery))
         .order('timestamp', { ascending: false })
         .limit(500);
 
       dbMsgs = data || [];
-      await supabase.from('conversations').update({ unread_count: 0 }).eq('id', realConvId).catch(() => {});
-    }
-
-    // Buscar también mensajes en Supabase por conversation_ids pertenecientes a este teléfono
-    if (dbMsgs.length === 0 && cleanPhone) {
-      try {
-        const { data: relatedConvs } = await supabase.from('conversations').select('id').eq('contact_phone', cleanPhone);
-        if (relatedConvs && relatedConvs.length > 0) {
-          const cIds = relatedConvs.map(c => c.id);
-          const { data: altMsgs } = await supabase.from('messages').select('*').in('conversation_id', cIds).order('timestamp', { ascending: false }).limit(500);
-          if (altMsgs) dbMsgs = altMsgs;
-        }
-      } catch (_) {}
+      if (realConvId) {
+        await supabase.from('conversations').update({ unread_count: 0 }).eq('id', realConvId).catch(() => {});
+      }
     }
 
     // Fusionar mensajes de la memoria RAM de Baileys

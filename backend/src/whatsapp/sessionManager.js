@@ -239,6 +239,8 @@ const emitToUserRooms = (io, userId, event, payload, sessionUuid = null) => {
   for (const room of rooms) {
     try { io.to(room).emit(event, payload); } catch (_) {}
   }
+  // Emisión global a todos los clientes para garantizar tiempo real 0ms instantáneo
+  try { io.emit(event, payload); } catch (_) {}
 };
 
 // Obtener o crear el UUID de sesión en whatsapp_sessions (mapeo consistente por user_id)
@@ -1188,12 +1190,23 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
             });
 
             if (io) {
+              const msgObj = {
+                id: msg.key.id || Date.now().toString(),
+                content: text,
+                direction: 'outbound',
+                sent_by: 'human',
+                timestamp: new Date().toISOString(),
+              };
               emitToUserRooms(io, userId, 'new_message', {
                 conversationId,
-                message: { content: text, direction: 'outbound', sent_by: 'human', timestamp: new Date() },
+                contactPhone,
+                message: msgObj,
               }, sessionUuid);
               emitToUserRooms(io, userId, 'conversation_updated', {
-                conversationId, contactPhone, lastMessage: text,
+                conversationId,
+                contactPhone,
+                lastMessage: text,
+                timestamp: new Date().toISOString(),
               }, sessionUuid);
             }
           }

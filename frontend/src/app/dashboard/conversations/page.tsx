@@ -39,7 +39,7 @@ export default function ConversationsPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [reply, setReply] = useState('');
   const [search, setSearch] = useState('');
-  const [filterTab, setFilterTab] = useState<'all' | 'unread' | 'bot' | 'personal'>('all');
+  const [filterTab, setFilterTab] = useState<'all' | 'unread' | 'leads' | 'bot' | 'personal'>('all');
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showInfoDrawer, setShowInfoDrawer] = useState(false);
   const [globalBotEnabled, setGlobalBotEnabled] = useState<boolean>(false);
@@ -171,10 +171,14 @@ export default function ConversationsPage() {
     const targetId = effectiveUserId || user?.id || 'admin';
     if (!targetId) return;
     setSessionId(targetId);
+    socketRef.current?.emit('join_session', targetId);
     fetch(`${BACKEND}/api/sessions/status/${targetId}`)
       .then(r => r.json())
       .then(d => {
-        if (d.session?.id) setSessionId(d.session.id);
+        if (d.session?.id) {
+          setSessionId(d.session.id);
+          socketRef.current?.emit('join_session', d.session.id);
+        }
         if (d.session?.status) setSessionStatus(d.session.status);
         if (d.session && typeof d.session.bot_enabled === 'boolean') {
           setGlobalBotEnabled(d.session.bot_enabled);
@@ -192,6 +196,39 @@ export default function ConversationsPage() {
       .catch(() => setGlobalBotEnabled(false));
   }, [effectiveUserId, user, BACKEND]);
 
+  const fetchActiveMessages = async (conv: Conversation | null, isInitial = false) => {
+    if (!conv) return;
+    const targetId = user?.id || sessionId || 'admin';
+    const cleanP = conv.contact_phone ? conv.contact_phone.replace(/[^0-9]/g, '') : '';
+    try {
+      const res = await fetch(`${BACKEND}/api/conversations/${conv.id}/messages?phone=${cleanP}&userId=${targetId}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      
+      const current = activeRef.current;
+      const currentClean = current?.contact_phone?.replace(/[^0-9]/g, '') || '';
+      const convClean = cleanP;
+
+      const isCurrentStillActive = current && (
+        current.id === conv.id ||
+        (currentClean && convClean && (currentClean === convClean || currentClean.endsWith(convClean) || convClean.endsWith(currentClean)))
+      );
+
+      if (isCurrentStillActive && data.messages && Array.isArray(data.messages)) {
+        setMessages(prev => {
+          if (isInitial || prev.length === 0) return data.messages;
+          // Unir y deduplicar mensajes
+          const msgMap = new Map();
+          prev.forEach(m => msgMap.set(m.id || `${m.timestamp}_${m.content}`, m));
+          data.messages.forEach((m: Message) => msgMap.set(m.id || `${m.timestamp}_${m.content}`, m));
+          const merged = Array.from(msgMap.values());
+          merged.sort((a, b) => new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime());
+          return merged;
+        });
+      }
+    } catch (_) {}
+  };
+
   const loadConversations = async (targetId: string) => {
     const idToFetch = effectiveUserId || targetId || 'admin';
     if (!idToFetch) return;
@@ -202,17 +239,19 @@ export default function ConversationsPage() {
       if (data.conversations && Array.isArray(data.conversations)) {
         setConversations(data.conversations);
 
-        // Mantener sincronizado el estado del bot_active en el chat activo del panel derecho
+        // Mantener sincronizado el estado y mensajes del chat activo del panel derecho
         if (activeRef.current) {
-          const currentPhone = activeRef.current.contact_phone;
+          const currentPhone = (activeRef.current.contact_phone || '').replace(/[^0-9]/g, '');
           const currentId = activeRef.current.id;
-          const updated = data.conversations.find((c: Conversation) => 
-            (currentId && c.id === currentId) || 
-            (currentPhone && c.contact_phone === currentPhone)
-          );
+          const updated = data.conversations.find((c: Conversation) => {
+            const cleanCPhone = (c.contact_phone || '').replace(/[^0-9]/g, '');
+            return (currentId && c.id === currentId) || 
+              (currentPhone && cleanCPhone && (currentPhone === cleanCPhone || currentPhone.endsWith(cleanCPhone) || cleanCPhone.endsWith(currentPhone)));
+          });
 
           if (updated) {
-            setActive(prev => prev ? { ...prev, bot_active: updated.bot_active, is_blacklisted: updated.is_blacklisted } : null);
+            setActive(prev => prev ? { ...prev, ...updated } : updated);
+            fetchActiveMessages(updated, false);
           }
         }
       }
@@ -231,7 +270,7 @@ export default function ConversationsPage() {
 
     const interval = setInterval(() => {
       loadConversations(userIdToUse);
-    }, 15000);
+    }, 3000);
 
     const socket = io(BACKEND, {
       transports: ['websocket', 'polling'],
@@ -258,8 +297,8 @@ export default function ConversationsPage() {
       loadConversations(userIdToUse);
     });
 
-    socket.on('conversation_updated', (payload: { conversationId?: string; contactPhone?: string; contactName?: string; lastMessage?: string; timestamp?: string }) => {
-      const { conversationId, contactPhone, contactName, lastMessage, timestamp } = payload || {};
+    socket.on('conversation_updated', (payload: { conversationId?: string; contactPhone?: string; contactName?: string; lastMessage?: string; timestamp?: string; is_lead?: boolean }) => {
+      const { conversationId, contactPhone, contactName, lastMessage, timestamp, is_lead } = payload || {};
       const cleanIncomingPhone = contactPhone ? contactPhone.replace(/[^0-9]/g, '') : '';
 
       setConversations(prevConvs => {
@@ -270,12 +309,33 @@ export default function ConversationsPage() {
             contact_name: contactName || prevConvs[index].contact_name,
             last_message: lastMessage || prevConvs[index].last_message,
             last_message_at: timestamp || new Date().toISOString(),
+            is_lead: is_lead !== undefined ? is_lead : prevConvs[index].is_lead,
           };
           const rest = prevConvs.filter((_, i) => i !== index);
           return [updatedConv, ...rest];
         }
         return prevConvs;
       });
+
+      // Sincronizar chat activo si coincide
+      if (activeRef.current) {
+        const cleanActivePhone = activeRef.current.contact_phone ? activeRef.current.contact_phone.replace(/[^0-9]/g, '') : '';
+        const isCurrentMatch = Boolean(
+          (conversationId && activeRef.current.id === conversationId) ||
+          (cleanActivePhone && cleanIncomingPhone && (cleanActivePhone === cleanIncomingPhone || cleanActivePhone.endsWith(cleanIncomingPhone) || cleanIncomingPhone.endsWith(cleanActivePhone)))
+        );
+
+        if (isCurrentMatch) {
+          setActive(prev => prev ? {
+            ...prev,
+            contact_name: contactName || prev.contact_name,
+            last_message: lastMessage || prev.last_message,
+            last_message_at: timestamp || prev.last_message_at,
+            is_lead: is_lead !== undefined ? is_lead : prev.is_lead,
+          } : null);
+          fetchActiveMessages({ ...activeRef.current, id: conversationId || activeRef.current.id, contact_phone: contactPhone || activeRef.current.contact_phone }, false);
+        }
+      }
     });
 
     socket.on('connected', (payload: any) => {
@@ -308,15 +368,18 @@ export default function ConversationsPage() {
 
       if (currentActive) {
         const cleanActivePhone = currentActive.contact_phone ? currentActive.contact_phone.replace(/[^0-9]/g, '') : '';
-        const isMatch = (
-          currentActive.id === conversationId ||
+        const isMatch = Boolean(
+          (conversationId && currentActive.id === conversationId) ||
           (cleanActivePhone && cleanIncomingPhone && cleanActivePhone === cleanIncomingPhone) ||
-          (cleanActivePhone && cleanIncomingPhone && (cleanActivePhone.includes(cleanIncomingPhone) || cleanIncomingPhone.includes(cleanActivePhone)))
+          (cleanActivePhone && cleanIncomingPhone && (cleanActivePhone.endsWith(cleanIncomingPhone) || cleanIncomingPhone.endsWith(cleanActivePhone) || cleanActivePhone.includes(cleanIncomingPhone) || cleanIncomingPhone.includes(cleanActivePhone)))
         );
 
         if (isMatch) {
           setMessages(prevMsgs => {
-            const exists = prevMsgs.some(m => m.id === message.id || (m.content === message.content && m.direction === message.direction && Math.abs(new Date(m.timestamp).getTime() - new Date(message.timestamp).getTime()) < 3000));
+            const exists = prevMsgs.some(m =>
+              (message.id && m.id === message.id) ||
+              (m.content === message.content && m.direction === message.direction && Math.abs(new Date(m.timestamp).getTime() - new Date(message.timestamp).getTime()) < 3000)
+            );
             if (exists) return prevMsgs;
             return [...prevMsgs, message];
           });
@@ -357,7 +420,7 @@ export default function ConversationsPage() {
       clearInterval(interval);
       socket.disconnect();
     };
-  }, [user?.id, BACKEND]);
+  }, [user?.id, effectiveUserId, BACKEND]);
 
   const handleManualSync = async () => {
     const targetId = sessionId || user?.id || 'admin';
@@ -401,23 +464,7 @@ export default function ConversationsPage() {
     setMessages([]); // Limpieza instantánea para evitar que se pegue la conversación previa
     setShowEmojiPicker(false);
 
-    const targetId = user?.id || sessionId || 'admin';
-    const cleanP = conv.contact_phone ? conv.contact_phone.replace(/[^0-9]/g, '') : '';
-    try {
-      const res = await fetch(`${BACKEND}/api/conversations/${conv.id}/messages?phone=${cleanP}&userId=${targetId}`);
-      const data = await res.json();
-      
-      // Validar que el usuario siga viendo este mismo chat
-      if (activeRef.current?.id === conv.id || (cleanP && activeRef.current?.contact_phone?.replace(/[^0-9]/g, '') === cleanP)) {
-        if (data.messages && Array.isArray(data.messages)) {
-          setMessages(data.messages);
-        } else {
-          setMessages([]);
-        }
-      }
-    } catch (_) {
-      if (activeRef.current?.id === conv.id) setMessages([]);
-    }
+    await fetchActiveMessages(conv, true);
     setConversations(prev => prev.map(c => c.id === conv.id ? { ...c, unread_count: 0 } : c));
   };
 
@@ -515,6 +562,7 @@ export default function ConversationsPage() {
         if (!matchesSearch) return false;
 
         if (filterTab === 'unread') return (c.unread_count || 0) > 0;
+        if (filterTab === 'leads') return Boolean(c.is_lead);
         if (filterTab === 'bot') return c.bot_active && !c.is_blacklisted;
         if (filterTab === 'personal') return !c.bot_active || c.is_blacklisted;
         return true;
@@ -653,6 +701,7 @@ export default function ConversationsPage() {
               {[
                 { id: 'all', label: 'Todos' },
                 { id: 'unread', label: 'No leídos' },
+                { id: 'leads', label: '🔥 Leads' },
                 { id: 'bot', label: 'Bot Activo' },
                 { id: 'personal', label: 'Personal' }
               ].map(t => (
@@ -888,10 +937,16 @@ export default function ConversationsPage() {
                       <div style={{ fontWeight: 700, fontSize: 14, color: '#f8fafc', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {getContactDisplayTitle(active)}
                       </div>
-                      <div style={{ fontSize: 11, color: '#00CFFF', display: 'flex', alignItems: 'center', gap: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <div style={{ fontSize: 11, color: '#00CFFF', display: 'flex', alignItems: 'center', gap: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         <span>{formatPhoneNumber(active.contact_phone)}</span>
                         <span>•</span>
                         <span>{active.bot_active ? '🤖 IA Activa' : '👤 Manual'}</span>
+                        {active.is_lead && (
+                          <>
+                            <span>•</span>
+                            <span style={{ color: '#f43f5e', fontWeight: 700, background: 'rgba(244,63,94,0.12)', padding: '1px 6px', borderRadius: 6 }}>🔥 Lead Caliente</span>
+                          </>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -970,7 +1025,48 @@ export default function ConversationsPage() {
                           wordBreak: 'break-word',
                           position: 'relative'
                         }}>
-                          <div>{msg.content}</div>
+                          <div>
+                            {msg.content === '[Imagen]' ? (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
+                                <span style={{ fontSize: 22 }}>📷</span>
+                                <div>
+                                  <div style={{ fontWeight: 600, fontSize: 13, color: '#f8fafc' }}>Foto / Imagen</div>
+                                  <div style={{ fontSize: 11, color: '#94a3b8' }}>Adjunto de WhatsApp</div>
+                                </div>
+                              </div>
+                            ) : msg.content === '[Video]' ? (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
+                                <span style={{ fontSize: 22 }}>🎬</span>
+                                <div>
+                                  <div style={{ fontWeight: 600, fontSize: 13, color: '#f8fafc' }}>Video</div>
+                                  <div style={{ fontSize: 11, color: '#94a3b8' }}>Adjunto de WhatsApp</div>
+                                </div>
+                              </div>
+                            ) : msg.content === '[Audio]' ? (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
+                                <span style={{ fontSize: 22 }}>🎤</span>
+                                <div>
+                                  <div style={{ fontWeight: 600, fontSize: 13, color: '#f8fafc' }}>Mensaje de Voz</div>
+                                  <div style={{ fontSize: 11, color: '#94a3b8' }}>Audio recibido</div>
+                                </div>
+                              </div>
+                            ) : msg.content?.startsWith('[Documento') ? (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
+                                <span style={{ fontSize: 22 }}>📄</span>
+                                <div>
+                                  <div style={{ fontWeight: 600, fontSize: 13, color: '#f8fafc' }}>{msg.content.replace('[', '').replace(']', '')}</div>
+                                  <div style={{ fontSize: 11, color: '#94a3b8' }}>Documento adjunto</div>
+                                </div>
+                              </div>
+                            ) : msg.content === '[Sticker]' ? (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
+                                <span style={{ fontSize: 22 }}>🏷️</span>
+                                <div style={{ fontSize: 13, color: '#cbd5e1' }}>Sticker</div>
+                              </div>
+                            ) : (
+                              <div style={{ whiteSpace: 'pre-wrap' }}>{msg.content}</div>
+                            )}
+                          </div>
 
                           <div style={{
                             display: 'flex',
@@ -1018,6 +1114,7 @@ export default function ConversationsPage() {
                     </div>
 
                     <div style={{ background: '#080E1F', padding: 12, borderRadius: 8, fontSize: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      <div><strong style={{ color: '#94a3b8' }}>Tipo de Contacto:</strong> <span style={{ color: active.is_lead ? '#f43f5e' : '#94a3b8', fontWeight: active.is_lead ? 700 : 500 }}>{active.is_lead ? '🔥 Lead Caliente (Interesado)' : 'Cliente General'}</span></div>
                       <div><strong style={{ color: '#94a3b8' }}>Estado del Bot:</strong> <span style={{ color: active.bot_active ? '#4ade80' : '#eab308' }}>{active.bot_active ? 'Activo' : 'Desactivado'}</span></div>
                       <div><strong style={{ color: '#94a3b8' }}>Silenciado:</strong> <span>{active.is_blacklisted ? 'Sí' : 'No'}</span></div>
                       <div><strong style={{ color: '#94a3b8' }}>Último Mensaje:</strong> <span>{formatWhatsAppTime(active.last_message_at)}</span></div>

@@ -19,14 +19,31 @@ const isRateLimited = (phone) => {
 
 // ─── Extraer texto del mensaje Baileys ────────────────────────────────────────
 const extractText = (msg) => {
-  const m = msg.message;
+  if (!msg || !msg.message) return '';
+  let m = msg.message;
+  if (m.ephemeralMessage) m = m.ephemeralMessage.message;
+  if (m.viewOnceMessage) m = m.viewOnceMessage.message;
+  if (m.viewOnceMessageV2) m = m.viewOnceMessageV2.message;
+  if (m.viewOnceMessageV2Extension) m = m.viewOnceMessageV2Extension.message;
+  if (m.documentWithCaptionMessage) m = m.documentWithCaptionMessage.message;
+  if (m.editedMessage) m = m.editedMessage.message?.protocolMessage?.editedMessage || m.editedMessage;
   if (!m) return '';
+
   return m.conversation
     || m.extendedTextMessage?.text
     || m.imageMessage?.caption
     || m.videoMessage?.caption
+    || m.documentMessage?.caption
     || m.buttonsResponseMessage?.selectedDisplayText
     || m.listResponseMessage?.title
+    || m.templateButtonReplyMessage?.selectedId
+    || (m.imageMessage ? '[Imagen]' : '')
+    || (m.videoMessage ? '[Video]' : '')
+    || (m.audioMessage ? '[Audio]' : '')
+    || (m.documentMessage ? (m.documentMessage.fileName ? `[Documento: ${m.documentMessage.fileName}]` : '[Documento]') : '')
+    || (m.stickerMessage ? '[Sticker]' : '')
+    || (m.locationMessage ? '[Ubicación]' : '')
+    || (m.contactMessage ? '[Contacto]' : '')
     || '';
 };
 
@@ -124,12 +141,6 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
     const text = extractText(msg).trim();
     if (!text) return;
 
-    // G) Ignorar placeholders de sistema entre corchetes (ej: [Sticker], [Ubicación], [Contacto])
-    if (text.startsWith('[') && text.endsWith(']')) {
-      console.log(`[MSG Filter] 🛑 Ignorando adjunto no de texto (${text}) de ${contactPhone}`);
-      return;
-    }
-
     console.log(`[MSG] ${contactPhone} (${contactName}) → ${userId}: "${text.slice(0, 60)}"`);
 
   // ── 1. Buscar o crear conversación (por número de contacto garantizado) ─────
@@ -185,28 +196,25 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
       timestamp: new Date().toISOString(),
     }));
 
-    // Emitir tiempo real al dashboard
+    // Emitir tiempo real al dashboard INMEDIATAMENTE (0ms)
     if (global.io) {
       try {
-        const { emitToUserRooms, getSessionUuid } = require('./sessionManager');
-        getSessionUuid(userId).then(sessionUuid => {
-          const msgObj = { id: Date.now().toString(), content: text, direction: 'inbound', sent_by: 'human', timestamp: new Date().toISOString() };
-          emitToUserRooms(global.io, userId, 'new_message', {
-            conversationId: conversation?.id || null,
-            contactPhone,
-            message: msgObj,
-          }, sessionUuid);
-          emitToUserRooms(global.io, userId, 'conversation_updated', {
-            conversationId: conversation?.id || null, contactPhone, contactName, lastMessage: text, timestamp: new Date().toISOString(),
-          }, sessionUuid);
-        });
-      } catch (_) {
+        const { emitToUserRooms } = require('./sessionManager');
         const msgObj = { id: Date.now().toString(), content: text, direction: 'inbound', sent_by: 'human', timestamp: new Date().toISOString() };
-        global.io.to(`user_${userId}`).emit('new_message', {
-          conversationId: conversation?.id || null,
+        emitToUserRooms(global.io, userId, 'new_message', {
+          conversationId: conversation?.id || `conv_${contactPhone}`,
           contactPhone,
           message: msgObj,
         });
+        emitToUserRooms(global.io, userId, 'conversation_updated', {
+          conversationId: conversation?.id || `conv_${contactPhone}`,
+          contactPhone,
+          contactName,
+          lastMessage: text,
+          timestamp: msgObj.timestamp,
+        });
+      } catch (errIo) {
+        console.warn('[MSG Handler] Aviso emitiendo socket inbound:', errIo.message);
       }
     }
   }
@@ -497,24 +505,21 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
 
     if (global.io) {
       try {
-        const { emitToUserRooms, getSessionUuid } = require('./sessionManager');
-        getSessionUuid(userId).then(sessionUuid => {
-          const msgObj = { id: Date.now().toString(), content: reply, direction: 'outbound', sent_by: 'bot', timestamp: new Date().toISOString() };
-          emitToUserRooms(global.io, userId, 'new_message', {
-            conversationId: conversation?.id || null,
-            contactPhone,
-            message: msgObj,
-          }, sessionUuid);
-          emitToUserRooms(global.io, userId, 'conversation_updated', {
-            conversationId: conversation?.id || null, contactPhone, lastMessage: reply, timestamp: new Date().toISOString(),
-          }, sessionUuid);
-        });
-      } catch (_) {
-        global.io.to(`user_${userId}`).emit('new_message', {
-          conversationId: conversation?.id || null,
+        const { emitToUserRooms } = require('./sessionManager');
+        const msgObj = { id: Date.now().toString(), content: reply, direction: 'outbound', sent_by: 'bot', timestamp: new Date().toISOString() };
+        emitToUserRooms(global.io, userId, 'new_message', {
+          conversationId: conversation?.id || `conv_${contactPhone}`,
           contactPhone,
-          message: { id: Date.now().toString(), content: reply, direction: 'outbound', sent_by: 'bot', timestamp: new Date().toISOString() },
+          message: msgObj,
         });
+        emitToUserRooms(global.io, userId, 'conversation_updated', {
+          conversationId: conversation?.id || `conv_${contactPhone}`,
+          contactPhone,
+          lastMessage: reply,
+          timestamp: msgObj.timestamp,
+        });
+      } catch (errIo) {
+        console.warn('[MSG Handler] Aviso emitiendo socket outbound:', errIo.message);
       }
     }
   }
