@@ -369,15 +369,25 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
   }
 
   try {
-    let pQuery = supabase.from('products_services').select('name, description, price, currency, category, image_url').eq('is_active', true).order('category', { ascending: true });
+    let pQuery = supabase.from('products_services').select('name, description, price, currency, category, image_url').eq('is_active', true);
     if (business?.id) {
       pQuery = pQuery.eq('business_id', business.id);
     }
-    const { data: prods } = await pQuery;
+
+    // Filtro SQL por presupuesto si el usuario menciona montos (ej: "menos de 150.000")
+    const priceMatch = (text || '').match(/(?:menos de|hasta|máximo|maximo|menor a)\s*\$?\s*([\d\.\,]+)/i);
+    if (priceMatch) {
+      const num = parseInt(priceMatch[1].replace(/[\.\,]/g, ''));
+      if (!isNaN(num) && num > 0) {
+        pQuery = pQuery.lte('price', num);
+      }
+    }
+
+    const { data: prods } = await pQuery.order('category', { ascending: true }).limit(30);
     products = prods || [];
 
     if (products.length === 0) {
-      const { data: defaultProds } = await supabase.from('products_services').select('name, description, price, currency, category, image_url').eq('is_active', true);
+      const { data: defaultProds } = await supabase.from('products_services').select('name, description, price, currency, category, image_url').eq('is_active', true).limit(15);
       products = defaultProds || [
         { name: 'Plan Básico BotWA', description: '1 Flujo IA (Vender o Agendar), 20 FAQs, 1 Número WA', price: 120000, currency: 'COP', category: 'Planes BotWA' },
         { name: 'Plan Profesional BotWA', description: 'Ambos Flujos (Vender Y Agendar), Catálogo RAG, Alerta Lead Caliente, 100 FAQs', price: 250000, currency: 'COP', category: 'Planes BotWA' },
