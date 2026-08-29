@@ -425,6 +425,29 @@ function PricingContent() {
           </div>
         </div>
 
+        {/* Disclaimer Legal & Recomendación de Seguridad Anti-Baneo */}
+        <div style={{
+          marginTop: 60,
+          background: 'rgba(8, 14, 31, 0.9)',
+          border: '1px solid rgba(255, 255, 255, 0.08)',
+          borderRadius: 16,
+          padding: '24px 28px',
+          fontSize: 12,
+          color: '#94a3b8',
+          lineHeight: 1.6
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#f59e0b', fontWeight: 700, fontSize: 13, marginBottom: 8 }}>
+            <span>⚠️</span>
+            <span>Recomendación de Seguridad y Buenas Prácticas:</span>
+          </div>
+          <p style={{ margin: '0 0 12px 0' }}>
+            Para proteger tus contactos personales y mantener un historial comercial limpio, <strong>recomendamos utilizar una línea, SIM o eSIM exclusiva para tu negocio</strong> en lugar de tu número personal principal. BotWA cuenta con protecciones anti-bloqueo avanzadas (delays humanizados de 800-2800ms, límites de tasa y respuesta exclusiva a mensajes entrantes sin envío de spam masivo), pero el uso responsable de la línea es fundamental.
+          </p>
+          <div style={{ borderTop: '1px solid rgba(255, 255, 255, 0.06)', paddingTop: 12, fontSize: 11, color: '#64748b' }}>
+            <strong>Descargo de Responsabilidad Oficial:</strong> BotWA es una solución de software independiente desarrollada para optimizar la atención al cliente de negocios. No estamos afiliados, asociados, autorizados, respaldados ni conectados de ninguna manera oficial con Meta Platforms, Inc. ni WhatsApp LLC. WhatsApp es una marca comercial registrada propiedad de Meta Platforms, Inc.
+          </div>
+        </div>
+
       </div>
     </div>
   );
