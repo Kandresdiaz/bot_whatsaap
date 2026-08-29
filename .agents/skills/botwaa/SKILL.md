@@ -167,13 +167,13 @@ WhatsApp → Baileys (protocolo directo, sin API de Meta)
 
 ---
 
-## Precios del SaaS y Estructura de Funcionalidades
+## Precios del SaaS y Oferta Alex Hormozi ($100M Offers)
 
-| Plan | Precio COP/mes | USD aprox | Flujos & Funcionalidades Clave |
-|---|---|---|---|
-| **Básico** | $120.000 | ~$30 | **1 Flujo a elegir (Vender O Agendar):** Captura de datos básicos (Nombre, Tel, Producto/Servicio), Respuestas RAG 24/7, 1 número WA, 20 docs FAQs. |
-| **Profesional** | $250.000 | ~$62 | **Ambos Flujos Activos (Vender Y Agendar):** Catálogo interactivo de Productos/Servicios RAG + Agendador de Citas + Captura de Lead Caliente con alerta instantánea + 100 docs. |
-| **Business / Agencia** | $450.000 | ~$112 | **Múltiples líneas & Adaptación por Nicho:** Múltiples números WA, White-label, Prompting y RAG a la medida (Done-For-You), Soporte Prioritario. |
+| Plan | Precio COP/mes | USD aprox | 7 Días Free | Funcionalidades & Bonos Clave |
+|---|---|---|---|---|
+| **Vendedor Automático** (Starter) | $120.000 | ~$30 | $0 Hoy | **Catálogo RAG 24/7:** 1 número WA, Catálogo interactivo RAG, respuestas en <2s, 1.500 msgs IA/mes, 20 docs FAQs. Bono: Plantilla de Catálogo para tu nicho. |
+| **Máquina de Ventas Pro** (Pro ⭐) | $249.000 | ~$62 | $0 Hoy | **Catálogo + Fotos Multimedia + Citas:** Envío automático de fotos multimedia de productos/servicios, agendador interactivo de citas/pedidos en dashboard, 5.000 msgs IA/mes, 100 docs, generador de FAQs con IA. Bono: Guía Anti-Baneo y Cierre Persuasivo. |
+| **Dominio Agencia / VIP** (Business) | $490.000 | ~$120 | $0 Hoy | **Múltiples líneas & White-Label:** Múltiples números WA, Marca blanca con tu logo, Prompting y RAG a la medida (Done-For-You), 20.000 msgs IA/mes, Catálogo ilimitado, Soporte prioritario 1 a 1 directo por WhatsApp. |
 
 ---
 
@@ -184,6 +184,7 @@ WhatsApp → Baileys (protocolo directo, sin API de Meta)
 SUPABASE_URL=https://rptxtzrwoyuedbjzpqhp.supabase.co
 SUPABASE_SERVICE_KEY=*** Supabase → Settings → API → service_role
 GROQ_API_KEY=*** console.groq.com
+MP_ACCESS_TOKEN=*** Mercado Pago → Developers → Tus Credenciales (Producción / Sandbox)
 ADMIN_PASSWORD=***
 ADMIN_WHATSAPP=57XXXXXXXXXX
 PORT=10000

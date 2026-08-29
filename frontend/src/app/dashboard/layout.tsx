@@ -74,6 +74,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       .catch(() => setGlobalBotEnabled(false));
   }, [effectiveUserId]);
 
+  const [subInfo, setSubInfo] = useState<any>(null);
+
+  // Cargar estado de suscripción de Mercado Pago
+  useEffect(() => {
+    if (!effectiveUserId || effectiveUserId === 'admin') return;
+    fetch(`${BACKEND}/api/billing/status/${effectiveUserId}`)
+      .then(r => r.json())
+      .then(d => {
+        if (d.success) setSubInfo(d.subscription);
+      })
+      .catch(() => {});
+  }, [effectiveUserId]);
+
   const toggleGlobalBot = async () => {
     if (!effectiveUserId || togglingGlobal) return;
     const nextVal = !globalBotEnabled;
@@ -271,6 +284,59 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 🛡️ Volver a Admin
               </Link>
             </div>
+          </div>
+        )}
+
+        {/* Trial Active Banner */}
+        {subInfo?.is_trial_active && (
+          <div style={{
+            background: 'linear-gradient(90deg, rgba(26,107,255,0.25) 0%, rgba(0,207,255,0.18) 100%)',
+            borderBottom: '1px solid rgba(0,207,255,0.4)',
+            padding: '10px 24px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: 10,
+            fontSize: 13,
+            marginBottom: 16
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 16 }}>⚡</span>
+              <span>
+                <strong>Prueba Gratuita de 7 Días Activa:</strong> Te quedan <strong>{subInfo.days_left_in_trial} días</strong> de tu plan <strong>{subInfo.plan_name}</strong>.
+              </span>
+            </div>
+            <Link href="/pricing" style={{ color: '#00CFFF', fontWeight: 700, textDecoration: 'none', fontSize: 12 }}>
+              Ver Beneficios y Planes →
+            </Link>
+          </div>
+        )}
+
+        {/* Expired / Past Due Warning Banner */}
+        {(subInfo?.status === 'past_due' || (user?.status === 'paused' && !user?.is_admin)) && (
+          <div style={{
+            background: 'rgba(239, 68, 68, 0.2)',
+            borderBottom: '1px solid rgba(239, 68, 68, 0.4)',
+            padding: '10px 24px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: 10,
+            fontSize: 13,
+            color: '#fca5a5',
+            marginBottom: 16
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 16 }}>⚠️</span>
+              <span>
+                <strong>Tu prueba o suscripción ha finalizado.</strong> El bot está pausado hasta actualizar tu método de pago.
+              </span>
+            </div>
+            <Link href="/pricing" className="btn btn-primary" style={{ padding: '6px 14px', fontSize: 12, textDecoration: 'none' }}>
+              Reactivar Servicio Ahora →
+            </Link>
           </div>
         )}
 

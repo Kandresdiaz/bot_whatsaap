@@ -79,10 +79,10 @@ export default function DashboardHome() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
             <div>
               <span className="badge badge-purple" style={{ fontSize: 13, padding: '5px 12px' }}>
-                {user?.plan === 'starter' ? 'Plan Básico ($120.000 COP / mes)' :
-                 user?.plan === 'pro' ? 'Plan Profesional ($250.000 COP / mes)' :
-                 user?.plan === 'business' ? 'Plan Business / Agencia ($450.000 COP / mes)' :
-                 user?.plan?.toUpperCase() || 'PLAN BÁSICO'}
+                {user?.plan === 'starter' ? 'Plan Vendedor Automático ($120.000 COP / mes)' :
+                 user?.plan === 'pro' ? 'Plan Máquina de Ventas Pro ($249.000 COP / mes)' :
+                 user?.plan === 'business' ? 'Plan Dominio Agencia / VIP ($490.000 COP / mes)' :
+                 user?.plan?.toUpperCase() || 'PLAN MÁQUINA DE VENTAS PRO'}
               </span>
               {user?.paid_until && (
                 <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 8 }}>
@@ -91,11 +91,11 @@ export default function DashboardHome() {
               )}
             </div>
             <div style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'left' }}>
-              ¿Modificar plan o vigencia?<br />
+              ¿Modificar plan o facturación?<br />
               {user?.is_admin ? (
                 <Link href="/admin" style={{ color: '#00CFFF', fontWeight: 600 }}>Gestionar desde Admin</Link>
               ) : (
-                <span style={{ color: 'var(--accent-light)' }}>Contacta al administrador</span>
+                <Link href="/pricing" style={{ color: '#00CFFF', fontWeight: 600 }}>Ver Planes y Cambiar</Link>
               )}
             </div>
           </div>
@@ -105,7 +105,7 @@ export default function DashboardHome() {
             <div>
               <div style={{ color: '#94a3b8', fontSize: 11 }}>💬 Mensajes IA Incluidos</div>
               <div style={{ fontWeight: 700, color: '#00CFFF', fontSize: 14 }}>
-                {user?.plan === 'starter' ? '1.000 / mes' : user?.plan === 'pro' ? '5.000 / mes' : '15.000 / mes'}
+                {user?.plan === 'starter' ? '1.500 / mes' : user?.plan === 'pro' ? '5.000 / mes' : '20.000 / mes'}
               </div>
             </div>
             <div>
@@ -117,7 +117,7 @@ export default function DashboardHome() {
             <div>
               <div style={{ color: '#94a3b8', fontSize: 11 }}>⚡ Funcionalidades Activas</div>
               <div style={{ fontWeight: 700, color: '#4ade80', fontSize: 12 }}>
-                {user?.plan === 'starter' ? 'Vender O Agendar' : user?.plan === 'pro' ? 'Vender + Agendar + RAG' : 'White-Label VIP'}
+                {user?.plan === 'starter' ? 'Catálogo RAG 24/7' : user?.plan === 'pro' ? 'Catálogo + Fotos + Citas' : 'White-Label VIP + DFY'}
               </div>
             </div>
           </div>

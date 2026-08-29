@@ -15,7 +15,7 @@ type Client = {
   whatsapp_sessions?: { status: string; phone_number: string }[];
 };
 
-const PLAN_PRICES: Record<string, number> = { starter: 120000, pro: 250000, business: 450000 };
+const PLAN_PRICES: Record<string, number> = { starter: 120000, pro: 249000, business: 490000 };
 
 export default function AdminClientsPage() {
   const { setSelectedClientContext } = useAuth();
