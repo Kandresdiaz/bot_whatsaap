@@ -21,6 +21,28 @@ export default function ConnectPage() {
   const [business, setBusiness] = useState<any>(null);
   const [isWizardOpen, setIsWizardOpen] = useState(false);
 
+  // Estado de suscripción / prueba de 7 días
+  const [subInfo, setSubInfo] = useState<any>(null);
+  const [loadingSub, setLoadingSub] = useState<boolean>(true);
+
+  useEffect(() => {
+    if (!effectiveUserId) return;
+    fetch(`${BACKEND}/api/billing/status/${effectiveUserId}`)
+      .then(r => r.json())
+      .then(d => {
+        if (d.success) setSubInfo(d.subscription);
+      })
+      .catch(() => {})
+      .finally(() => setLoadingSub(false));
+  }, [effectiveUserId]);
+
+  const hasAccess = Boolean(
+    user?.is_admin ||
+    subInfo?.is_trial_active ||
+    (subInfo?.status === 'active' && user?.status === 'active') ||
+    user?.status === 'active'
+  );
+
   // Cargar info del negocio al montar
   useEffect(() => {
     if (!effectiveUserId) return;
@@ -197,6 +219,59 @@ export default function ConnectPage() {
           ⚙️ {business?.is_configured ? 'Editar Datos del Negocio' : 'Configurar Bot (Wizard)'}
         </button>
       </div>
+
+      {/* Gatekeeper: Activar 7 Días de Prueba Gratis si no tiene suscripción */}
+      {!hasAccess && !loadingSub && (
+        <div className="card" style={{
+          marginBottom: 24,
+          border: '2px solid #00CFFF',
+          background: 'linear-gradient(135deg, rgba(26, 107, 255, 0.15) 0%, rgba(8, 14, 31, 0.95) 100%)',
+          padding: '28px 24px',
+          boxShadow: '0 10px 40px rgba(0, 207, 255, 0.15)'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 14, flexWrap: 'wrap' }}>
+            <div style={{ fontSize: 36 }}>🔒</div>
+            <div>
+              <h2 style={{ fontSize: 18, fontWeight: 800, color: '#fff', margin: 0 }}>
+                Paso Previo: Activa tus 7 Días de Prueba Gratis ($0 COP Hoy)
+              </h2>
+              <p style={{ fontSize: 13, color: '#cbd5e1', margin: '4px 0 0 0' }}>
+                Para conectar tu WhatsApp y activar el bot con IA, registra tu método de pago de forma segura en Mercado Pago.
+              </p>
+            </div>
+          </div>
+
+          <div style={{
+            background: 'rgba(0, 0, 0, 0.3)',
+            borderRadius: 12,
+            padding: '14px 18px',
+            marginBottom: 20,
+            fontSize: 13,
+            color: '#94a3b8',
+            lineHeight: 1.5,
+            border: '1px solid rgba(255, 255, 255, 0.05)'
+          }}>
+            ✅ <strong>$0 COP cobrados hoy.</strong> Tu prueba es 100% gratuita por 7 días completos.<br />
+            ✅ Cancela en cualquier momento con 1 solo clic desde tu panel antes de finalizar el día 7 sin cobro alguno.
+          </div>
+
+          <button
+            onClick={() => router.push('/pricing')}
+            className="btn btn-primary btn-mobile-full"
+            style={{
+              padding: '12px 24px',
+              fontSize: 14,
+              fontWeight: 800,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8
+            }}
+          >
+            🚀 Activar 7 Días Gratis y Desbloquear WhatsApp →
+          </button>
+        </div>
+      )}
 
       {/* Estado + Acciones */}
       <div style={{ display: 'flex', gap: 16, marginBottom: 24, flexWrap: 'wrap' }}>
