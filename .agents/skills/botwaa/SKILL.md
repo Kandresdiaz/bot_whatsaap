@@ -615,6 +615,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-29** | fix: resolver error payer and collector en sandbox y agregar avisos legales de Meta y buenas practicas anti-baneo (`6885988`) | Auto-deploy |
 
+| **2026-08-29** | fix: corregir creacion de PreApproval en Mercado Pago eliminando status authorized y asegurando email valido (`57be859`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
