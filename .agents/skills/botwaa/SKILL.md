@@ -617,6 +617,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-29** | fix: corregir creacion de PreApproval en Mercado Pago eliminando status authorized y asegurando email valido (`57be859`) | Auto-deploy |
 
+| **2026-08-29** | feat: agregar gatekeeper de 7 dias gratis en /dashboard/connect antes de escanear QR (`b9fc450`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
