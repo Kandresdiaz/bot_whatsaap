@@ -611,6 +611,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-28** | feat: motor de cierre comercial y agendamiento conversacional con captura de datos en DB y cumplimiento de politicas Meta (`c8204b2`) | Auto-deploy |
 
+| **2026-08-29** | feat: implementar flujo de 7 dias gratis con tarjeta via Mercado Pago y ofertas Alex Hormozi (`5d3d7cd`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
