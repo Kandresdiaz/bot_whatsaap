@@ -111,6 +111,10 @@ export default function ConnectPage() {
   // ── Iniciar sesión / pedir QR ─────────────────────────────────────────────
   const startSession = useCallback(async (force = false) => {
     if (!effectiveUserId) return;
+    if (!hasAccess) {
+      router.push('/pricing');
+      return;
+    }
     setStatus('connecting');
     setError(null);
     setQr(null);
@@ -273,59 +277,61 @@ export default function ConnectPage() {
         </div>
       )}
 
-      {/* Estado + Acciones */}
-      <div style={{ display: 'flex', gap: 16, marginBottom: 24, flexWrap: 'wrap' }}>
-        <div className="card" style={{ flex: 1, minWidth: 200 }}>
-          <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 10 }}>Estado del bot</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span className={`dot ${s.dot}`} />
-            <span style={{ fontWeight: 700, fontSize: 16 }}>{s.label}</span>
-          </div>
-          {phone && (
-            <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 8 }}>
-              📞 +{phone}
+      {/* Estado + Acciones (Solo visible si tiene prueba o suscripción activa) */}
+      {hasAccess ? (
+        <div style={{ display: 'flex', gap: 16, marginBottom: 24, flexWrap: 'wrap' }}>
+          <div className="card" style={{ flex: 1, minWidth: 200 }}>
+            <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 10 }}>Estado del bot</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span className={`dot ${s.dot}`} />
+              <span style={{ fontWeight: 700, fontSize: 16 }}>{s.label}</span>
             </div>
-          )}
-        </div>
-
-        <div className="card" style={{ flex: 1, minWidth: 200 }}>
-          <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>Acciones</div>
-          <div className="action-buttons-row" style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            {status !== 'connected' && (
-              <button className="btn btn-primary btn-mobile-full" onClick={() => startSession(true)}>
-                {status === 'connecting' ? (
-                  <>
-                    <span className="spinner" style={{ width: 14, height: 14, marginRight: 6 }} />
-                    Iniciando... (Clic para forzar nuevo QR)
-                  </>
-                ) : (
-                  '🔌 Conectar WhatsApp / Obtener QR'
-                )}
-              </button>
-            )}
-
-            {(status === 'qr_ready' || status === 'connected') && (
-              <button className="btn btn-danger btn-mobile-full" onClick={stopSession}>
-                ⏹ Desconectar
-              </button>
-            )}
-
-            {status === 'connected' && (
-              <button
-                className="btn btn-ghost btn-mobile-full"
-                onClick={async () => {
-                  await stopSession();
-                  setTimeout(() => startSession(true), 500);
-                }}
-                style={{ fontSize: 13 }}
-                title="Genera un QR limpio para descargar todo el historial antiguo de WhatsApp"
-              >
-                🔄 Re-vincular con nuevo QR (Historial)
-              </button>
+            {phone && (
+              <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 8 }}>
+                📞 +{phone}
+              </div>
             )}
           </div>
+
+          <div className="card" style={{ flex: 1, minWidth: 200 }}>
+            <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>Acciones</div>
+            <div className="action-buttons-row" style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              {status !== 'connected' && (
+                <button className="btn btn-primary btn-mobile-full" onClick={() => startSession(true)}>
+                  {status === 'connecting' ? (
+                    <>
+                      <span className="spinner" style={{ width: 14, height: 14, marginRight: 6 }} />
+                      Iniciando... (Clic para forzar nuevo QR)
+                    </>
+                  ) : (
+                    '🔌 Conectar WhatsApp / Obtener QR'
+                  )}
+                </button>
+              )}
+
+              {(status === 'qr_ready' || status === 'connected') && (
+                <button className="btn btn-danger btn-mobile-full" onClick={stopSession}>
+                  ⏹ Desconectar
+                </button>
+              )}
+
+              {status === 'connected' && (
+                <button
+                  className="btn btn-ghost btn-mobile-full"
+                  onClick={async () => {
+                    await stopSession();
+                    setTimeout(() => startSession(true), 500);
+                  }}
+                  style={{ fontSize: 13 }}
+                  title="Genera un QR limpio para descargar todo el historial antiguo de WhatsApp"
+                >
+                  🔄 Re-vincular con nuevo QR (Historial)
+                </button>
+              )}
+            </div>
+          </div>
         </div>
-      </div>
+      ) : null}
 
       {/* Tarjeta de Estado de Configuración Guardada (Permanente) */}
       {business && (business.is_configured || business.name) && (
@@ -408,7 +414,7 @@ export default function ConnectPage() {
       )}
 
       {/* QR Code */}
-      {qr && (
+      {hasAccess && qr && (
         <div className="qr-container" style={{ maxWidth: 360, marginBottom: 24 }}>
           <div style={{ fontSize: 36 }}>📷</div>
           <h2 style={{ fontWeight: 700, fontSize: 18 }}>Escanea con WhatsApp</h2>
