@@ -132,8 +132,8 @@ router.post('/create-trial-subscription', async (req, res) => {
 
     // Email a usar para el pagador
     let payerEmail = email;
-    if (isTestMode && (email.includes('admin') || email.includes('kevin') || email.includes('diaz') || email.includes('gmail'))) {
-      payerEmail = `test_payer_${String(userId).replace(/[^a-zA-Z0-9]/g, '').slice(0, 8)}@testuser.com`;
+    if (isTestMode && (email.includes('admin') || email.includes('kevin') || email.includes('diaz') || !email.includes('@'))) {
+      payerEmail = `test_payer_${String(userId).replace(/[^a-zA-Z0-9]/g, '').slice(0, 8)}@gmail.com`;
     }
 
     const buildBody = (pEmail) => ({
@@ -150,22 +150,17 @@ router.post('/create-trial-subscription', async (req, res) => {
       },
       payer_email: pEmail,
       back_url: backUrl,
-      external_reference: userId,
-      status: 'authorized'
+      external_reference: userId
     });
 
     let response;
     try {
       response = await preapproval.create({ body: buildBody(payerEmail) });
     } catch (createErr) {
-      // Si Mercado Pago arroja "Payer and collector cannot be the same user", reintentar con email de prueba
-      if (createErr.message && createErr.message.toLowerCase().includes('collector')) {
-        console.warn('[BILLING] Error de coleccionista detectado en Sandbox. Reintentando con test payer email...');
-        const fallbackTestEmail = `test_user_${Date.now()}@testuser.com`;
-        response = await preapproval.create({ body: buildBody(fallbackTestEmail) });
-      } else {
-        throw createErr;
-      }
+      console.warn('[BILLING] Error en primer intento de PreApproval:', createErr.message);
+      // Reintentar con email de prueba genérico @gmail.com
+      const fallbackTestEmail = `cliente_test_${Date.now().toString().slice(-6)}@gmail.com`;
+      response = await preapproval.create({ body: buildBody(fallbackTestEmail) });
     }
 
     // Guardar referencia preliminar en la base de datos
