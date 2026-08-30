@@ -621,6 +621,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-29** | feat: bloquear 100% el QR en /dashboard/connect hasta que el usuario registre tarjeta o active 7 dias gratis (`3f41653`) | Auto-deploy |
 
+| **2026-08-30** | feat: agregar ventana modal flotante de activacion de 7 dias gratis antes de escanear QR (`22e1186`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
