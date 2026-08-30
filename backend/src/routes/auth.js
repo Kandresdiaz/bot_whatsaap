@@ -108,7 +108,8 @@ router.post('/google', async (req, res) => {
         email,
         name: name || email.split('@')[0],
         plan: isAdmin ? 'business' : 'starter',
-        status: 'active',
+        status: isAdmin ? 'active' : 'trial',
+        subscription_status: isAdmin ? 'active' : 'none',
         is_admin: isAdmin,
       };
       if (id && id.length > 10) insertPayload.id = id;
@@ -127,7 +128,8 @@ router.post('/google', async (req, res) => {
           email,
           name: name || email.split('@')[0],
           plan: isAdmin ? 'business' : 'starter',
-          status: 'active',
+          status: isAdmin ? 'active' : 'trial',
+          subscription_status: isAdmin ? 'active' : 'none',
           is_admin: isAdmin
         };
       } else {

@@ -3,6 +3,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import OnboardingWizardModal from '@/components/OnboardingWizardModal';
+import TrialActivationModal from '@/components/TrialActivationModal';
 
 const BACKEND = 'https://bot-whatsaap-tkjd.onrender.com';
 
@@ -21,26 +22,36 @@ export default function ConnectPage() {
   const [business, setBusiness] = useState<any>(null);
   const [isWizardOpen, setIsWizardOpen] = useState(false);
 
-  // Estado de suscripción / prueba de 7 días
+  // Estado de suscripción / prueba de 7 días & Modal flotante
   const [subInfo, setSubInfo] = useState<any>(null);
   const [loadingSub, setLoadingSub] = useState<boolean>(true);
+  const [isTrialModalOpen, setIsTrialModalOpen] = useState(false);
 
   useEffect(() => {
     if (!effectiveUserId) return;
     fetch(`${BACKEND}/api/billing/status/${effectiveUserId}`)
       .then(r => r.json())
       .then(d => {
-        if (d.success) setSubInfo(d.subscription);
+        if (d.success) {
+          setSubInfo(d.subscription);
+          const access = Boolean(
+            user?.is_admin ||
+            d.subscription?.is_trial_active ||
+            (d.subscription?.status === 'active' && user?.status === 'active')
+          );
+          if (!access) {
+            setIsTrialModalOpen(true);
+          }
+        }
       })
       .catch(() => {})
       .finally(() => setLoadingSub(false));
-  }, [effectiveUserId]);
+  }, [effectiveUserId, user?.is_admin, user?.status]);
 
   const hasAccess = Boolean(
     user?.is_admin ||
     subInfo?.is_trial_active ||
-    (subInfo?.status === 'active' && user?.status === 'active') ||
-    user?.status === 'active'
+    (subInfo?.status === 'active' && user?.status === 'active')
   );
 
   // Cargar info del negocio al montar
@@ -202,6 +213,12 @@ export default function ConnectPage() {
 
   return (
     <div>
+      {/* Modal Flotante de Activación de Prueba Gratis (7 Días) */}
+      <TrialActivationModal
+        isOpen={isTrialModalOpen && !hasAccess && !loadingSub}
+        onClose={() => setIsTrialModalOpen(false)}
+      />
+
       {/* Modal Flotante de Configuración del Negocio */}
       <OnboardingWizardModal
         isOpen={isWizardOpen}
