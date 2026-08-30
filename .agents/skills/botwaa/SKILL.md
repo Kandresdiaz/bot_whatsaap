@@ -627,6 +627,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-30** | feat: agregar letrero movible infinito y funcion de cancelar suscripcion con modal de confirmacion (`b8ef9a2`) | Auto-deploy |
 
+| **2026-08-30** | feat: resolucion conversacional multi-turn inteligente, eliminacion de respuestas roboticas y logica de upgrade de planes (`636d7b1`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
