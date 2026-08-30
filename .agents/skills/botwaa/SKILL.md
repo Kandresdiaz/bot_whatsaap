@@ -625,6 +625,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-30** | feat: implementar flujo con gancho de boton de conectar que abre modal de 7 dias y aviso de validacion de 1 dolar reembolsable (`e720f98`) | Auto-deploy |
 
+| **2026-08-30** | feat: agregar letrero movible infinito y funcion de cancelar suscripcion con modal de confirmacion (`b8ef9a2`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
