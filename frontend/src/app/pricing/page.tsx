@@ -146,10 +146,63 @@ function PricingContent() {
       minHeight: '100vh',
       background: 'radial-gradient(ellipse at 50% 0%, rgba(26,107,255,0.15) 0%, #080E1F 70%)',
       color: '#f8fafc',
-      padding: '40px 16px 80px 16px',
+      paddingBottom: '80px',
       fontFamily: 'inherit',
     }}>
-      <div style={{ maxWidth: 1180, margin: '0 auto' }}>
+      {/* Infinite Marquee Ticker Ribbon (Letrero Movible Infinito) */}
+      <div style={{
+        background: 'linear-gradient(90deg, rgba(8,14,31,0.95) 0%, rgba(15,23,42,0.95) 50%, rgba(8,14,31,0.95) 100%)',
+        borderBottom: '1px solid rgba(0, 207, 255, 0.35)',
+        overflow: 'hidden',
+        whiteSpace: 'nowrap',
+        padding: '10px 0',
+        position: 'relative',
+        marginBottom: 30,
+        boxShadow: '0 4px 20px rgba(0, 207, 255, 0.12)'
+      }}>
+        <style>{`
+          @keyframes marqueeRibbon {
+            0% { transform: translateX(0%); }
+            100% { transform: translateX(-50%); }
+          }
+          .marquee-track {
+            display: flex;
+            width: max-content;
+            animation: marqueeRibbon 24s linear infinite;
+          }
+          .marquee-track:hover {
+            animation-play-state: paused;
+          }
+        `}</style>
+        <div className="marquee-track">
+          {[1, 2, 3, 4].map((group) => (
+            <div key={group} style={{ display: 'flex', alignItems: 'center', gap: 28, paddingRight: 28, fontSize: 12, fontWeight: 800, letterSpacing: '0.6px', textTransform: 'uppercase' }}>
+              <span style={{ color: '#00CFFF', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span>🔥</span> OFERTA IRRESISTIBLE: 7 DÍAS DE PRUEBA GRATIS ($0 COP HOY)
+              </span>
+              <span style={{ color: 'rgba(255,255,255,0.2)' }}>•</span>
+              <span style={{ color: '#4ade80', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span>💳</span> ACEPTA TARJETA NEQUI VISA Y BANCOLOMBIA
+              </span>
+              <span style={{ color: 'rgba(255,255,255,0.2)' }}>•</span>
+              <span style={{ color: '#f59e0b', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span>🛡️</span> CANCELA CON 1 CLIC SIN NINGÚN COSTO
+              </span>
+              <span style={{ color: 'rgba(255,255,255,0.2)' }}>•</span>
+              <span style={{ color: '#38bdf8', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span>🤖</span> TU VENDEDOR DE WHATSAPP 24/7 CON IA
+              </span>
+              <span style={{ color: 'rgba(255,255,255,0.2)' }}>•</span>
+              <span style={{ color: '#c084fc', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span>⚡</span> RESPUESTAS AUTOMÁTICAS EN MENOS DE 2 SEGUNDOS
+              </span>
+              <span style={{ color: 'rgba(255,255,255,0.2)' }}>•</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ maxWidth: 1180, margin: '0 auto', padding: '0 16px' }}>
         
         {/* Top Navigation */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 40 }}>
@@ -180,7 +233,7 @@ function PricingContent() {
             borderRadius: 30, padding: '6px 18px', fontSize: 13, fontWeight: 700, color: '#00CFFF',
             marginBottom: 16
           }}>
-            <span>⚡ OFERTA IRRESISTIBLE — 7 DÍAS DE PRUEBA GRATIS ($0 COP HOY)</span>
+            <span>⚡ OFERTA LIMITADA — 7 DÍAS GRATIS ($0 COP HOY)</span>
           </div>
 
           <h1 style={{

@@ -75,6 +75,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }, [effectiveUserId]);
 
   const [subInfo, setSubInfo] = useState<any>(null);
+  const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
+  const [cancelingSub, setCancelingSub] = useState(false);
+  const [cancelSuccessMsg, setCancelSuccessMsg] = useState<string | null>(null);
 
   // Cargar estado de suscripción de Mercado Pago
   useEffect(() => {
@@ -86,6 +89,33 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       })
       .catch(() => {});
   }, [effectiveUserId]);
+
+  const handleCancelSubscription = async () => {
+    if (!effectiveUserId) return;
+    setCancelingSub(true);
+    try {
+      const res = await fetch(`${BACKEND}/api/billing/cancel-subscription`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: effectiveUserId }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setCancelSuccessMsg('✅ Tu suscripción fue cancelada con éxito. No se realizará ningún cobro a tu tarjeta.');
+        setSubInfo((prev: any) => prev ? { ...prev, status: 'canceled', is_trial_active: false } : null);
+        setTimeout(() => {
+          setIsCancelModalOpen(false);
+          setCancelSuccessMsg(null);
+        }, 2500);
+      } else {
+        alert(data.error || 'Error al cancelar la suscripción');
+      }
+    } catch (err: any) {
+      alert('Error al conectar con el servidor: ' + err.message);
+    } finally {
+      setCancelingSub(false);
+    }
+  };
 
   const toggleGlobalBot = async () => {
     if (!effectiveUserId || togglingGlobal) return;
@@ -307,9 +337,94 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <strong>Prueba Gratuita de 7 Días Activa:</strong> Te quedan <strong>{subInfo.days_left_in_trial} días</strong> de tu plan <strong>{subInfo.plan_name}</strong>.
               </span>
             </div>
-            <Link href="/pricing" style={{ color: '#00CFFF', fontWeight: 700, textDecoration: 'none', fontSize: 12 }}>
-              Ver Beneficios y Planes →
-            </Link>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+              <Link href="/pricing" style={{ color: '#00CFFF', fontWeight: 700, textDecoration: 'none', fontSize: 12 }}>
+                Ver Beneficios y Planes →
+              </Link>
+              <button
+                onClick={() => setIsCancelModalOpen(true)}
+                style={{
+                  background: 'rgba(239, 68, 68, 0.15)',
+                  border: '1px solid rgba(239, 68, 68, 0.4)',
+                  color: '#fca5a5',
+                  borderRadius: 6,
+                  padding: '4px 10px',
+                  fontSize: 11,
+                  fontWeight: 600,
+                  cursor: 'pointer'
+                }}
+              >
+                🛑 Cancelar Suscripción
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Modal de Confirmación de Cancelación */}
+        {isCancelModalOpen && (
+          <div style={{
+            position: 'fixed',
+            top: 0, left: 0, right: 0, bottom: 0,
+            backgroundColor: 'rgba(4, 9, 24, 0.85)',
+            backdropFilter: 'blur(8px)',
+            zIndex: 99999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '16px'
+          }}>
+            <div style={{
+              background: '#0B132B',
+              border: '1px solid rgba(239, 68, 68, 0.5)',
+              borderRadius: 20,
+              padding: '30px 24px',
+              maxWidth: 480,
+              width: '100%',
+              textAlign: 'center',
+              boxShadow: '0 20px 50px rgba(0,0,0,0.5)'
+            }}>
+              <div style={{ fontSize: 44, marginBottom: 12 }}>🛑</div>
+              <h3 style={{ fontSize: 20, fontWeight: 800, color: '#fff', marginBottom: 8 }}>
+                ¿Deseas cancelar tu suscripción?
+              </h3>
+              <p style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.5, marginBottom: 20 }}>
+                Al cancelar, <strong>la renovación automática en Mercado Pago se anulará inmediatamente</strong> y no se realizará ningún cobro a tu tarjeta. Tu bot continuará respondiendo hasta el final de tu período actual.
+              </p>
+
+              {cancelSuccessMsg ? (
+                <div style={{
+                  background: 'rgba(34, 197, 94, 0.15)',
+                  border: '1px solid rgba(34, 197, 94, 0.4)',
+                  color: '#4ade80',
+                  padding: '12px',
+                  borderRadius: 10,
+                  fontSize: 13,
+                  fontWeight: 700,
+                  marginBottom: 16
+                }}>
+                  {cancelSuccessMsg}
+                </div>
+              ) : (
+                <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
+                  <button
+                    onClick={() => setIsCancelModalOpen(false)}
+                    className="btn btn-ghost"
+                    style={{ flex: 1, padding: '10px' }}
+                    disabled={cancelingSub}
+                  >
+                    Mantener mi Bot
+                  </button>
+                  <button
+                    onClick={handleCancelSubscription}
+                    className="btn btn-danger"
+                    style={{ flex: 1, padding: '10px' }}
+                    disabled={cancelingSub}
+                  >
+                    {cancelingSub ? 'Cancelando...' : 'Confirmar Cancelación'}
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
