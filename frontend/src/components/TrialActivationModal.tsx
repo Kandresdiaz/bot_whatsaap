@@ -148,6 +148,17 @@ export default function TrialActivationModal({ isOpen, onClose }: Props) {
             <span>🎁</span>
             <span>¡Incluye Catálogo con fotos, agendamiento y RAG anti-alucinación!</span>
           </div>
+
+          {/* Nota de validación de seguridad de $1 USD */}
+          <div style={{
+            borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+            paddingTop: 8,
+            fontSize: 11,
+            color: '#94a3b8',
+            lineHeight: 1.4
+          }}>
+            ℹ️ <strong>Validación de Seguridad Bancaria:</strong> Mercado Pago podría realizar un cobro temporal de verificación de seguridad (~$1 USD o ~$4.000 COP) que se <strong>anula y reembolsa automáticamente de inmediato</strong>. Tu prueba es 100% gratuita ($0 COP).
+          </div>
         </div>
 
         {/* Botón de Acción Principal */}

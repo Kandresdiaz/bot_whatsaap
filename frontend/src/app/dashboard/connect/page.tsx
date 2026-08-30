@@ -34,14 +34,6 @@ export default function ConnectPage() {
       .then(d => {
         if (d.success) {
           setSubInfo(d.subscription);
-          const access = Boolean(
-            user?.is_admin ||
-            d.subscription?.is_trial_active ||
-            (d.subscription?.status === 'active' && user?.status === 'active')
-          );
-          if (!access) {
-            setIsTrialModalOpen(true);
-          }
         }
       })
       .catch(() => {})
@@ -241,114 +233,59 @@ export default function ConnectPage() {
         </button>
       </div>
 
-      {/* Gatekeeper: Activar 7 Días de Prueba Gratis si no tiene suscripción */}
-      {!hasAccess && !loadingSub && (
-        <div className="card" style={{
-          marginBottom: 24,
-          border: '2px solid #00CFFF',
-          background: 'linear-gradient(135deg, rgba(26, 107, 255, 0.15) 0%, rgba(8, 14, 31, 0.95) 100%)',
-          padding: '28px 24px',
-          boxShadow: '0 10px 40px rgba(0, 207, 255, 0.15)'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 14, flexWrap: 'wrap' }}>
-            <div style={{ fontSize: 36 }}>🔒</div>
-            <div>
-              <h2 style={{ fontSize: 18, fontWeight: 800, color: '#fff', margin: 0 }}>
-                Paso Previo: Activa tus 7 Días de Prueba Gratis ($0 COP Hoy)
-              </h2>
-              <p style={{ fontSize: 13, color: '#cbd5e1', margin: '4px 0 0 0' }}>
-                Para conectar tu WhatsApp y activar el bot con IA, registra tu método de pago de forma segura en Mercado Pago.
-              </p>
+      {/* Estado + Acciones */}
+      <div style={{ display: 'flex', gap: 16, marginBottom: 24, flexWrap: 'wrap' }}>
+        <div className="card" style={{ flex: 1, minWidth: 200 }}>
+          <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 10 }}>Estado del bot</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span className={`dot ${s.dot}`} />
+            <span style={{ fontWeight: 700, fontSize: 16 }}>{s.label}</span>
+          </div>
+          {phone && (
+            <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 8 }}>
+              📞 +{phone}
             </div>
-          </div>
-
-          <div style={{
-            background: 'rgba(0, 0, 0, 0.3)',
-            borderRadius: 12,
-            padding: '14px 18px',
-            marginBottom: 20,
-            fontSize: 13,
-            color: '#94a3b8',
-            lineHeight: 1.5,
-            border: '1px solid rgba(255, 255, 255, 0.05)'
-          }}>
-            ✅ <strong>$0 COP cobrados hoy.</strong> Tu prueba es 100% gratuita por 7 días completos.<br />
-            ✅ Cancela en cualquier momento con 1 solo clic desde tu panel antes de finalizar el día 7 sin cobro alguno.
-          </div>
-
-          <button
-            onClick={() => router.push('/pricing')}
-            className="btn btn-primary btn-mobile-full"
-            style={{
-              padding: '12px 24px',
-              fontSize: 14,
-              fontWeight: 800,
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 8
-            }}
-          >
-            🚀 Activar 7 Días Gratis y Desbloquear WhatsApp →
-          </button>
+          )}
         </div>
-      )}
 
-      {/* Estado + Acciones (Solo visible si tiene prueba o suscripción activa) */}
-      {hasAccess ? (
-        <div style={{ display: 'flex', gap: 16, marginBottom: 24, flexWrap: 'wrap' }}>
-          <div className="card" style={{ flex: 1, minWidth: 200 }}>
-            <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 10 }}>Estado del bot</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span className={`dot ${s.dot}`} />
-              <span style={{ fontWeight: 700, fontSize: 16 }}>{s.label}</span>
-            </div>
-            {phone && (
-              <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 8 }}>
-                📞 +{phone}
-              </div>
+        <div className="card" style={{ flex: 1, minWidth: 200 }}>
+          <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>Acciones</div>
+          <div className="action-buttons-row" style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            {status !== 'connected' && (
+              <button className="btn btn-primary btn-mobile-full" onClick={() => startSession(true)}>
+                {status === 'connecting' ? (
+                  <>
+                    <span className="spinner" style={{ width: 14, height: 14, marginRight: 6 }} />
+                    Iniciando... (Clic para forzar nuevo QR)
+                  </>
+                ) : (
+                  '🔌 Conectar WhatsApp / Obtener QR'
+                )}
+              </button>
+            )}
+
+            {(status === 'qr_ready' || status === 'connected') && (
+              <button className="btn btn-danger btn-mobile-full" onClick={stopSession}>
+                ⏹ Desconectar
+              </button>
+            )}
+
+            {status === 'connected' && (
+              <button
+                className="btn btn-ghost btn-mobile-full"
+                onClick={async () => {
+                  await stopSession();
+                  setTimeout(() => startSession(true), 500);
+                }}
+                style={{ fontSize: 13 }}
+                title="Genera un QR limpio para descargar todo el historial antiguo de WhatsApp"
+              >
+                🔄 Re-vincular con nuevo QR (Historial)
+              </button>
             )}
           </div>
-
-          <div className="card" style={{ flex: 1, minWidth: 200 }}>
-            <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>Acciones</div>
-            <div className="action-buttons-row" style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-              {status !== 'connected' && (
-                <button className="btn btn-primary btn-mobile-full" onClick={() => startSession(true)}>
-                  {status === 'connecting' ? (
-                    <>
-                      <span className="spinner" style={{ width: 14, height: 14, marginRight: 6 }} />
-                      Iniciando... (Clic para forzar nuevo QR)
-                    </>
-                  ) : (
-                    '🔌 Conectar WhatsApp / Obtener QR'
-                  )}
-                </button>
-              )}
-
-              {(status === 'qr_ready' || status === 'connected') && (
-                <button className="btn btn-danger btn-mobile-full" onClick={stopSession}>
-                  ⏹ Desconectar
-                </button>
-              )}
-
-              {status === 'connected' && (
-                <button
-                  className="btn btn-ghost btn-mobile-full"
-                  onClick={async () => {
-                    await stopSession();
-                    setTimeout(() => startSession(true), 500);
-                  }}
-                  style={{ fontSize: 13 }}
-                  title="Genera un QR limpio para descargar todo el historial antiguo de WhatsApp"
-                >
-                  🔄 Re-vincular con nuevo QR (Historial)
-                </button>
-              )}
-            </div>
-          </div>
         </div>
-      ) : null}
+      </div>
 
       {/* Tarjeta de Estado de Configuración Guardada (Permanente) */}
       {business && (business.is_configured || business.name) && (

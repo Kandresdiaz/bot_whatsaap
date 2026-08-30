@@ -398,7 +398,7 @@ function PricingContent() {
             {[
               {
                 q: '¿Se me cobrará algo hoy al ingresar mi tarjeta?',
-                a: 'No. El cargo de hoy es de exactamente $0 COP. Mercado Pago únicamente valida que el medio de pago sea real y activo. El primer cobro solo ocurrirá automáticamente al finalizar tu 7mo día de prueba si decides continuar.'
+                a: 'El costo de tu prueba es $0 COP. Para verificar que la tarjeta es real y activa, Mercado Pago podría realizar una retención temporal de seguridad (~$1 USD o ~$4.000 COP) que se anula y reembolsa automáticamente en segundos en tu extracto. El cobro real de tu plan solo ocurrirá al finalizar tu 7mo día de prueba si decides continuar.'
               },
               {
                 q: '¿Puedo pagar con Nequi o Bancolombia?',
