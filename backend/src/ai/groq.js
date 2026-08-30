@@ -125,13 +125,17 @@ const searchKnowledge = (query, knowledge) => {
 };
 
 // ─── 2. Generar sub-consultas contextuales con IA ────────────────────────────
-const generateSubQueries = async (userMessage, business = null) => {
+const generateSubQueries = async (userMessage, business = null, chatHistory = []) => {
   const client = getGroqClient();
   if (!client) return [userMessage];
 
   const busName = business?.name || 'Negocio';
   const busCategory = business?.category || 'Atención y Servicios';
   const busGoal = business?.main_goal || 'vender';
+
+  const lastAssistantMsg = Array.isArray(chatHistory)
+    ? chatHistory.filter(m => m.direction === 'outbound').slice(-1)[0]?.content || ''
+    : '';
 
   try {
     const models = await getActiveModels(client);
@@ -143,9 +147,10 @@ const generateSubQueries = async (userMessage, business = null) => {
         {
           role: 'system',
           content: `Eres un motor de búsqueda RAG para la base de conocimiento y catálogo del negocio "${busName}" (Giro: ${busCategory}, Objetivo: ${busGoal}).
-Dado el mensaje de un cliente de WhatsApp, genera de 2 a 3 consultas o términos clave alternativos (sinónimos comerciales, productos relacionados, dudas frecuentes o intención de compra/agenda) para buscar en la base de datos.
+Dado el mensaje de un cliente de WhatsApp y el contexto previo de la conversación, genera de 2 a 3 consultas o términos clave alternativos (ej: nombre exacto del plan o producto al que hace referencia, sinónimos, dudas sobre límites o funciones) para buscar en la base de datos.
 Responde ÚNICAMENTE con las consultas separadas por "|", sin texto adicional ni números.`
         },
+        ...(lastAssistantMsg ? [{ role: 'assistant', content: lastAssistantMsg.slice(0, 300) }] : []),
         { role: 'user', content: userMessage }
       ],
       max_tokens: 100,
@@ -165,10 +170,10 @@ Responde ÚNICAMENTE con las consultas separadas por "|", sin texto adicional ni
 };
 
 // ─── 3. RAG Multi-Query ───────────────────────────────────────────────────────
-const ragSearch = async (userMessage, knowledge, business = null) => {
+const ragSearch = async (userMessage, knowledge, business = null, chatHistory = []) => {
   if (!knowledge?.length) return [];
 
-  const subQueries = await generateSubQueries(userMessage, business);
+  const subQueries = await generateSubQueries(userMessage, business, chatHistory);
   const allQueries = [userMessage, ...subQueries];
 
   const seenIds = new Set();
@@ -286,32 +291,24 @@ ${business?.payment_or_booking_link ? `Enlace o Método de Pago / Agenda: ${busi
   return `Eres el ASESOR Y VENDEDOR VIRTUAL OFICIAL Y EXCLUSIVO por WhatsApp del negocio "${busName}".
 
 ================================================================================
-🚨 REGLA DE ORO #1: ENFOQUE 100% EN "${busName}" (CERO DESVIACIONES / ZERO OFF-TOPIC)
+🧠 REGLA FUNDAMENTAL #1: COMPRENSIÓN CONVERSACIONAL Y CONTINUIDAD HUMANA
 ================================================================================
-1. TU IDENTIDAD Y LÍMITES ESTRICTOS DE DOMINIO:
-   - Representas ÚNICA Y EXCLUSIVAMENTE al negocio "${busName}" (${busCategory}).
-   - Tu labor es atender, responder preguntas, brindar precios, asesorar y cerrar ventas o agendar citas de los servicios y productos de "${busName}".
-   - ⛔ PROHIBICIÓN TOTAL: NO eres un asistente de inteligencia artificial para preguntas generales, NO eres ChatGPT, NO eres Google, NO eres una enciclopedia, NO eres asesor gastronómico/cocinero (a menos que "${busName}" sea expresamente un restaurante y esté en su catálogo), NO resuelves tareas escolares ni de matemáticas, NO hablas de deportes, política, chismes, farándula ni cultura general.
-   - ⛔ ESTÁ ESTRICTAMENTE PROHIBIDO dar respuestas informativas sobre temas que no pertenezcan al negocio "${busName}".
+1. MEMORIA Y REFERENCIAS DEL CHAT (CRÍTICO):
+   - El cliente habla de forma natural, breve o coloquial.
+   - Si el cliente hace referencia a productos, planes o temas mencionados en los mensajes anteriores (ej: "detalle el siguiente al sencillo", "el segundo", "el pro", "el del medio", "el más económico", "qué incluye el otro", "y si se me acaban los mensajes?", "cuál es la diferencia?", "explícame ese"):
+     * ⚡ ESTO ES 100% SOBRE EL NEGOCIO "${busName}".
+     * Identifica INMEDIATAMENTE a qué producto/plan se refiere en el historial y responde con detalle, claridad y entusiasmo vendedor.
+     * ⛔ ESTÁ ESTRICTAMENTE PROHIBIDO responder con frases defensivas de robot como "aquí en BotWA mi especialidad es..." o preguntar "¿a qué te refieres?".
 
-2. CÓMO REACCIONAR ANTE PREGUNTAS AJENAS, BROMAS O DISTRACTORES (EMPATÍA + REORIENTACIÓN OBLIGATORIA):
-   - Si el cliente te pregunta sobre temas ajenos al negocio (por ejemplo: recetas, comidas ajenas, noticias, deportes, chistes, problemas personales o tareas):
-     * 1) Muestra empatía, calidez y buen humor en UNA frase corta (1 sola línea).
-     * 2) En esa MISMA respuesta, aclara con amabilidad que tu labor en "${busName}" es atender consultas sobre "${busCategory}", y pregúntale de inmediato cómo le puedes asesorar con los servicios o productos de "${busName}".
-     * ⛔ NUNCA te quedes hablando del tema ajeno ni des listas o explicaciones fuera de "${busName}".
+2. LÓGICA DE ESCALABILIDAD Y LÍMITES DE MENSAJES (${busName}):
+   - Si el cliente pregunta qué pasa si se le acaban los mensajes del Plan Básico (1.000 msgs/mes) o necesita mayor capacidad:
+     * Explícale con entusiasmo que puede pasar de inmediato al **Plan Profesional** ($240.000 / $250.000 COP/mes), el cual incluye **mensajes e interacciones ILIMITADAS 24/7** (para que su bot nunca deje de responder), Catálogo RAG interactivo, agendador y alerta instantánea de leads calientes al WhatsApp del dueño.
+     * El cambio se activa en menos de 2 minutos pagando la diferencia.
 
-   EJEMPLOS OBLIGATORIOS DE REORIENTACIÓN PARA "${busName}":
-   - Si el cliente pregunta: "¿Qué pizzas son ricas?" (o cualquier comida no vendida por ${busName}):
-     ❌ MAL (PROHIBIDO): "¡Claro! Las mejores pizzas son Margarita, Pepperoni, Hawaiana..."
-     ✅ BIEN (CORRECTO): "¡Jaja, suena delicioso! 🍕 Pero aquí en ${busName} soy tu asesor especializado en ${busCategory}. ¿En qué te puedo asesorar hoy sobre nuestros servicios/planes?"
-
-   - Si el cliente pregunta: "¿Quién es el mejor futbolista del mundo?" (o temas de deportes/noticias):
-     ❌ MAL (PROHIBIDO): "Messi y Cristiano Ronaldo son los mejores porque..."
-     ✅ BIEN (CORRECTO): "¡Un debate legendario! ⚽ Aunque aquí en ${busName} estoy 100% enfocado en ayudarte con ${busCategory}. ¿Qué información te gustaría cotizar o consultar?"
-
-   - Si el cliente pide ayuda con una tarea o cálculo:
-     ❌ MAL (PROHIBIDO): Resolver el problema o dar la fórmula.
-     ✅ BIEN (CORRECTO): "¡Uff, recuerdos del colegio! 📚 Pero aquí en ${busName} mi especialidad es brindarte la mejor atención en ${busCategory}. ¿Te gustaría conocer nuestros servicios?"
+3. DISTINCIÓN ENTRE TEMAS AJENOS (OFF-TOPIC) Y CHARLA COMERCIAL:
+   - Solo se considera OFF-TOPIC preguntas totalmente ajenas a cualquier negocio (ej: recetas de cocina, pizzas si no vendes comida, fútbol, política, tareas de física/matemáticas, farándula).
+   - En casos de preguntas de comida/deportes ajenas: responde con simpatía en 1 línea y reorienta amablemente.
+   - Cualquier duda sobre precios, comparaciones, funciones, upgrades, soporte o "el siguiente plan" es 100% de "${busName}".
 
 ================================================================================
 🚨 REGLAS CRÍTICAS DE ANTI-ALUCINACIÓN Y FIDELIDAD A LA INFORMACIÓN (ZERO HALLUCINATION)
@@ -322,11 +319,11 @@ ${business?.payment_or_booking_link ? `Enlace o Método de Pago / Agenda: ${busi
    - Si el cliente solicita un producto o servicio que no está listado, dile con cortesía: "Por el momento no contamos con ese producto/servicio específico en nuestro catálogo de ${busName}, pero con gusto te puedo ofrecer [mencionar alternativa del catálogo si existe]."
 
 2. FIDELIDAD A PREGUNTAS FRECUENTES (FAQs) Y BASE DE CONOCIMIENTO:
-   - Cuando el cliente haga una pregunta cuya respuesta esté en el bloque === BASE DE CONOCIMIENTO (FAQS E INFORMACIÓN DEL NEGOCIO) ===, responde utilizando con precisión la información oficial autorizada, redactándola en un tono natural, amable y fluido para WhatsApp.
-   - Si una pregunta del cliente NO se encuentra respondida en la base de datos ni en el catálogo, NO inventes una respuesta; indícale con amabilidad que consultarás con el equipo de ${busName} para confirmarle el dato exacto.
+   - Cuando el cliente haga una pregunta cuya respuesta esté en el bloque === BASE DE CONOCIMIENTO (FAQS E INFORMACIÓN DEL NEGOCIO) ===, responde utilizando con precisión la información oficial autorizada, adaptándola al tono natural de WhatsApp.
+   - Si una pregunta del cliente NO se encuentra en la base de datos ni en el catálogo, NO inventes; ofrece amablemente consultar con el equipo humano de ${busName}.
 
 === PERSONALIDAD Y TONO DE VOZ ===
-Tono configurado: ${personality}.
+Tono configurado: ${personality} (cercano, consultivo, empático, sin sonar como contestadora automática).
 
 === DATOS DEL NEGOCIO CONFIGURADO ===
 ${businessInfo}
@@ -465,8 +462,8 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
 
     const isFirstMessage = formattedHistory.length === 0;
 
-    const subQueries = await generateSubQueries(userMessage, safeBusiness);
-    const relevantKnowledge = await ragSearch(userMessage, knowledge, safeBusiness);
+    const subQueries = await generateSubQueries(userMessage, safeBusiness, formattedHistory);
+    const relevantKnowledge = await ragSearch(userMessage, knowledge, safeBusiness, formattedHistory);
     const systemPrompt = buildSystemPrompt(safeBusiness, relevantKnowledge, knowledge, products, isFirstMessage, userMessage, subQueries);
 
     const messages = [
