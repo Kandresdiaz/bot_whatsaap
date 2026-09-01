@@ -255,6 +255,17 @@ const buildSystemPrompt = (business, relevantKnowledge, allKnowledge, products =
   const busGoal = business?.main_goal || 'vender';
   const isSales = busGoal !== 'agendar_citas';
   const personality = business?.bot_personality || 'persuasivo, cercano, profesional y entusiasta';
+  const tz = business?.timezone || 'America/Bogota';
+
+  // Fecha y hora real actual del negocio para agendamiento inteligente
+  const now = new Date();
+  const currentDateStr = now.toLocaleDateString('es-CO', {
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: tz
+  });
+  const currentTimeStr = now.toLocaleTimeString('es-CO', {
+    hour: '2-digit', minute: '2-digit', hour12: true, timeZone: tz
+  });
+  const isoDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(now); // YYYY-MM-DD
 
   const relevantContext = buildKnowledgeContext(relevantKnowledge);
   const hasKnowledge = !!relevantContext;
@@ -267,7 +278,7 @@ const buildSystemPrompt = (business, relevantKnowledge, allKnowledge, products =
 
   const mainGoalText = isSales
     ? `ASESORAR Y VENDER LOS PRODUCTOS O SERVICIOS DE "${busName}". Responde dudas comerciales con entusiasmo y cercanía, presenta las opciones del catálogo oficial y guía al cliente hacia la compra o pedido.`
-    : `ASESORAR Y AGENDAR CITAS O RESERVAS PARA "${busName}". Atiende todas las dudas del cliente con cortesía e invítalo a agendar su cita, horario o turno disponible.`;
+    : `ASESORAR Y AGENDAR CITAS O RESERVAS PARA "${busName}". Atiende todas las dudas del cliente con cortesía, consulta el calendario y horarios disponibles e invítalo a agendar su cita o turno disponible.`;
 
   const isGreetingOnly = isFirstMessage && isSimpleGreeting(userMessage);
 
@@ -290,6 +301,12 @@ ${business?.payment_or_booking_link ? `Enlace o Método de Pago / Agenda: ${busi
 
   return `Eres el ASESOR Y VENDEDOR VIRTUAL OFICIAL Y EXCLUSIVO por WhatsApp del negocio "${busName}".
 Tu misión principal es: ${mainGoalText}
+
+=== 📅 FECHA Y HORA ACTUAL DEL SISTEMA (ZONA HORARIA ${tz}) ===
+Hoy es: ${currentDateStr}
+Fecha ISO actual: ${isoDateStr} (YYYY-MM-DD)
+Hora actual: ${currentTimeStr}
+Usa esta fecha para calcular con precisión días como "hoy", "mañana", "el jueves", "la próxima semana", etc.
 
 ================================================================================
 🚀 REGLA FUNDAMENTAL #1: IMPULSO COMERCIAL Y PROACTIVIDAD (CERO BUCLES)
@@ -325,7 +342,7 @@ Tu misión principal es: ${mainGoalText}
    - Utiliza la información autorizada de la Base de Conocimiento para responder dudas sobre funcionamiento, requerimientos, garantías y métodos de pago.
 
 === PERSONALIDAD Y TONO DE VOZ ===
-Tono configurado: ${personality} (cercano, consultivo, empático, seguro y enfocado en cerrar ventas).
+Tono configurado: ${personality} (cercano, consultivo, empático, seguro y enfocado en cerrar ventas o agendar citas).
 
 === DATOS DEL NEGOCIO CONFIGURADO ===
 ${businessInfo}
@@ -344,7 +361,7 @@ ${hasKnowledge
 }
 
 === ESTRATEGIA DE CIERRE PERSUASIVO Y CAPTURA DE DATOS (CONVERSIÓN Y CITAS) ===
-Tu rol es actuar como un asesor comercial y cerrador de ventas de alto nivel. Cada interacción debe avanzar con empatía hacia un cierre concreto:
+Tu rol es actuar como un asesor comercial y cerrador de citas/ventas de alto nivel. Cada interacción debe avanzar con empatía hacia un cierre concreto:
 
 1. POLÍTICAS DE META Y HUMANIZACIÓN (CERO SPAM):
    - Responde de forma directa, ágil y atractiva (máximo 3 a 5 líneas por mensaje) con 1 o 2 emojis.
@@ -361,13 +378,15 @@ ${isSales ? `2. PROCESO DE CIERRE DE VENTAS PARA "${busName}":
    - PASO 4 (Confirmación y registro): Cuando el cliente confirme la compra o entregue sus datos, añade al final de tu respuesta:
      [LEAD_CALIENTE]
      [DATOS_CLIENTE: {"nombre": "Nombre Cliente", "producto": "Producto Confirmado", "ciudad": "Ciudad/Dirección", "metodo_pago": "Método de Pago"}]`
-: `2. PROCESO DE AGENDAMIENTO DE CITAS / RESERVAS PARA "${busName}":
-   - PASO 1 (Identificar servicio): Confirma qué servicio del catálogo requiere.
-   - PASO 2 (Coordinar fecha y hora): Pregunta qué día y hora le queda más conveniente (${business?.active_hours_start || '08:00'} a ${business?.active_hours_end || '20:00'}).
-   - PASO 3 (Toma de datos): Pide con cortesía su Nombre completo para agendar el cupo.
-   - PASO 4 (Confirmación y registro): Confirma con alegría ("¡Listo [Nombre]! Te hemos agendado para [Servicio] el [Fecha] a las [Hora] 🎉") e incluye:
+: `2. PROCESO DE AGENDAMIENTO DE CITAS / RESERVAS EN CALENDARIO PARA "${busName}":
+   - Usa la fecha actual (${isoDateStr}) para calcular fechas exactas (ej: "mañana" -> día siguiente, "el viernes" -> próximo viernes).
+   - Horario de atención: ${business?.active_hours_start || '08:00'} a ${business?.active_hours_end || '20:00'}.
+   - PASO 1 (Identificar servicio): Confirma qué servicio o motivo de cita requiere.
+   - PASO 2 (Coordinar fecha y hora): Pregunta qué día y hora prefiere dentro del horario de atención.
+   - PASO 3 (Toma de datos): Pide con cortesía su Nombre completo si aún no lo ha proporcionado.
+   - PASO 4 (Confirmación y registro en calendario): Confirma con entusiasmo ("¡Excelente [Nombre]! Te he reservado tu cita para [Servicio] el [Fecha] a las [Hora] 📅✨") e incluye SIEMPRE al final de tu respuesta:
      [LEAD_CALIENTE]
-     [NUEVA_CITA: {"nombre": "Nombre Cliente", "servicio": "Servicio Agendado", "fecha": "YYYY-MM-DD", "hora": "HH:MM:SS"}]`}
+     [NUEVA_CITA: {"nombre": "Nombre Cliente", "servicio": "Servicio Agendado", "fecha": "YYYY-MM-DD", "hora": "HH:MM:00"}]`}
 
 3. ENVÍO DE FOTOS O IMÁGENES:
    - Si el cliente solicita fotos o imágenes de un producto que tenga imagen_url en el catálogo, incluye al final de tu respuesta: [ENVIAR_IMAGEN: Nombre del Producto].
@@ -376,7 +395,7 @@ ${isSales ? `2. PROCESO DE CIERRE DE VENTAS PARA "${busName}":
 1. Responde de forma directa, ágil y concisa con 1 o 2 emojis apropiados.
 2. NUNCA inventes información o precios que no existan en el catálogo.
 3. NUNCA repitas el saludo de bienvenida ni hagas la misma pregunta si ya estás conversando activamente.
-4. Conduce siempre al cliente con amabilidad hacia la compra, prueba gratis o agendamiento.`;
+4. Conduce siempre al cliente con amabilidad hacia la compra, prueba gratis o agendamiento en el calendario.`;
 };
 
 // ─── Respuesta Asistente Humana (Fallback Contextual de Alto Nivel) ───────────

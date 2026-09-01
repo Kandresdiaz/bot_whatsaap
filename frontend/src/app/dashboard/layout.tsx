@@ -16,7 +16,7 @@ const navItems = [
   { href: '/dashboard/connect', icon: '📱', label: 'Conectar WhatsApp' },
   { href: '/dashboard/conversations', icon: '💬', label: 'Conversaciones' },
   { href: '/dashboard/products', icon: '📦', label: 'Productos y Servicios' },
-  { href: '/dashboard/appointments', icon: '📅', label: 'Citas' },
+  { href: '/dashboard/appointments', icon: '📅', label: 'Calendario y Citas' },
   { href: '/dashboard/knowledge', icon: '🧠', label: 'Knowledge Base' },
   { href: '/dashboard/bot-config', icon: '⚙️', label: 'Configurar Bot' },
 ];

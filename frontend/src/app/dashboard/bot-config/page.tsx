@@ -98,17 +98,30 @@ export default function BotConfigPage() {
               <input className="input" placeholder="Ej: Bogotá" value={config.city || ''} onChange={e => set('city', e.target.value)} />
             </div>
             <div>
-              <label style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 6, display: 'block' }}>Objetivo Principal de Cierre</label>
+              <label style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 6, display: 'block' }}>Objetivo Principal del Asistente</label>
               <select className="input" value={config.main_goal || 'vender'} onChange={e => set('main_goal', e.target.value)}>
-                <option value="vender">🛒 Vender Productos / Servicios</option>
-                <option value="agendar_citas">📅 Agendar Citas / Reservas</option>
+                <option value="vender">🛒 Vender Productos / Servicios (Catálogo RAG)</option>
+                <option value="agendar_citas">📅 Agendar Citas / Reservas (Calendario)</option>
               </select>
             </div>
+            {config.main_goal === 'agendar_citas' && (
+              <div>
+                <label style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 6, display: 'block' }}>Duración Promedio por Cita</label>
+                <select className="input" value={config.appointment_duration || 30} onChange={e => set('appointment_duration', parseInt(e.target.value))}>
+                  <option value={15}>⏱️ 15 minutos</option>
+                  <option value={30}>⏱️ 30 minutos (Recomendado)</option>
+                  <option value={45}>⏱️ 45 minutos</option>
+                  <option value={60}>⏱️ 1 hora</option>
+                  <option value={90}>⏱️ 1 hora y media</option>
+                  <option value={120}>⏱️ 2 horas</option>
+                </select>
+              </div>
+            )}
             <div>
               <label style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 6, display: 'block' }}>
-                {config.main_goal === 'agendar_citas' ? 'Link / Método de Agenda' : 'Link / Método de Pago o Catálogo'}
+                {config.main_goal === 'agendar_citas' ? 'Link / Método de Agenda Externo (Opcional)' : 'Link / Método de Pago o Catálogo'}
               </label>
-              <input className="input" placeholder="Ej: Nequi / Wompi / Link Calendly" value={config.payment_or_booking_link || ''} onChange={e => set('payment_or_booking_link', e.target.value)} />
+              <input className="input" placeholder={config.main_goal === 'agendar_citas' ? 'Ej: Link Calendly o dejar vacío para agenda por bot' : 'Ej: Nequi / Wompi / Link de Pago'} value={config.payment_or_booking_link || ''} onChange={e => set('payment_or_booking_link', e.target.value)} />
             </div>
           </div>
         </div>
