@@ -424,10 +424,10 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
 
     if (products.length === 0 && (business?.name === 'BotWA' || !business?.name)) {
       const { data: defaultProds } = await supabase.from('products_services').select('name, description, price, currency, category, image_url').eq('is_active', true).limit(15);
-      products = defaultProds || [
-        { name: 'Plan Básico BotWA', description: '1 Flujo IA (Vender o Agendar), 20 FAQs, 1 Número WA', price: 120000, currency: 'COP', category: 'Planes BotWA' },
-        { name: 'Plan Profesional BotWA', description: 'Ambos Flujos (Vender Y Agendar), Catálogo RAG, Alerta Lead Caliente, 100 FAQs', price: 250000, currency: 'COP', category: 'Planes BotWA' },
-        { name: 'Plan Agencia / Business BotWA', description: 'Múltiples Números WA, White-label, Prompting y RAG a medida, Soporte Prioritario', price: 450000, currency: 'COP', category: 'Planes BotWA' },
+      products = (defaultProds && defaultProds.length > 0) ? defaultProds : [
+        { name: 'Plan Vendedor Automático', description: '1 Línea WhatsApp, Catálogo interactivo RAG 24/7, respuestas en <2s, 1.500 msgs IA/mes, 20 docs FAQs.', price: 120000, currency: 'COP', category: 'Planes BotWA' },
+        { name: 'Plan Máquina de Ventas Pro (⭐ Más Popular)', description: 'Catálogo con Fotos Multimedia automáticas, Agendador de Citas y Pedidos, 5.000 msgs IA/mes, 100 docs.', price: 249000, currency: 'COP', category: 'Planes BotWA' },
+        { name: 'Plan Dominio Agencia / VIP', description: 'Multi-línea WhatsApp, Marca Blanca con tu logo, Prompting y RAG a medida (Done-For-You), 20.000 msgs IA/mes.', price: 490000, currency: 'COP', category: 'Planes BotWA' },
       ];
     }
   } catch (e) {

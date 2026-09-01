@@ -294,19 +294,53 @@ router.post('/mp-webhook', async (req, res) => {
   }
 });
 
-// ── GET: Consultar estado de suscripción de un usuario ─────────────────────────
+// ── GET: Consultar estado de suscripción y consumo de mensajes de un usuario ──
 router.get('/status/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
 
-    const { data: user, error } = await supabase
-      .from('users')
-      .select('id, name, email, plan, status, subscription_status, trial_ends_at, paid_until, card_brand, card_last4, mp_preapproval_id')
-      .eq('id', userId)
-      .maybeSingle();
+    const isUuid = (str) => typeof str === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
 
-    if (!user || error) {
-      return res.status(404).json({ success: false, error: 'Usuario no encontrado' });
+    let user = null;
+    if (isUuid(userId)) {
+      const { data } = await supabase
+        .from('users')
+        .select('id, name, email, plan, status, is_admin, subscription_status, trial_ends_at, paid_until, card_brand, card_last4, mp_preapproval_id')
+        .eq('id', userId)
+        .maybeSingle();
+      user = data;
+    }
+
+    if (!user) {
+      // Intentar buscar por email o si es admin
+      if (userId.includes('@')) {
+        const { data } = await supabase
+          .from('users')
+          .select('id, name, email, plan, status, is_admin, subscription_status, trial_ends_at, paid_until, card_brand, card_last4, mp_preapproval_id')
+          .eq('email', userId)
+          .maybeSingle();
+        user = data;
+      } else if (userId === 'admin') {
+        const { data } = await supabase
+          .from('users')
+          .select('id, name, email, plan, status, is_admin, subscription_status, trial_ends_at, paid_until, card_brand, card_last4, mp_preapproval_id')
+          .eq('is_admin', true)
+          .order('created_at', { ascending: false })
+          .limit(1);
+        user = data && data[0];
+      }
+    }
+
+    // Fallback por defecto si no existe en DB aún
+    if (!user) {
+      user = {
+        id: userId,
+        name: 'Usuario BotWA',
+        email: 'usuario@bot.com',
+        plan: 'pro',
+        status: 'active',
+        subscription_status: 'trialing',
+      };
     }
 
     const now = new Date();
@@ -321,7 +355,82 @@ router.get('/status/:userId', async (req, res) => {
       }
     }
 
-    const planInfo = HORMOZI_PLANS[user.plan] || HORMOZI_PLANS.starter;
+    const userPlanKey = (user.plan || 'starter').toLowerCase();
+    const planInfo = HORMOZI_PLANS[userPlanKey] || HORMOZI_PLANS.starter;
+
+    // Límites por plan
+    const PLAN_LIMITS = {
+      starter: 1500,
+      pro: 5000,
+      business: 20000,
+    };
+    const messageLimit = PLAN_LIMITS[userPlanKey] || 1500;
+
+    // ── Calcular consumo de mensajes del mes actual ──────────────────────────
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    let messagesUsedThisMonth = 0;
+    let tokensUsedThisMonth = 0;
+
+    try {
+      // 1. Obtener session_ids del usuario
+      const sessionIdsSet = new Set();
+      if (isUuid(user.id)) sessionIdsSet.add(user.id);
+
+      const { data: userSessions } = await supabase
+        .from('whatsapp_sessions')
+        .select('id')
+        .eq('user_id', user.id);
+
+      if (Array.isArray(userSessions)) {
+        userSessions.forEach(s => { if (s?.id && isUuid(s.id)) sessionIdsSet.add(s.id); });
+      }
+
+      const sessionList = Array.from(sessionIdsSet);
+
+      // 2. Obtener IDs de conversaciones asociadas
+      let convIds = [];
+      if (sessionList.length > 0) {
+        const { data: convs } = await supabase
+          .from('conversations')
+          .select('id')
+          .in('session_id', sessionList);
+        if (Array.isArray(convs)) {
+          convIds = convs.map(c => c.id).filter(Boolean);
+        }
+      }
+
+      // Si no encontró por session_id específico y es admin, obtener conversaciones generales
+      if (convIds.length === 0 && user.is_admin) {
+        const { data: allConvs } = await supabase
+          .from('conversations')
+          .select('id')
+          .limit(200);
+        if (Array.isArray(allConvs)) {
+          convIds = allConvs.map(c => c.id).filter(Boolean);
+        }
+      }
+
+      // 3. Contar mensajes generados por el bot este mes
+      if (convIds.length > 0) {
+        const { data: msgsData } = await supabase
+          .from('messages')
+          .select('id, groq_tokens_used')
+          .in('conversation_id', convIds)
+          .eq('sent_by', 'bot')
+          .gte('timestamp', startOfMonth);
+
+        if (Array.isArray(msgsData)) {
+          messagesUsedThisMonth = msgsData.length;
+          tokensUsedThisMonth = msgsData.reduce((acc, m) => acc + (Number(m.groq_tokens_used) || 0), 0);
+        }
+      }
+    } catch (msgErr) {
+      console.warn('[BILLING] Error calculando métricas de mensajes:', msgErr.message);
+    }
+
+    const percentageUsed = Math.min(100, Math.round((messagesUsedThisMonth / messageLimit) * 100));
+    const isApproachingLimit = percentageUsed >= 80;
+    const hasReachedLimit = messagesUsedThisMonth >= messageLimit;
 
     return res.json({
       success: true,
@@ -331,13 +440,29 @@ router.get('/status/:userId', async (req, res) => {
         days_left_in_trial: daysLeftInTrial,
         trial_ends_at: user.trial_ends_at,
         paid_until: user.paid_until,
-        plan: user.plan || 'starter',
+        plan: userPlanKey,
         plan_name: planInfo.name,
         price_cop: planInfo.priceCOP,
         card_brand: user.card_brand,
         card_last4: user.card_last4,
         mp_preapproval_id: user.mp_preapproval_id,
-        user_status: user.status
+        user_status: user.status,
+        is_admin: Boolean(user.is_admin)
+      },
+      usage: {
+        messages_used_this_month: messagesUsedThisMonth,
+        message_limit: messageLimit,
+        percentage_used: percentageUsed,
+        tokens_used_this_month: tokensUsedThisMonth,
+        is_approaching_limit: isApproachingLimit,
+        has_reached_limit: hasReachedLimit,
+        start_of_month: startOfMonth,
+        docs_limit: userPlanKey === 'starter' ? 20 : userPlanKey === 'pro' ? 100 : 'Ilimitados',
+        features_summary: userPlanKey === 'starter'
+          ? 'Catálogo RAG 24/7'
+          : userPlanKey === 'pro'
+          ? 'Catálogo + Fotos Multimedia + Citas'
+          : 'Multi-Línea + White-Label + DFY VIP'
       }
     });
   } catch (err) {

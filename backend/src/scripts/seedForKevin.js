@@ -9,41 +9,47 @@ async function seedAll() {
 
   const defaultProducts = [
     {
-      name: 'Plan Básico BotWA',
-      description: '1 número de WhatsApp, Agente IA 24/7 RAG, 1.000 msgs/mes, 20 docs FAQs. Captura de datos para Vender O Agendar.',
+      name: 'Plan Vendedor Automático',
+      description: '1 Línea WhatsApp, Catálogo interactivo RAG 24/7, respuestas en <2s, 1.500 msgs IA/mes, 20 docs FAQs. Incluye 7 días gratis.',
       price: 120000,
       currency: 'COP',
-      category: 'Planes / Membresías',
+      category: 'Planes BotWA',
       is_active: true,
     },
     {
-      name: 'Plan Profesional BotWA',
-      description: '1 número de WhatsApp, Vender Y Agendar simultáneamente, Catálogo interactivo RAG, Lead Alert instantáneo, 5.000 msgs/mes, 100 docs.',
-      price: 250000,
+      name: 'Plan Máquina de Ventas Pro (⭐ Más Popular)',
+      description: '1 Línea WhatsApp, Catálogo con Fotos Multimedia automáticas, Agendador de Citas y Pedidos, 5.000 msgs IA/mes, 100 docs, Generador de FAQs con IA. Incluye 7 días gratis.',
+      price: 249000,
       currency: 'COP',
-      category: 'Planes / Membresías',
+      category: 'Planes BotWA',
       is_active: true,
     },
     {
-      name: 'Plan Business / Agencia BotWA',
-      description: 'Multi-línea WhatsApp, White-Label VIP, 15.000 msgs/mes, Configuración e instalación Done-For-You por el equipo.',
-      price: 450000,
+      name: 'Plan Dominio Agencia / VIP',
+      description: 'Multi-línea WhatsApp, Marca Blanca con tu logo, Prompting y RAG a medida (Done-For-You), 20.000 msgs IA/mes, Catálogo ilimitado y Soporte 1 a 1.',
+      price: 490000,
       currency: 'COP',
-      category: 'Planes / Membresías',
+      category: 'Planes BotWA',
       is_active: true,
     },
   ];
 
   const defaultKnowledge = [
     {
-      title: 'Información General de BotWA y Garantías',
-      content: 'BotWA es un servicio SaaS de bots de WhatsApp con inteligencia artificial para negocios latinoamericanos. Ofrecemos 7 días de prueba gratis y garantía de devolución del 100% en los primeros 14 días. La instalación toma menos de 15 minutos.',
-      type: 'text',
+      title: '¿Qué es BotWA y cómo funciona?',
+      content: 'BotWA es una plataforma SaaS que conecta un asistente de Inteligencia Artificial a tu propio número de WhatsApp escaneando un código QR (estilo WhatsApp Web). Atiende clientes, envía fotos del catálogo con precios, agenda citas y califica prospectos en tiempo real las 24 horas.',
+      type: 'faq',
       is_active: true,
     },
     {
-      title: 'Preguntas Frecuentes (FAQs) de BotWA',
-      content: '¿Cómo funciona? Te conectas escaneando un código QR estilo WhatsApp Web. El bot responde las 24 horas del día sin necesidad de tener el celular encendido todo el tiempo. ¿Qué pasa si el bot no sabe algo? Te notifica al instante a tu WhatsApp para que un humano responda.',
+      title: 'Planes, Precios y 7 Días de Prueba Gratis',
+      content: 'Ofrecemos 3 planes con 7 Días de Prueba Gratis ($0 hoy): 1) Plan Vendedor Automático: $120.000 COP/mes (1.500 msgs IA/mes). 2) Plan Máquina de Ventas Pro ($249.000 COP/mes, 5.000 msgs con fotos y citas). 3) Plan Dominio Agencia / VIP: $490.000 COP/mes (20.000 msgs multi-línea y marca blanca).',
+      type: 'faq',
+      is_active: true,
+    },
+    {
+      title: 'Límites de mensajes y qué pasa si se acaban',
+      content: '¿Cuántos mensajes de IA incluye cada plan? Plan Vendedor Automático: 1.500 msgs/mes. Plan Pro: 5.000 msgs/mes. Plan VIP: 20.000 msgs/mes. Si tu negocio llega al límite de mensajes en el mes, nunca deja de atender clientes: puedes pasar de inmediato al plan superior pagando solo el excedente o adquirir paquetes de mensajes adicionales desde tu panel.',
       type: 'faq',
       is_active: true,
     },

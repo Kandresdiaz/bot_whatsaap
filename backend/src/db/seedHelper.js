@@ -40,6 +40,12 @@ const defaultKnowledge = [
     type: 'faq',
     is_active: true,
   },
+  {
+    title: 'Límites de mensajes y qué pasa si se acaban',
+    content: '¿Cuántos mensajes de IA incluye cada plan? El Plan Vendedor Automático ($120.000 COP) incluye hasta 1.500 mensajes/mes. El Plan Máquina de Ventas Pro ($249.000 COP) incluye hasta 5.000 mensajes/mes con fotos y agendamiento. El Plan Dominio Agencia ($490.000 COP) incluye hasta 20.000 mensajes/mes multi-línea. ¿Qué pasa si se me acaban los mensajes del mes? Tu negocio nunca deja de responder; puedes hacer un upgrade inmediato al plan superior pagando solo el excedente o adquirir paquetes de mensajes adicionales desde tu panel.',
+    type: 'faq',
+    is_active: true,
+  },
 ];
 
 const seedDefaultProductsAndKB = async (businessId) => {
