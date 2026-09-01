@@ -16,6 +16,30 @@ router.post('/start', async (req, res) => {
 
   try {
     const validUserId = (!userId || userId === 'admin') ? '00000000-0000-0000-0000-000000000001' : userId;
+    const isUuid = (str) => typeof str === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+
+    // 0. Verificar que el usuario tenga suscripción paga o prueba con tarjeta activa (si no es admin)
+    if (validUserId && isUuid(validUserId) && validUserId !== '00000000-0000-0000-0000-000000000001') {
+      const { data: u } = await supabase
+        .from('users')
+        .select('id, is_admin, status, subscription_status, trial_ends_at, paid_until')
+        .eq('id', validUserId)
+        .maybeSingle();
+
+      if (u && !u.is_admin) {
+        const now = new Date();
+        const isTrialActive = u.subscription_status === 'trialing' && u.trial_ends_at && new Date(u.trial_ends_at) > now;
+        const isPaidActive = (u.subscription_status === 'active' || u.status === 'active') && (!u.paid_until || new Date(u.paid_until) > now);
+
+        if (u.status === 'paused' || (!isTrialActive && !isPaidActive)) {
+          return res.status(403).json({
+            success: false,
+            error: 'Debes registrar tu tarjeta para activar los 7 días de prueba gratis o tener una suscripción activa para conectar WhatsApp.',
+            requires_subscription: true,
+          });
+        }
+      }
+    }
 
     // 1. Obtener el business_id del usuario si existe
     const { data: business } = await supabase
