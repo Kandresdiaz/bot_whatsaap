@@ -633,6 +633,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-01** | feat: optimizar continuidad multi-turno, contexto y conversion en embudo de ventas (`7d96ffb`) | Auto-deploy |
 
+| **2026-09-01** | feat: modulo completo de Calendario interactivo y gestion de Citas con IA en WhatsApp y Supabase (`4af9069`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
