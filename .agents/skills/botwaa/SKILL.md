@@ -637,6 +637,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-01** | feat: modulo completo de Pedidos y Ventas para productos (relojes, tiendas, comida) con IA y Supabase (`cff7e0b`) | Auto-deploy |
 
+| **2026-09-01** | fix(security): validacion estricta de suscripcion paga o prueba con tarjeta para iniciar bot y conexion WhatsApp (`477f736`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
