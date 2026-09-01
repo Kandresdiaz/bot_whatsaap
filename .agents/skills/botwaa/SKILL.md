@@ -635,6 +635,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-01** | feat: modulo completo de Calendario interactivo y gestion de Citas con IA en WhatsApp y Supabase (`4af9069`) | Auto-deploy |
 
+| **2026-09-01** | feat: modulo completo de Pedidos y Ventas para productos (relojes, tiendas, comida) con IA y Supabase (`cff7e0b`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
