@@ -379,21 +379,49 @@ ${isSales ? `2. PROCESO DE CIERRE DE VENTAS PARA "${busName}":
 4. Conduce siempre al cliente con amabilidad hacia la compra, prueba gratis o agendamiento.`;
 };
 
-// ─── Respuesta Asistente Humana (Fallback Sin Excusas Técnicas) ─────────────
+// ─── Respuesta Asistente Humana (Fallback Contextual de Alto Nivel) ───────────
 const buildHumanAssistantReply = (userMessage, business, products = [], chatHistory = []) => {
   const busName = business?.name || 'BotWA';
   const busCategory = business?.category || 'nuestros servicios';
   const isSales = business?.main_goal !== 'agendar_citas';
   const validHistory = Array.isArray(chatHistory) ? chatHistory.filter(m => m && m.content) : [];
-  const hasHistory = validHistory.length > 1;
+  const hasHistory = validHistory.length > 0;
+  const norm = normalizeSearchText(userMessage);
 
+  // 1. Saludo simple inicial sin historial
   if (!hasHistory && isSimpleGreeting(userMessage)) {
-    return business?.greeting_msg || `¡Hola! 👋 Te damos la bienvenida a ${busName}. ¿En qué te podemos ayudar hoy?`;
+    return business?.greeting_msg || `¡Hola! 👋 Te damos la bienvenida a ${busName}. ¿En qué te podemos asesorar hoy?`;
   }
 
+  // 2. Consulta sobre límites de mensajes o qué pasa si se acaban
+  if (norm.includes('acaban') || norm.includes('limite') || norm.includes('tope') || norm.includes('mas mensajes') || norm.includes('cuantos mensajes')) {
+    return `En ${busName} tu negocio nunca deja de atender clientes. Si llegas al límite de mensajes de tu plan (1.500 en Starter o 5.000 en Pro), puedes pasar de inmediato al plan superior pagando solo la diferencia o comprar paquetes adicionales de mensajes desde tu panel en 2 minutos. ¿Te gustaría iniciar los 7 días de prueba gratis ($0 hoy)? 😊`;
+  }
+
+  // 3. Consulta por el Plan Pro / Del Medio
+  if (norm.includes('pro') || norm.includes('medio') || norm.includes('segundo') || norm.includes('foto')) {
+    return `El *Plan Máquina de Ventas Pro ($249.000 COP/mes - ⭐ Más Popular)* incluye 1 línea de WhatsApp, envío automático de fotos multimedia de tu catálogo, agendador interactivo de citas/pedidos, hasta 5.000 mensajes IA/mes, 100 docs y generador de FAQs con IA. Incluye 7 días gratis ($0 hoy). ¿Te gustaría activarlo para tu negocio? 😊`;
+  }
+
+  // 4. Consulta por el Plan Starter / Básico
+  if (norm.includes('basico') || norm.includes('sencillo') || norm.includes('starter') || norm.includes('primero') || norm.includes('economico') || norm.includes('barato')) {
+    return `El *Plan Vendedor Automático ($120.000 COP/mes)* incluye 1 línea de WhatsApp, catálogo interactivo RAG 24/7, respuestas en <2s, hasta 1.500 mensajes IA/mes y 20 docs en base de conocimiento. Incluye 7 días gratis ($0 hoy). ¿Te gustaría activarlo para tu negocio? 😊`;
+  }
+
+  // 5. Consulta por el Plan VIP / Agencia
+  if (norm.includes('vip') || norm.includes('agencia') || norm.includes('marca blanca') || norm.includes('multiple') || norm.includes('tercero')) {
+    return `El *Plan Dominio Agencia / VIP ($490.000 COP/mes)* incluye múltiples líneas de WhatsApp, marca blanca con tu propio logo, prompting y catálogo RAG a la medida (Done-For-You), hasta 20.000 mensajes IA/mes y soporte prioritario 1 a 1 por WhatsApp. ¿Te gustaría implementarlo en tu empresa? 😊`;
+  }
+
+  // 6. Intención de compra, prueba gratis o registro de datos
+  if (norm.includes('prueba') || norm.includes('interesa') || norm.includes('activar') || norm.includes('empezar') || norm.includes('comprar') || norm.includes('quiero') || norm.includes('listo') || norm.includes('negocio es') || norm.includes('llama')) {
+    return `¡Excelente elección! 🎉 Te ayudamos a conectar tu bot en menos de 10 minutos con los 7 Días de Prueba Gratis ($0 COP hoy). Para iniciar, ¿cuál es el nombre de tu negocio y qué productos o servicios vendes? 😊 [LEAD_CALIENTE]`;
+  }
+
+  // 7. Presentación general de catálogo / precios
   if (Array.isArray(products) && products.length > 0) {
     const top = products.slice(0, 3).map(p => `• *${p.name}*: $${Number(p.price || 0).toLocaleString('es-CO')} ${p.currency || 'COP'}${p.description ? ` (${p.description})` : ''}`).join('\n');
-    return `¡Con gusto! En ${busName} te ofrecemos las siguientes opciones para automatizar tus ventas 24/7:\n\n${top}\n\nTodos nuestros planes incluyen 7 días de prueba gratis ($0 hoy) 🎁 ¿Cuál de estas opciones te gustaría activar para tu negocio? 😊`;
+    return `¡Con gusto! En ${busName} te ofrecemos las siguientes soluciones para automatizar tus ventas 24/7:\n\n${top}\n\nTodos nuestros planes incluyen 7 días de prueba gratis ($0 hoy) 🎁 ¿Cuál de estas opciones te gustaría activar para tu negocio? 😊`;
   }
 
   if (!isSales) {
@@ -437,14 +465,14 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
     }
   }
 
-  // ── 1. Caché Redis / RAM (0 Tokens Gastados) ────────────────────────────
+  // ── 1. Caché Redis / RAM (Solo para preguntas aisladas sin historial previo) ──
   const validHistory = Array.isArray(chatHistory) ? chatHistory.filter(m => m && m.content) : [];
-  const isFirstOrIsolated = validHistory.length <= 2;
+  const isFirstOrIsolated = validHistory.length === 0;
 
-  if (isFirstOrIsolated) {
+  if (isFirstOrIsolated && normQuery.length > 5) {
     try {
       const cached = await getCachedAiResponse(safeBusiness?.id, userMessage);
-      if (cached) {
+      if (cached && cached.reply) {
         return { ...cached, tokensUsed: 0 };
       }
     } catch (_) {}
