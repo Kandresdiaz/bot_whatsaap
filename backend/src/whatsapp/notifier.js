@@ -8,7 +8,10 @@ const notifyLead = async (business, contactPhone, contactName, lastMessage, conv
     const dashboardUrl = `${process.env.FRONTEND_URL || 'https://bot-whatsaap.vercel.app'}/dashboard/conversations`;
 
     let detailsText = '';
-    if (extraData?.newAppointmentData) {
+    if (extraData?.newOrderData) {
+      const o = extraData.newOrderData;
+      detailsText = `\n\n📦 *NUEVO PEDIDO REGISTRADO*\n• Cliente: ${o.nombre || contactName}\n• Producto/s: ${o.producto || 'Pedido'}\n• Cantidad: ${o.cantidad || 1}\n• Total: $${o.total || 'Por liquidar'}\n• Dirección: ${o.direccion || o.ciudad || 'No especificada'}\n• Pago: ${o.metodo_pago || 'Contraentrega / Nequi'}`;
+    } else if (extraData?.newAppointmentData) {
       const a = extraData.newAppointmentData;
       detailsText = `\n\n📅 *NUEVA CITA AGENDADA*\n• Servicio: ${a.servicio || 'General'}\n• Fecha: ${a.fecha || 'Por coordinar'}\n• Hora: ${a.hora || 'Por coordinar'}\n• Nombre: ${a.nombre || contactName}`;
     } else if (extraData?.clientData) {

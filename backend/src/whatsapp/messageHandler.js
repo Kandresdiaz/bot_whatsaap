@@ -451,14 +451,14 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
   }
 
   // ── 10. RAG + Groq: generar respuesta ─────────────────────────────────────
-  const { reply, isLeadHot, tokensUsed, imageName, newAppointmentData, clientData, ragChunksUsed } = await askGroq(
+  const { reply, isLeadHot, tokensUsed, imageName, newAppointmentData, newOrderData, clientData, ragChunksUsed } = await askGroq(
     text, business, knowledge, history, products
   );
 
   console.log(`[RAG] Chunks usados: ${ragChunksUsed} | Tokens: ${tokensUsed}`);
 
   // ── 11. Actualizar Nombre de Contacto si fue capturado en el Cierre ────────
-  const capturedName = clientData?.nombre || newAppointmentData?.nombre;
+  const capturedName = newOrderData?.nombre || clientData?.nombre || newAppointmentData?.nombre;
   if (capturedName && conversation?.id && (conversation.contact_name === contactPhone || !conversation.contact_name)) {
     await safeQuery(() => supabase.from('conversations').update({ contact_name: capturedName }).eq('id', conversation.id));
   }
@@ -487,11 +487,45 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
     }
   }
 
+  // ── 12.1 Registrar Pedido Automático en Base de Datos (si aplica venta de productos) ──
+  const orderDetails = newOrderData || (clientData && (clientData.producto || clientData.ciudad) ? clientData : null);
+  if (orderDetails && conversation?.id && business?.id) {
+    try {
+      const itemsList = orderDetails.producto || orderDetails.items || 'Pedido por WhatsApp';
+      const address = orderDetails.direccion || orderDetails.ciudad || '';
+      const city = orderDetails.ciudad || '';
+      const payMethod = orderDetails.metodo_pago || 'Nequi / Transferencia';
+      const orderTotal = orderDetails.total || orderDetails.precio || 0;
+
+      const { data: newOrder } = await supabase.from('orders').insert({
+        conversation_id: conversation.id,
+        business_id: business.id,
+        client_name: capturedName || contactName,
+        client_phone: contactPhone,
+        items: itemsList,
+        total_amount: isNaN(parseFloat(orderTotal)) ? 0 : parseFloat(orderTotal),
+        currency: 'COP',
+        shipping_address: address,
+        city: city,
+        payment_method: payMethod,
+        status: 'pending',
+        notes: `Pedido capturado por Bot IA en WhatsApp (${business.name})`,
+      }).select().limit(1);
+
+      if (newOrder && newOrder.length > 0 && global.io) {
+        const { emitToUserRooms } = require('./sessionManager');
+        emitToUserRooms(global.io, userId, 'new_order', newOrder[0]);
+      }
+    } catch (eOrder) {
+      console.error('[MSG] Error guardando pedido automático:', eOrder.message);
+    }
+  }
+
   // ── 13. Lead caliente / Cierre → notificar al dueño ────────────────────────
   if (isLeadHot && conversation?.id) {
     await safeQuery(() => supabase.from('conversations').update({ is_lead: true }).eq('id', conversation.id));
     try {
-      await notifyLead(business, contactPhone, capturedName || contactName, text, conversation.id, sock, jid, { newAppointmentData, clientData });
+      await notifyLead(business, contactPhone, capturedName || contactName, text, conversation.id, sock, jid, { newAppointmentData, newOrderData, clientData });
     } catch (e) {
       console.error('[MSG] Error notificando lead:', e.message);
     }

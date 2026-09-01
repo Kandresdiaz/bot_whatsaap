@@ -100,9 +100,14 @@ export default function BotConfigPage() {
             <div>
               <label style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 6, display: 'block' }}>Objetivo Principal del Asistente</label>
               <select className="input" value={config.main_goal || 'vender'} onChange={e => set('main_goal', e.target.value)}>
-                <option value="vender">🛒 Vender Productos / Servicios (Catálogo RAG)</option>
-                <option value="agendar_citas">📅 Agendar Citas / Reservas (Calendario)</option>
+                <option value="vender">🛒 Vender Productos y Tomar Pedidos (Relojes, Ropa, Comida, Tiendas)</option>
+                <option value="agendar_citas">📅 Agendar Citas y Reservas (Barberías, Médicos, Spas, Consultorías)</option>
               </select>
+              <div style={{ fontSize: 11, color: '#00CFFF', marginTop: 4 }}>
+                {config.main_goal === 'agendar_citas'
+                  ? '✨ El bot coordinará fecha/hora y registrará las reservas en "📅 Calendario y Citas".'
+                  : '✨ El bot tomará los datos de envío y pago del cliente y registrará la orden en "🛍️ Pedidos y Ventas".'}
+              </div>
             </div>
             {config.main_goal === 'agendar_citas' && (
               <div>

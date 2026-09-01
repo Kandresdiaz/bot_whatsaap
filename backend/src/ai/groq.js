@@ -367,16 +367,17 @@ Tu rol es actuar como un asesor comercial y cerrador de citas/ventas de alto niv
    - Responde de forma directa, ágil y atractiva (máximo 3 a 5 líneas por mensaje) con 1 o 2 emojis.
    - Termina SIEMPRE con UN SOLO llamado a la acción (CTA) claro y persuasivo.
 
-${isSales ? `2. PROCESO DE CIERRE DE VENTAS PARA "${busName}":
-   - PASO 1 (Presentar y asesorar): Explica los beneficios del producto o plan adecuado del catálogo oficial con su precio exacto en $ COP.
+${isSales ? `2. PROCESO DE CIERRE DE VENTAS Y TOMA DE PEDIDOS PARA "${busName}":
+   - PASO 1 (Presentar y asesorar): Explica los beneficios del producto, reloj, comida o artículo adecuado del catálogo oficial con su precio exacto en $ COP.
    - PASO 2 (Pregunta de cierre): Invita al cliente a tomar la decisión:
-     * Ejemplos: "¿Te gustaría apartar tu pedido hoy mismo?", "¿Cuál de estos planes prefieres activar para tu negocio?", "¿Te gustaría iniciar los 7 días de prueba gratis hoy?"
-   - PASO 3 (Toma de datos para cerrar): Solicita con amabilidad:
+     * Ejemplos: "¿Te gustaría apartar tu pedido hoy mismo?", "¿A qué dirección o ciudad te lo enviamos?", "¿Prefieres pago contraentrega o transferencia Nequi?"
+   - PASO 3 (Toma de datos para el pedido): Solicita con amabilidad:
      1. Nombre completo
-     2. Ciudad / Dirección de entrega (o Correo si es servicio digital)
-     3. Método de pago preferido (o comparte el enlace: ${business?.payment_or_booking_link || 'disponible'})
-   - PASO 4 (Confirmación y registro): Cuando el cliente confirme la compra o entregue sus datos, añade al final de tu respuesta:
+     2. Ciudad y Dirección de entrega exacta (o Correo si es servicio digital)
+     3. Cantidad y Método de pago preferido (o comparte el enlace: ${business?.payment_or_booking_link || 'disponible'})
+   - PASO 4 (Confirmación y registro de pedido): Cuando el cliente confirme la compra o entregue sus datos de despacho, confirma con entusiasmo ("¡Excelente [Nombre]! Tu pedido de [Producto] ha sido registrado con éxito 📦✨") e incluye SIEMPRE al final de tu respuesta:
      [LEAD_CALIENTE]
+     [NUEVO_PEDIDO: {"nombre": "Nombre Cliente", "producto": "Producto Confirmado", "cantidad": 1, "total": 180000, "direccion": "Dirección completa", "ciudad": "Ciudad", "metodo_pago": "Nequi / Contraentrega", "notas": "Detalles adicionales"}]
      [DATOS_CLIENTE: {"nombre": "Nombre Cliente", "producto": "Producto Confirmado", "ciudad": "Ciudad/Dirección", "metodo_pago": "Método de Pago"}]`
 : `2. PROCESO DE AGENDAMIENTO DE CITAS / RESERVAS EN CALENDARIO PARA "${busName}":
    - Usa la fecha actual (${isoDateStr}) para calcular fechas exactas (ej: "mañana" -> día siguiente, "el viernes" -> próximo viernes).
@@ -567,6 +568,14 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
       } catch (_) {}
     }
 
+    const orderMatch = fullReply.match(/\[NUEVO_PEDIDO:\s*(\{[\s\S]*?\})\]/i);
+    let newOrderData = null;
+    if (orderMatch) {
+      try {
+        newOrderData = JSON.parse(orderMatch[1]);
+      } catch (_) {}
+    }
+
     const clientDataMatch = fullReply.match(/\[DATOS_CLIENTE:\s*(\{[\s\S]*?\})\]/i);
     let clientData = null;
     if (clientDataMatch) {
@@ -575,12 +584,13 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
       } catch (_) {}
     }
 
-    const isLeadHot = isLeadHotFlag || Boolean(newAppointmentData) || Boolean(clientData);
+    const isLeadHot = isLeadHotFlag || Boolean(newAppointmentData) || Boolean(newOrderData) || Boolean(clientData);
 
     const reply = fullReply
       .replace(/\[LEAD_CALIENTE\]/gi, '')
       .replace(/\[ENVIAR_IMAGEN:[^\]]+\]/gi, '')
       .replace(/\[NUEVA_CITA:[^\]]+\]/gi, '')
+      .replace(/\[NUEVO_PEDIDO:[^\]]+\]/gi, '')
       .replace(/\[DATOS_CLIENTE:[^\]]+\]/gi, '')
       .trim();
 
@@ -591,6 +601,7 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
         isLeadHot,
         imageName,
         newAppointmentData,
+        newOrderData,
         clientData,
         ragChunksUsed: relevantKnowledge.length,
       }).catch(() => {});
@@ -602,6 +613,7 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
       tokensUsed,
       imageName,
       newAppointmentData,
+      newOrderData,
       clientData,
       ragChunksUsed: relevantKnowledge.length
     };
