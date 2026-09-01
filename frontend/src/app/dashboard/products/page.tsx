@@ -20,14 +20,17 @@ interface Product {
 
 const CATEGORIES_PRESETS = [
   'General',
-  'Comidas / Platillos',
-  'Bebidas',
-  'Postres',
-  'Servicios',
-  'Odontología / Salud',
-  'Barbería / Estética',
-  'Asesorías / Consultas',
-  'Planes / Membresías',
+  'Repuestos Motos',
+  'Repuestos Bicicletas',
+  'Mantenimiento & Taller',
+  'Accesorios & Cascos',
+  'Bicicletas & Motos',
+  'Tecnología & Relojes',
+  'Ropa & Moda',
+  'Comidas & Bebidas',
+  'Salud & Estética',
+  'Servicios & Asesorías',
+  'Planes & Membresías',
   'Otro',
 ];
 
