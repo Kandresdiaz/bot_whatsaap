@@ -631,6 +631,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-01** | fix: eliminar bucles de conversacion, presentar planes 120k/249k/490k de inmediato e inducir a prueba gratis de 7 dias (`0a7af31`) | Auto-deploy |
 
+| **2026-09-01** | feat: optimizar continuidad multi-turno, contexto y conversion en embudo de ventas (`7d96ffb`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
