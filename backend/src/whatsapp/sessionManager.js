@@ -1498,6 +1498,7 @@ const isExplicitlyDisconnected = (userId) => {
 };
 
 module.exports = {
+  sessions,
   createSession,
   disconnectSession,
   getSession,

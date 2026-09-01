@@ -413,42 +413,44 @@ const buildHumanAssistantReply = (userMessage, business, products = [], chatHist
     return business?.greeting_msg || `¡Hola! 👋 Te damos la bienvenida a ${busName}. ¿En qué te podemos asesorar hoy?`;
   }
 
-  // 2. Consulta sobre límites de mensajes o qué pasa si se acaban
-  if (norm.includes('acaban') || norm.includes('limite') || norm.includes('tope') || norm.includes('mas mensajes') || norm.includes('cuantos mensajes')) {
-    return `En ${busName} tu negocio nunca deja de atender clientes. Si llegas al límite de mensajes de tu plan (1.500 en Starter o 5.000 en Pro), puedes pasar de inmediato al plan superior pagando solo la diferencia o comprar paquetes adicionales de mensajes desde tu panel en 2 minutos. ¿Te gustaría iniciar los 7 días de prueba gratis ($0 hoy)? 😊`;
+  const hasProds = Array.isArray(products) && products.length > 0;
+  const isBotWASaaS = busName === 'BotWA' || (!hasProds && busCategory.includes('Consultoría'));
+
+  if (isBotWASaaS) {
+    // Consultas específicas del SaaS BotWA
+    if (norm.includes('acaban') || norm.includes('limite') || norm.includes('tope') || norm.includes('mas mensajes')) {
+      return `En ${busName} tu negocio nunca deja de atender clientes. Si llegas al límite de mensajes de tu plan, puedes pasar de inmediato al plan superior pagando solo la diferencia o comprar paquetes adicionales desde tu panel en 2 minutos. ¿Te gustaría iniciar los 7 días de prueba gratis ($0 hoy)? 😊`;
+    }
+    if (norm.includes('pro') || norm.includes('medio') || norm.includes('segundo') || norm.includes('foto')) {
+      return `El *Plan Máquina de Ventas Pro ($249.000 COP/mes - ⭐ Más Popular)* incluye 1 línea de WhatsApp, envío automático de fotos multimedia de tu catálogo, agendador interactivo de citas/pedidos, hasta 5.000 mensajes IA/mes y 100 docs. Incluye 7 días gratis ($0 hoy). ¿Te gustaría activarlo para tu negocio? 😊`;
+    }
+    if (norm.includes('basico') || norm.includes('starter') || norm.includes('primero') || norm.includes('economico')) {
+      return `El *Plan Vendedor Automático ($120.000 COP/mes)* incluye 1 línea de WhatsApp, catálogo interactivo RAG 24/7, respuestas en <2s y hasta 1.500 mensajes IA/mes. Incluye 7 días gratis ($0 hoy). ¿Te gustaría activarlo para tu negocio? 😊`;
+    }
+    if (norm.includes('prueba') || norm.includes('interesa') || norm.includes('activar') || norm.includes('empezar')) {
+      return `¡Excelente elección! 🎉 Te ayudamos a conectar tu bot en menos de 10 minutos con los 7 Días de Prueba Gratis ($0 COP hoy). Para iniciar, ¿cuál es el nombre de tu negocio y qué productos o servicios vendes? 😊 [LEAD_CALIENTE]`;
+    }
   }
 
-  // 3. Consulta por el Plan Pro / Del Medio
-  if (norm.includes('pro') || norm.includes('medio') || norm.includes('segundo') || norm.includes('foto')) {
-    return `El *Plan Máquina de Ventas Pro ($249.000 COP/mes - ⭐ Más Popular)* incluye 1 línea de WhatsApp, envío automático de fotos multimedia de tu catálogo, agendador interactivo de citas/pedidos, hasta 5.000 mensajes IA/mes, 100 docs y generador de FAQs con IA. Incluye 7 días gratis ($0 hoy). ¿Te gustaría activarlo para tu negocio? 😊`;
-  }
-
-  // 4. Consulta por el Plan Starter / Básico
-  if (norm.includes('basico') || norm.includes('sencillo') || norm.includes('starter') || norm.includes('primero') || norm.includes('economico') || norm.includes('barato')) {
-    return `El *Plan Vendedor Automático ($120.000 COP/mes)* incluye 1 línea de WhatsApp, catálogo interactivo RAG 24/7, respuestas en <2s, hasta 1.500 mensajes IA/mes y 20 docs en base de conocimiento. Incluye 7 días gratis ($0 hoy). ¿Te gustaría activarlo para tu negocio? 😊`;
-  }
-
-  // 5. Consulta por el Plan VIP / Agencia
-  if (norm.includes('vip') || norm.includes('agencia') || norm.includes('marca blanca') || norm.includes('multiple') || norm.includes('tercero')) {
-    return `El *Plan Dominio Agencia / VIP ($490.000 COP/mes)* incluye múltiples líneas de WhatsApp, marca blanca con tu propio logo, prompting y catálogo RAG a la medida (Done-For-You), hasta 20.000 mensajes IA/mes y soporte prioritario 1 a 1 por WhatsApp. ¿Te gustaría implementarlo en tu empresa? 😊`;
-  }
-
-  // 6. Intención de compra, prueba gratis o registro de datos
-  if (norm.includes('prueba') || norm.includes('interesa') || norm.includes('activar') || norm.includes('empezar') || norm.includes('comprar') || norm.includes('quiero') || norm.includes('listo') || norm.includes('negocio es') || norm.includes('llama')) {
-    return `¡Excelente elección! 🎉 Te ayudamos a conectar tu bot en menos de 10 minutos con los 7 Días de Prueba Gratis ($0 COP hoy). Para iniciar, ¿cuál es el nombre de tu negocio y qué productos o servicios vendes? 😊 [LEAD_CALIENTE]`;
-  }
-
-  // 7. Presentación general de catálogo / precios
+  // Para negocios con Catálogo de Productos / Servicios
   if (Array.isArray(products) && products.length > 0) {
-    const top = products.slice(0, 3).map(p => `• *${p.name}*: $${Number(p.price || 0).toLocaleString('es-CO')} ${p.currency || 'COP'}${p.description ? ` (${p.description})` : ''}`).join('\n');
-    return `¡Con gusto! En ${busName} te ofrecemos las siguientes soluciones para automatizar tus ventas 24/7:\n\n${top}\n\nTodos nuestros planes incluyen 7 días de prueba gratis ($0 hoy) 🎁 ¿Cuál de estas opciones te gustaría activar para tu negocio? 😊`;
+    // Si el usuario pregunta por un producto específico
+    const matched = products.filter(p => norm.includes(p.name.toLowerCase()));
+    const itemsToShow = matched.length > 0 ? matched : products.slice(0, 3);
+    const top = itemsToShow.map(p => `• *${p.name}*: $${Number(p.price || 0).toLocaleString('es-CO')} ${p.currency || 'COP'}${p.description ? ` (${p.description})` : ''}`).join('\n');
+
+    if (!isSales) {
+      return `¡Con gusto! En ${busName} contamos con los siguientes servicios disponibles:\n\n${top}\n\n📅 Atendemos de ${business?.active_hours_start || '08:00'} a ${business?.active_hours_end || '20:00'}. ¿Para qué día y hora te gustaría agendar tu cita?`;
+    }
+
+    return `¡Con gusto! En ${busName} te ofrecemos las siguientes opciones disponibles en nuestro catálogo:\n\n${top}\n\n📦 Realizamos envíos y domicilios. ¿Te gustaría apartar tu pedido o a qué dirección te lo enviamos? 😊`;
   }
 
   if (!isSales) {
-    return `¡Hola! En ${busName} te ayudamos con ${busCategory}. ¿Te gustaría consultar disponibilidad para agendar tu cita o servicio? 📅`;
+    return `¡Hola! En ${busName} te atendemos en ${busCategory}. Horario: ${business?.active_hours_start || '08:00'} a ${business?.active_hours_end || '20:00'}. ¿Qué día y hora te gustaría reservar tu cita? 📅`;
   }
 
-  return `¡Hola! En ${busName} estamos para brindarte la mejor atención en ${busCategory}. ¿En qué te podemos asesorar hoy sobre nuestros servicios? 😊`;
+  return `¡Hola! En ${busName} estamos para brindarte la mejor atención en ${busCategory}. ¿En qué te podemos colaborar hoy? 😊`;
 };
 
 // ─── 6. Función principal RAG + Groq ─────────────────────────────────────────
