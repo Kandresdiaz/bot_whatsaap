@@ -629,6 +629,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-08-30** | feat: resolucion conversacional multi-turn inteligente, eliminacion de respuestas roboticas y logica de upgrade de planes (`636d7b1`) | Auto-deploy |
 
+| **2026-09-01** | fix: eliminar bucles de conversacion, presentar planes 120k/249k/490k de inmediato e inducir a prueba gratis de 7 dias (`0a7af31`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
