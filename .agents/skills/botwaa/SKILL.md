@@ -641,6 +641,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-01** | feat: inyeccion dinamica de configuracion de negocio en prompt de IA y soporte completo de pedidos y citas en produccion (`1f6458e`) | Auto-deploy |
 
+| **2026-09-01** | feat: categorias predefinidas para repuestos motos, bicis, taller y colecciones en catalogo (`fe8efd9`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
