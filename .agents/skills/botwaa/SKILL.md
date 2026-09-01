@@ -639,6 +639,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-01** | fix(security): validacion estricta de suscripcion paga o prueba con tarjeta para iniciar bot y conexion WhatsApp (`477f736`) | Auto-deploy |
 
+| **2026-09-01** | feat: inyeccion dinamica de configuracion de negocio en prompt de IA y soporte completo de pedidos y citas en produccion (`1f6458e`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
