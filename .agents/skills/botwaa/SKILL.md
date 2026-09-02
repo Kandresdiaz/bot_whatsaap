@@ -655,6 +655,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-02** | fix(admin): reparar pantalla de super admin, conexion Supabase 401 en Render, sincronizacion de usuarios y acciones (`d942d21`) | Auto-deploy |
 
+| **2026-09-02** | fix(frontend): forzar BACKEND_URL a Render e ignorar variable obsoleta de Replit en Vercel (`22e0d24`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
