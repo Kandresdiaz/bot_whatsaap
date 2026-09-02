@@ -657,6 +657,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-02** | fix(frontend): forzar BACKEND_URL a Render e ignorar variable obsoleta de Replit en Vercel (`22e0d24`) | Auto-deploy |
 
+| **2026-09-02** | fix(ui): apply global mobile overflow protection and responsive layout packaging across all pages (`bf49250`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
