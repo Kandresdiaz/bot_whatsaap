@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
+import { BACKEND_URL } from '@/lib/config';
 
 type Client = {
   id: string;
@@ -56,7 +57,7 @@ export default function AdminClientsPage() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
 
-  const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://bot-whatsaap-tkjd.onrender.com';
+  const BACKEND = BACKEND_URL;
   const headers = {
     'Content-Type': 'application/json',
     'x-admin-key': process.env.NEXT_PUBLIC_ADMIN_KEY || 'admin123'

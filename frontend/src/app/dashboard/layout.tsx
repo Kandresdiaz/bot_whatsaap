@@ -3,6 +3,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useRouter, usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { BACKEND_URL } from '@/lib/config';
 
 type ClientItem = {
   id: string;
@@ -32,7 +33,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
 
   const [clientsList, setClientsList] = useState<ClientItem[]>([]);
-  const BACKEND = 'https://bot-whatsaap-tkjd.onrender.com';
+  const BACKEND = BACKEND_URL;
   const headers = { 'Content-Type': 'application/json', 'x-admin-key': process.env.NEXT_PUBLIC_ADMIN_KEY || 'admin123' };
 
   // Cerrar menú móvil al navegar

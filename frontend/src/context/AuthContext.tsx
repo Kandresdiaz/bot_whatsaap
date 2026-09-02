@@ -2,6 +2,7 @@
 'use client';
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { BACKEND_URL } from '@/lib/config';
 
 export type User = {
   id: string;
@@ -81,7 +82,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const login = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
-    const backendUrl = 'https://bot-whatsaap-tkjd.onrender.com';
+    const backendUrl = BACKEND_URL;
     const res = await fetch(`${backendUrl}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

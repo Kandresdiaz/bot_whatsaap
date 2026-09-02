@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import { BACKEND_URL } from '@/lib/config';
 
 export default function AuthCallbackPage() {
   const router = useRouter();
@@ -23,7 +24,7 @@ export default function AuthCallbackPage() {
       processed = true;
 
       try {
-        const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://bot-whatsaap-tkjd.onrender.com';
+        const backendUrl = BACKEND_URL;
 
         addLog(`Usuario detectado: ${sessionUser.email} (ID: ${sessionUser.id})`);
         setStatus('Sincronizando usuario con el servidor backend...');

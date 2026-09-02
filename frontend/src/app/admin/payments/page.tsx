@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
+import { BACKEND_URL } from '@/lib/config';
 
 type Payment = {
   id: string;
@@ -18,7 +19,7 @@ export default function AdminPaymentsPage() {
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://bot-whatsaap-tkjd.onrender.com';
+  const BACKEND = BACKEND_URL;
   const headers = {
     'Content-Type': 'application/json',
     'x-admin-key': process.env.NEXT_PUBLIC_ADMIN_KEY || 'admin123'
