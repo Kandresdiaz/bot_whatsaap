@@ -89,6 +89,43 @@ const normalizeSearchText = (text) => {
     .trim();
 };
 
+// Distancia de Levenshtein para tolerancia a faltas ortográficas y typos
+const levenshteinDistance = (a, b) => {
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+
+  const matrix = [];
+  for (let i = 0; i <= b.length; i++) matrix[i] = [i];
+  for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
+
+  for (let i = 1; i <= b.length; i++) {
+    for (let j = 1; j <= a.length; j++) {
+      if (b.charAt(i - 1) === a.charAt(j - 1)) {
+        matrix[i][j] = matrix[i - 1][j - 1];
+      } else {
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j - 1] + 1,
+          matrix[i][j - 1] + 1,
+          matrix[i - 1][j] + 1
+        );
+      }
+    }
+  }
+  return matrix[b.length][a.length];
+};
+
+// Coincidencia difusa (Fuzzy Match) para palabras con errores tipográficos
+const isFuzzyWordMatch = (wordA, wordB) => {
+  if (wordA === wordB) return true;
+  if (wordA.length >= 4 && wordB.length >= 4) {
+    if (wordA.includes(wordB) || wordB.includes(wordA)) return true;
+    const maxDist = wordA.length > 6 ? 2 : 1;
+    return levenshteinDistance(wordA, wordB) <= maxDist;
+  }
+  return false;
+};
+
 // ─── 1. RAG: Buscar chunks relevantes de la knowledge base ───────────────────
 const searchKnowledge = (query, knowledge) => {
   if (!knowledge?.length) return [];
@@ -106,10 +143,22 @@ const searchKnowledge = (query, knowledge) => {
     if (normTitle.includes(normQuery)) score += 8;
     if (normContent.includes(normQuery)) score += 4;
 
-    // Coincidencia por palabras individuales
+    const titleWords = normTitle.split(/\s+/);
+    const contentWords = normContent.split(/\s+/);
+
+    // Coincidencia por palabras individuales y similitud difusa (typos)
     for (const word of queryWords) {
-      if (normTitle.includes(word)) score += item.type === 'faq' ? 4 : 3;
-      if (normContent.includes(word)) score += 1.5;
+      if (normTitle.includes(word)) {
+        score += item.type === 'faq' ? 4 : 3;
+      } else if (titleWords.some(tw => isFuzzyWordMatch(word, tw))) {
+        score += item.type === 'faq' ? 3 : 2.2;
+      }
+
+      if (normContent.includes(word)) {
+        score += 1.5;
+      } else if (contentWords.some(cw => isFuzzyWordMatch(word, cw))) {
+        score += 1.0;
+      }
     }
 
     // Boost prioritario si es FAQ
@@ -222,11 +271,29 @@ const rankAndFilterProducts = (query, products, subQueries = []) => {
     const normCat = normalizeSearchText(item.category || '');
     const normDesc = normalizeSearchText(item.description || '');
 
+    const nameWords = normName.split(/\s+/);
+    const catWords = normCat.split(/\s+/);
+    const descWords = normDesc.split(/\s+/);
+
     let score = 0;
     for (const word of allWords) {
-      if (normName.includes(word)) score += 4;
-      if (normCat.includes(word)) score += 2.5;
-      if (normDesc.includes(word)) score += 1;
+      if (normName.includes(word)) {
+        score += 4;
+      } else if (nameWords.some(nw => isFuzzyWordMatch(word, nw))) {
+        score += 3.2;
+      }
+
+      if (normCat.includes(word)) {
+        score += 2.5;
+      } else if (catWords.some(cw => isFuzzyWordMatch(word, cw))) {
+        score += 2.0;
+      }
+
+      if (normDesc.includes(word)) {
+        score += 1;
+      } else if (descWords.some(dw => isFuzzyWordMatch(word, dw))) {
+        score += 0.8;
+      }
     }
     return { ...item, score };
   });
@@ -642,4 +709,4 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
   }
 };
 
-module.exports = { askGroq, ragSearch, searchKnowledge };
+module.exports = { askGroq, ragSearch, searchKnowledge, rankAndFilterProducts };
