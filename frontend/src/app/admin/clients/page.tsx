@@ -53,7 +53,10 @@ export default function AdminClientsPage() {
     durationDays: 30,
   });
 
-  const BACKEND = 'https://bot-whatsaap-tkjd.onrender.com';
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState(false);
+
+  const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://bot-whatsaap-tkjd.onrender.com';
   const headers = {
     'Content-Type': 'application/json',
     'x-admin-key': process.env.NEXT_PUBLIC_ADMIN_KEY || 'admin123'
@@ -65,12 +68,18 @@ export default function AdminClientsPage() {
 
   const loadClients = async () => {
     setLoading(true);
+    setErrorMsg(null);
     try {
       const res = await fetch(`${BACKEND}/api/admin/clients`, { headers });
       const data = await res.json();
-      setClients(data.clients || []);
-    } catch (e) {
+      if (data.success) {
+        setClients(data.clients || []);
+      } else {
+        setErrorMsg(data.error || 'Error al obtener clientes del servidor');
+      }
+    } catch (e: any) {
       console.error('Error cargando clientes:', e);
+      setErrorMsg(`Error de conexión con el servidor backend: ${e.message}`);
     } finally {
       setLoading(false);
     }
@@ -96,38 +105,82 @@ export default function AdminClientsPage() {
       note: payForm.note,
     };
 
-    await fetch(`${BACKEND}/api/admin/clients/${client.id}/activate`, {
-      method: 'PATCH',
-      headers,
-      body: JSON.stringify(payload),
-    });
+    setActionLoading(true);
+    try {
+      const resAct = await fetch(`${BACKEND}/api/admin/clients/${client.id}/activate`, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify(payload),
+      });
+      const dataAct = await resAct.json();
+      if (!dataAct.success) {
+        alert('Error al activar cliente: ' + (dataAct.error || 'Error desconocido'));
+        setActionLoading(false);
+        return;
+      }
 
-    await fetch(`${BACKEND}/api/admin/payments`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ userId: client.id, ...payload }),
-    });
+      await fetch(`${BACKEND}/api/admin/payments`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ userId: client.id, ...payload }),
+      });
 
-    setPayModalClient(null);
-    await loadClients();
+      alert(`✅ Cliente "${client.name}" activado correctamente por ${daysToApply} días.`);
+      setPayModalClient(null);
+      await loadClients();
+    } catch (err: any) {
+      alert('Error de conexión al activar cliente: ' + err.message);
+    } finally {
+      setActionLoading(false);
+    }
   };
 
   const pauseClient = async (id: string) => {
     if (!confirm('¿Estás seguro de pausar la cuenta y el bot de este cliente?')) return;
-    await fetch(`${BACKEND}/api/admin/clients/${id}/pause`, { method: 'PATCH', headers });
-    await loadClients();
+    try {
+      const res = await fetch(`${BACKEND}/api/admin/clients/${id}/pause`, { method: 'PATCH', headers });
+      const data = await res.json();
+      if (data.success) {
+        alert('Cliente pausado correctamente.');
+        await loadClients();
+      } else {
+        alert('Error al pausar: ' + (data.error || 'Error desconocido'));
+      }
+    } catch (err: any) {
+      alert('Error de conexión al pausar: ' + err.message);
+    }
   };
 
   const resetClientSession = async (client: Client) => {
     if (!confirm(`¿Resetear la conexión de WhatsApp de ${client.name}? El cliente deberá escanear un nuevo QR.`)) return;
-    await fetch(`${BACKEND}/api/admin/clients/${client.id}/reset-session`, { method: 'POST', headers });
-    await loadClients();
+    try {
+      const res = await fetch(`${BACKEND}/api/admin/clients/${client.id}/reset-session`, { method: 'POST', headers });
+      const data = await res.json();
+      if (data.success) {
+        alert('Sesión de WhatsApp desvinculada exitosamente.');
+        await loadClients();
+      } else {
+        alert('Error al resetear sesión: ' + (data.error || 'Error desconocido'));
+      }
+    } catch (err: any) {
+      alert('Error de conexión al resetear sesión: ' + err.message);
+    }
   };
 
   const deleteClient = async (client: Client) => {
     if (!confirm(`⚠️ ¡ATENCIÓN! ¿Eliminar permanentemente a "${client.name}" y todos sus datos?`)) return;
-    await fetch(`${BACKEND}/api/admin/clients/${client.id}`, { method: 'DELETE', headers });
-    await loadClients();
+    try {
+      const res = await fetch(`${BACKEND}/api/admin/clients/${client.id}`, { method: 'DELETE', headers });
+      const data = await res.json();
+      if (data.success) {
+        alert('Cliente eliminado correctamente.');
+        await loadClients();
+      } else {
+        alert('Error al eliminar cliente: ' + (data.error || 'Error desconocido'));
+      }
+    } catch (err: any) {
+      alert('Error de conexión al eliminar cliente: ' + err.message);
+    }
   };
 
   const handleCreateClient = async (e: React.FormEvent) => {
@@ -228,6 +281,33 @@ export default function AdminClientsPage() {
           <option value="trial">🆓 Trial</option>
         </select>
       </div>
+
+      {errorMsg && (
+        <div style={{
+          background: 'rgba(239, 68, 68, 0.12)',
+          border: '1px solid rgba(239, 68, 68, 0.4)',
+          borderRadius: 12,
+          padding: '12px 18px',
+          color: '#f87171',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: 12,
+          flexWrap: 'wrap'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+            <span>⚠️</span>
+            <span>{errorMsg}</span>
+          </div>
+          <button
+            className="btn btn-primary"
+            onClick={loadClients}
+            style={{ fontSize: 12, padding: '6px 14px' }}
+          >
+            🔄 Reintentar
+          </button>
+        </div>
+      )}
 
       {/* Tabla Clientes */}
       <div className="card" style={{ padding: 0, overflow: 'hidden', background: '#0C1527', borderColor: '#1E293B' }}>

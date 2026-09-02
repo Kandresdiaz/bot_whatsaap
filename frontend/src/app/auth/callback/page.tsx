@@ -23,7 +23,7 @@ export default function AuthCallbackPage() {
       processed = true;
 
       try {
-        const backendUrl = 'https://bot-whatsaap-tkjd.onrender.com';
+        const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://bot-whatsaap-tkjd.onrender.com';
 
         addLog(`Usuario detectado: ${sessionUser.email} (ID: ${sessionUser.id})`);
         setStatus('Sincronizando usuario con el servidor backend...');
@@ -46,11 +46,12 @@ export default function AuthCallbackPage() {
           localStorage.setItem('wbot_user', JSON.stringify(data.user));
           localStorage.setItem('wbot_token', data.token);
 
-          addLog('Credenciales guardadas en localStorage. Redirigiendo a /dashboard...');
-          setStatus('¡Bienvenido! Entrando a tu Dashboard...');
+          const targetUrl = data.user?.is_admin ? '/admin' : '/dashboard';
+          addLog(`Credenciales guardadas en localStorage. Redirigiendo a ${targetUrl}...`);
+          setStatus('¡Bienvenido! Entrando a tu cuenta...');
 
           setTimeout(() => {
-            window.location.href = '/dashboard';
+            window.location.href = targetUrl;
           }, 300);
         } else {
           setHasError(true);

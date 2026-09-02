@@ -16,8 +16,9 @@ type Payment = {
 export default function AdminPaymentsPage() {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const BACKEND = 'https://bot-whatsaap-tkjd.onrender.com';
+  const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://bot-whatsaap-tkjd.onrender.com';
   const headers = {
     'Content-Type': 'application/json',
     'x-admin-key': process.env.NEXT_PUBLIC_ADMIN_KEY || 'admin123'
@@ -29,12 +30,18 @@ export default function AdminPaymentsPage() {
 
   const loadPayments = async () => {
     setLoading(true);
+    setErrorMsg(null);
     try {
       const res = await fetch(`${BACKEND}/api/admin/payments`, { headers });
       const data = await res.json();
-      setPayments(data.payments || []);
-    } catch (e) {
+      if (data.success) {
+        setPayments(data.payments || []);
+      } else {
+        setErrorMsg(data.error || 'Error al obtener pagos');
+      }
+    } catch (e: any) {
       console.error('Error cargando pagos:', e);
+      setErrorMsg(`Error de conexión con el servidor backend: ${e.message}`);
     } finally {
       setLoading(false);
     }
@@ -51,6 +58,33 @@ export default function AdminPaymentsPage() {
           <p className="page-subtitle" style={{ margin: '4px 0 0 0' }}>Registro contable de transacciones y pagos manuales en COP (Nequi, Transferencia, Efectivo)</p>
         </div>
       </div>
+
+      {errorMsg && (
+        <div style={{
+          background: 'rgba(239, 68, 68, 0.12)',
+          border: '1px solid rgba(239, 68, 68, 0.4)',
+          borderRadius: 12,
+          padding: '12px 18px',
+          color: '#f87171',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: 12,
+          flexWrap: 'wrap'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+            <span>⚠️</span>
+            <span>{errorMsg}</span>
+          </div>
+          <button
+            className="btn btn-primary"
+            onClick={loadPayments}
+            style={{ fontSize: 12, padding: '6px 14px' }}
+          >
+            🔄 Reintentar
+          </button>
+        </div>
+      )}
 
       {/* Metric Card Total Revenue */}
       <div className="card" style={{ background: '#0C1527', borderColor: 'rgba(34,197,94,0.3)', padding: 20, maxWidth: 360 }}>

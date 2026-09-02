@@ -35,8 +35,10 @@ export default function AdminDashboardPage() {
   const [clients, setClients] = useState<Client[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const BACKEND = 'https://bot-whatsaap-tkjd.onrender.com';
+  const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://bot-whatsaap-tkjd.onrender.com';
   const headers = {
     'Content-Type': 'application/json',
     'x-admin-key': process.env.NEXT_PUBLIC_ADMIN_KEY || 'admin123'
@@ -47,6 +49,8 @@ export default function AdminDashboardPage() {
   }, []);
 
   const loadAll = async () => {
+    setLoading(true);
+    setErrorMsg(null);
     try {
       const [cRes, sRes, pRes] = await Promise.all([
         fetch(`${BACKEND}/api/admin/clients`, { headers }),
@@ -57,11 +61,16 @@ export default function AdminDashboardPage() {
       const sData = await sRes.json();
       const pData = await pRes.json();
 
-      setClients(cData.clients || []);
-      setStats(sData.stats || null);
-      setPayments(pData.payments || []);
-    } catch (e) {
+      if (cData.success) setClients(cData.clients || []);
+      else setErrorMsg(cData.error || 'Error al cargar clientes');
+
+      if (sData.success) setStats(sData.stats || null);
+      if (pData.success) setPayments(pData.payments || []);
+    } catch (e: any) {
       console.error('Error cargando datos admin:', e);
+      setErrorMsg(`Error de conexión con el servidor backend: ${e.message}`);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -100,6 +109,33 @@ export default function AdminDashboardPage() {
           </Link>
         </div>
       </div>
+
+      {errorMsg && (
+        <div style={{
+          background: 'rgba(239, 68, 68, 0.12)',
+          border: '1px solid rgba(239, 68, 68, 0.4)',
+          borderRadius: 12,
+          padding: '12px 18px',
+          color: '#f87171',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: 12,
+          flexWrap: 'wrap'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+            <span>⚠️</span>
+            <span>{errorMsg}</span>
+          </div>
+          <button
+            className="btn btn-primary"
+            onClick={loadAll}
+            style={{ fontSize: 12, padding: '6px 14px' }}
+          >
+            🔄 Reintentar
+          </button>
+        </div>
+      )}
 
       {/* Metric Cards */}
       {stats && (
