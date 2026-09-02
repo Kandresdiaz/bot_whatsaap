@@ -653,6 +653,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-02** | feat(bot-config): pestanas organizadas con modulo destacado de Prompt IA, Cierre de Ventas y visor en vivo (`ac9553c`) | Auto-deploy |
 
+| **2026-09-02** | fix(admin): reparar pantalla de super admin, conexion Supabase 401 en Render, sincronizacion de usuarios y acciones (`d942d21`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
