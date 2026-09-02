@@ -645,6 +645,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-02** | feat(rag): soporte integral de catalogo multi-categoria, busqueda inteligente y cierre dual de pedidos y citas (`98f087c`) | Auto-deploy |
 
+| **2026-09-02** | feat(search): busqueda por similitud difusa (fuzzy search) con pg_trgm en Supabase y distancia Levenshtein tolerante a faltas de ortografia (`a56f3ff`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
