@@ -649,6 +649,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-02** | fix(prompt): solo saludar una vez por conversacion, respuestas persuasivas y longitud estricta de menos de 5 lineas (`42a16cf`) | Auto-deploy |
 
+| **2026-09-02** | feat(config): modulo dedicado de Cierre de Ventas, Pedidos y Citas con instrucciones personalizadas por negocio (`50a4e34`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
