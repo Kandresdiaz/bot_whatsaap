@@ -419,7 +419,7 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
       }
     }
 
-    const { data: prods } = await pQuery.order('category', { ascending: true }).limit(30);
+    const { data: prods } = await pQuery.order('category', { ascending: true }).limit(150);
     products = prods || [];
 
     if (products.length === 0 && (business?.name === 'BotWA' || !business?.name)) {
