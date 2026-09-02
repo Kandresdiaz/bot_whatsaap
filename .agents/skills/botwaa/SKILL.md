@@ -643,6 +643,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-01** | feat: categorias predefinidas para repuestos motos, bicis, taller y colecciones en catalogo (`fe8efd9`) | Auto-deploy |
 
+| **2026-09-02** | feat(rag): soporte integral de catalogo multi-categoria, busqueda inteligente y cierre dual de pedidos y citas (`98f087c`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
