@@ -651,6 +651,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-02** | feat(config): modulo dedicado de Cierre de Ventas, Pedidos y Citas con instrucciones personalizadas por negocio (`50a4e34`) | Auto-deploy |
 
+| **2026-09-02** | feat(bot-config): pestanas organizadas con modulo destacado de Prompt IA, Cierre de Ventas y visor en vivo (`ac9553c`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
