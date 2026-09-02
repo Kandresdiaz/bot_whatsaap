@@ -647,6 +647,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-02** | feat(search): busqueda por similitud difusa (fuzzy search) con pg_trgm en Supabase y distancia Levenshtein tolerante a faltas de ortografia (`a56f3ff`) | Auto-deploy |
 
+| **2026-09-02** | fix(prompt): solo saludar una vez por conversacion, respuestas persuasivas y longitud estricta de menos de 5 lineas (`42a16cf`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
