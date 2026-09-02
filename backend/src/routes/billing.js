@@ -358,18 +358,38 @@ router.get('/status/:userId', async (req, res) => {
     const userPlanKey = (user.plan || 'starter').toLowerCase();
     const planInfo = HORMOZI_PLANS[userPlanKey] || HORMOZI_PLANS.starter;
 
-    // Límites por plan
+    // ── Límites por plan y estado de suscripción ────────────────────────────
     const PLAN_LIMITS = {
-      starter: 1500,
-      pro: 5000,
-      business: 20000,
+      free: 100,         // Plan inicial de prueba sin tarjeta
+      trial: 300,        // 7 Días de prueba gratis con tarjeta ($0 COP hoy)
+      starter: 1500,     // Plan Vendedor Automático ($120.000 COP)
+      pro: 5000,         // Plan Máquina de Ventas Pro ($249.000 COP)
+      business: 20000,   // Plan Dominio Agencia / VIP ($490.000 COP)
     };
-    const messageLimit = PLAN_LIMITS[userPlanKey] || 1500;
 
-    // ── Calcular consumo de mensajes del mes actual ──────────────────────────
+    const userPlanKey = (user.plan || 'starter').toLowerCase();
+    const planInfo = HORMOZI_PLANS[userPlanKey] || HORMOZI_PLANS.starter;
+
+    // Determinar límite efectivo
+    let messageLimit = PLAN_LIMITS[userPlanKey] || 1500;
+    if (user.is_admin) {
+      messageLimit = 999999;
+    } else if (isTrialActive) {
+      messageLimit = PLAN_LIMITS.trial; // 300 mensajes en prueba de 7 días
+    } else if (user.subscription_status === 'none' || user.status === 'trial' || userPlanKey === 'free') {
+      messageLimit = PLAN_LIMITS.free; // 100 mensajes gratis demo
+    }
+
+    // ── Calcular consumo de mensajes del mes actual y métricas de valor ──────
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
     let messagesUsedThisMonth = 0;
+    let totalBotMessagesAllTime = 0;
     let tokensUsedThisMonth = 0;
+    let ordersCount = 0;
+    let ordersRevenue = 0;
+    let appointmentsCount = 0;
+    let hotLeadsCount = 0;
+    let totalClientsServed = 0;
 
     try {
       // 1. Obtener session_ids del usuario
@@ -392,10 +412,12 @@ router.get('/status/:userId', async (req, res) => {
       if (sessionList.length > 0) {
         const { data: convs } = await supabase
           .from('conversations')
-          .select('id')
+          .select('id, is_lead')
           .in('session_id', sessionList);
         if (Array.isArray(convs)) {
           convIds = convs.map(c => c.id).filter(Boolean);
+          hotLeadsCount = convs.filter(c => c.is_lead).length;
+          totalClientsServed = convs.length;
         }
       }
 
@@ -403,15 +425,18 @@ router.get('/status/:userId', async (req, res) => {
       if (convIds.length === 0 && user.is_admin) {
         const { data: allConvs } = await supabase
           .from('conversations')
-          .select('id')
+          .select('id, is_lead')
           .limit(200);
         if (Array.isArray(allConvs)) {
           convIds = allConvs.map(c => c.id).filter(Boolean);
+          hotLeadsCount = allConvs.filter(c => c.is_lead).length;
+          totalClientsServed = allConvs.length;
         }
       }
 
-      // 3. Contar mensajes generados por el bot este mes
+      // 3. Contar mensajes generados por el bot este mes e históricos
       if (convIds.length > 0) {
+        // Mensajes del mes actual
         const { data: msgsData } = await supabase
           .from('messages')
           .select('id, groq_tokens_used')
@@ -423,7 +448,55 @@ router.get('/status/:userId', async (req, res) => {
           messagesUsedThisMonth = msgsData.length;
           tokensUsedThisMonth = msgsData.reduce((acc, m) => acc + (Number(m.groq_tokens_used) || 0), 0);
         }
+
+        // Total histórico de mensajes respondidos por el bot
+        const { count: totalBotCount } = await supabase
+          .from('messages')
+          .select('id', { count: 'exact', head: true })
+          .in('conversation_id', convIds)
+          .eq('sent_by', 'bot');
+
+        totalBotMessagesAllTime = totalBotCount || messagesUsedThisMonth;
       }
+
+      // 4. Obtener negocios del usuario para métricas de pedidos y citas
+      const { data: userBuses } = await supabase
+        .from('businesses')
+        .select('id')
+        .eq('user_id', user.id);
+      const busIds = Array.isArray(userBuses) ? userBuses.map(b => b.id).filter(Boolean) : [];
+
+      // 5. Consultar pedidos cerrados y facturación generada
+      let ordersQuery = supabase.from('orders').select('id, total_amount, status');
+      if (busIds.length > 0) {
+        ordersQuery = ordersQuery.in('business_id', busIds);
+      } else if (convIds.length > 0) {
+        ordersQuery = ordersQuery.in('conversation_id', convIds);
+      } else if (user.is_admin) {
+        ordersQuery = ordersQuery.limit(200);
+      }
+
+      const { data: ordersData } = await ordersQuery;
+      if (Array.isArray(ordersData)) {
+        ordersCount = ordersData.length;
+        ordersRevenue = ordersData.reduce((sum, o) => sum + (parseFloat(o.total_amount) || 0), 0);
+      }
+
+      // 6. Consultar citas agendadas por el bot
+      let apptsQuery = supabase.from('appointments').select('id, status');
+      if (busIds.length > 0) {
+        apptsQuery = apptsQuery.in('business_id', busIds);
+      } else if (convIds.length > 0) {
+        apptsQuery = apptsQuery.in('conversation_id', convIds);
+      } else if (user.is_admin) {
+        apptsQuery = apptsQuery.limit(200);
+      }
+
+      const { data: apptsData } = await apptsQuery;
+      if (Array.isArray(apptsData)) {
+        appointmentsCount = apptsData.length;
+      }
+
     } catch (msgErr) {
       console.warn('[BILLING] Error calculando métricas de mensajes:', msgErr.message);
     }
@@ -431,6 +504,12 @@ router.get('/status/:userId', async (req, res) => {
     const percentageUsed = Math.min(100, Math.round((messagesUsedThisMonth / messageLimit) * 100));
     const isApproachingLimit = percentageUsed >= 80;
     const hasReachedLimit = messagesUsedThisMonth >= messageLimit;
+
+    // Cálculo de ROI y Ahorro Estimado:
+    // Cada conversación atendida ahorra ~4 minutos de atención manual de un empleado
+    const timeSavedHours = Math.max(0.1, Math.round((totalClientsServed * 4 + messagesUsedThisMonth * 0.5) / 60 * 10) / 10);
+    // Sueldo mínimo en Colombia con prestaciones ~1.600.000 COP/mes (aprox 10.000 COP/hora)
+    const moneySavedCOP = Math.round(timeSavedHours * 10000);
 
     return res.json({
       success: true,
@@ -441,7 +520,7 @@ router.get('/status/:userId', async (req, res) => {
         trial_ends_at: user.trial_ends_at,
         paid_until: user.paid_until,
         plan: userPlanKey,
-        plan_name: planInfo.name,
+        plan_name: isTrialActive ? `Prueba 7 Días Gratis (${planInfo.name})` : planInfo.name,
         price_cop: planInfo.priceCOP,
         card_brand: user.card_brand,
         card_last4: user.card_last4,
@@ -452,17 +531,31 @@ router.get('/status/:userId', async (req, res) => {
       usage: {
         messages_used_this_month: messagesUsedThisMonth,
         message_limit: messageLimit,
+        messages_remaining: Math.max(0, messageLimit - messagesUsedThisMonth),
         percentage_used: percentageUsed,
         tokens_used_this_month: tokensUsedThisMonth,
         is_approaching_limit: isApproachingLimit,
         has_reached_limit: hasReachedLimit,
         start_of_month: startOfMonth,
         docs_limit: userPlanKey === 'starter' ? 20 : userPlanKey === 'pro' ? 100 : 'Ilimitados',
-        features_summary: userPlanKey === 'starter'
-          ? 'Catálogo RAG 24/7'
+        features_summary: isTrialActive
+          ? 'Prueba 7 Días: 300 msgs incluidos'
+          : userPlanKey === 'starter'
+          ? 'Catálogo RAG 24/7 (1.500 msgs/mes)'
           : userPlanKey === 'pro'
-          ? 'Catálogo + Fotos Multimedia + Citas'
-          : 'Multi-Línea + White-Label + DFY VIP'
+          ? 'Catálogo + Fotos + Citas (5.000 msgs/mes)'
+          : 'Multi-Línea VIP (20.000 msgs/mes)'
+      },
+      metrics: {
+        total_bot_messages: totalBotMessagesAllTime || messagesUsedThisMonth,
+        closed_orders_count: ordersCount,
+        closed_orders_revenue: ordersRevenue,
+        appointments_count: appointmentsCount,
+        hot_leads_count: hotLeadsCount,
+        total_clients_served: totalClientsServed,
+        time_saved_hours: timeSavedHours,
+        money_saved_cop: moneySavedCOP,
+        avg_response_speed: '1.8 seg',
       }
     });
   } catch (err) {

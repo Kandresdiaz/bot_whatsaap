@@ -579,6 +579,16 @@ input:checked + .toggle-slider:before { transform: translateX(20px); background:
     padding: 6px 12px !important;
     font-size: 12px !important;
   }
+
+  /* Protecciones Universales para Modales y Formularios en Celular */
+  div[style*="position: fixed"], div[style*="position:fixed"] {
+    padding: 8px !important;
+  }
+  div[style*="position: fixed"] > div, div[style*="position:fixed"] > div {
+    max-width: 100% !important;
+    max-height: 92vh !important;
+    box-sizing: border-box !important;
+  }
 }
 
 @media (min-width: 769px) {

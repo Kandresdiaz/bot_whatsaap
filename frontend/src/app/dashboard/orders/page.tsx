@@ -418,7 +418,7 @@ export default function OrdersPage() {
       </div>
 
       {/* Barra de Controles y Selector de Vistas */}
-      <div className="card" style={{ background: '#0C1527', borderColor: '#1E293B', padding: 14, display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', justifyContent: 'space-between' }}>
+      <div className="card filter-bar-responsive" style={{ background: '#0C1527', borderColor: '#1E293B', padding: 14, display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', justifyContent: 'space-between' }}>
         {/* Switch Vista Tarjetas / Tabla */}
         <div style={{ display: 'flex', gap: 6, background: '#080E1F', padding: 4, borderRadius: 8, border: '1px solid #1E293B' }}>
           <button
@@ -848,7 +848,7 @@ export default function OrdersPage() {
                 />
               </div>
 
-              <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 12 }}>
+              <div className="action-buttons-row" style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 12 }}>
                 <button type="button" className="btn btn-ghost" onClick={() => setIsCreateModalOpen(false)} style={{ fontSize: 13 }}>
                   Cancelar
                 </button>
@@ -993,7 +993,7 @@ export default function OrdersPage() {
                 />
               </div>
 
-              <div style={{ display: 'flex', gap: 10, justifyContent: 'space-between', marginTop: 12 }}>
+              <div className="action-buttons-row" style={{ display: 'flex', gap: 10, justifyContent: 'space-between', marginTop: 12 }}>
                 <button
                   type="button"
                   onClick={() => handleDeleteOrder(editingOrder.id, editingOrder.client_name)}
@@ -1003,7 +1003,7 @@ export default function OrdersPage() {
                   🗑️ Eliminar Pedido
                 </button>
 
-                <div style={{ display: 'flex', gap: 8 }}>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   <button type="button" className="btn btn-ghost" onClick={() => setIsEditModalOpen(false)} style={{ fontSize: 13 }}>
                     Cancelar
                   </button>
