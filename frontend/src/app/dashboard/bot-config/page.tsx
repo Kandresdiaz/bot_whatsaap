@@ -153,6 +153,50 @@ export default function BotConfigPage() {
           </div>
         </div>
 
+        {/* Cierre de Ventas, Pedidos y Citas */}
+        <div className="card" style={{ borderColor: 'rgba(0, 207, 255, 0.3)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+            <span style={{ fontSize: 20 }}>🎯</span>
+            <h3 style={{ fontWeight: 700, margin: 0, fontSize: 16, color: '#00CFFF' }}>
+              Cierre de Ventas, Pedidos y Citas
+            </h3>
+          </div>
+          <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 16, lineHeight: 1.5 }}>
+            Define qué información o cuentas entrega el bot y qué datos exactos debe solicitarle al cliente para cerrar la orden o agendar la cita.
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div>
+              <label style={{ fontSize: 13, color: 'var(--text)', fontWeight: 600, marginBottom: 6, display: 'block' }}>
+                💳 Cuentas o Enlace de Pago / Agenda
+              </label>
+              <input
+                className="input"
+                placeholder={config.main_goal === 'agendar_citas' ? 'Ej: Nequi 3144625381 para anticipos o link Calendly' : 'Ej: Nequi 3144625381 / Bancolombia Ahorros 123-456789 / Contraentrega'}
+                value={config.payment_or_booking_link || ''}
+                onChange={e => set('payment_or_booking_link', e.target.value)}
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: 13, color: 'var(--text)', fontWeight: 600, marginBottom: 6, display: 'block' }}>
+                📝 Instrucciones Específicas de Cierre para el Bot
+              </label>
+              <textarea
+                className="input"
+                rows={3}
+                placeholder={config.main_goal === 'agendar_citas'
+                  ? 'Ej: Pide siempre: Nombre completo y motivo del servicio. Recuerda que para apartar el turno deben transferir $20.000 al Nequi 3144625381.'
+                  : 'Ej: Para cerrar el pedido solicita: Nombre completo, Dirección exacta y Ciudad de entrega, y confirma si pagan por Nequi o Contraentrega. Envíos gratis por compras superiores a $100.000.'}
+                value={config.closing_instructions || ''}
+                onChange={e => set('closing_instructions', e.target.value)}
+                style={{ minHeight: 90, fontSize: 13, lineHeight: 1.4 }}
+              />
+              <span style={{ fontSize: 11, color: 'var(--text-muted)', display: 'block', marginTop: 4 }}>
+                💡 El bot leerá estas instrucciones y solicitará estos datos antes de registrar la orden o cita.
+              </span>
+            </div>
+          </div>
+        </div>
+
         {/* Mensajes */}
         <div className="card">
           <h3 style={{ fontWeight: 700, marginBottom: 16 }}>💬 Mensajes del bot</h3>
