@@ -315,7 +315,7 @@ const buildKnowledgeContext = (knowledge) => {
 };
 
 // ─── 5. System prompt con info del negocio ────────────────────────────────────
-const buildSystemPrompt = (business, relevantKnowledge, allKnowledge, products = [], isFirstMessage = true, userMessage = '', subQueries = []) => {
+const buildSystemPrompt = (business, relevantKnowledge, allKnowledge, products = [], isFirstMessage = true, userMessage = '', subQueries = [], hasAlreadyGreeted = false) => {
   const busName = business?.name || 'BotWA';
   const busCategory = business?.category || 'Atención Comercial y Servicios';
   const busCity = business?.city || 'Colombia';
@@ -354,13 +354,13 @@ const buildSystemPrompt = (business, relevantKnowledge, allKnowledge, products =
     ? `ASESORAR Y VENDER LOS PRODUCTOS O SERVICIOS DE "${busName}". Responde dudas comerciales con entusiasmo y cercanía, presenta las opciones del catálogo oficial y guía al cliente hacia la compra o pedido (o agenda de servicio si requiere taller/mantenimiento).`
     : `ASESORAR Y AGENDAR CITAS O RESERVAS PARA "${busName}". Atiende todas las dudas del cliente con cortesía, consulta el calendario y horarios disponibles e invítalo a agendar su cita o turno disponible (o venta de productos si lo solicita).`;
 
-  const isGreetingOnly = isFirstMessage && isSimpleGreeting(userMessage);
+  const isGreetingOnly = isFirstMessage && !hasAlreadyGreeted && isSimpleGreeting(userMessage);
 
-  const greetingInstruction = isGreetingOnly
-    ? `PRIMERA INTERACCIÓN (SALUDO SIMPLE): El cliente solo saludó. Usa EXACTAMENTE su mensaje de saludo configurado: "${business?.greeting_msg || '¡Hola! 👋 Te damos la bienvenida a ' + busName + '. ¿En qué te podemos ayudar hoy?'}" y pregúntale en qué le puedes colaborar. NO muestres el catálogo completo de precios todavía a menos que lo pida.`
-    : isFirstMessage
-    ? `PRIMERA INTERACCIÓN (CON PREGUNTA): Saluda brevemente con "${business?.greeting_msg || '¡Hola! Bienvenido a ' + busName}" y responde directamente a la consulta del cliente sobre el negocio.`
-    : `CONVERSACIÓN EN CURSO: El cliente YA está en conversación contigo. NUNCA repitas la bienvenida ni digas "¡Hola! Bienvenido a...". Responde DIRECTAMENTE y avanza con agilidad.`;
+  const greetingInstruction = (hasAlreadyGreeted || !isFirstMessage)
+    ? `CONVERSACIÓN EN CURSO (ESTRICTAMENTE PROHIBIDO SALUDAR): Ya estás en conversación activa con este cliente y el bot ya se presentó. ESTÁ 100% PROHIBIDO decir "¡Hola!", "Te damos la bienvenida a...", "Bienvenido a...", o volver a presentarte. Responde DIRECTAMENTE a lo que dijo el cliente sin ningún saludo ni introducción.`
+    : isGreetingOnly
+    ? `PRIMERA INTERACCIÓN (SOLO SALUDO): El cliente recién inicia la conversación diciendo hola. Responde amablemente con su saludo en máximo 2 a 3 líneas: "${business?.greeting_msg || '¡Hola! 👋 Te damos la bienvenida a ' + busName + '. ¿En qué te podemos ayudar hoy?'}" sin mostrar catálogo completo aún.`
+    : `PRIMERA INTERACCIÓN (CON PREGUNTA DIRECTA): Di únicamente "¡Hola! 👋" y responde de inmediato a su consulta en menos de 4 líneas totales. NO pegues un discurso largo de bienvenida.`;
 
   const businessInfo = `
 Nombre del Negocio: ${busName}
@@ -383,7 +383,20 @@ Hora actual: ${currentTimeStr}
 Usa esta fecha para calcular con precisión días como "hoy", "mañana", "el jueves", "la próxima semana", etc.
 
 ================================================================================
-🚀 REGLA FUNDAMENTAL #1: IMPULSO COMERCIAL Y PROACTIVIDAD (CERO BUCLES)
+📏 REGLA CRÍTICA #1: MENOS DE 5 LÍNEAS POR MENSAJE (CERO TEXTOS LARGOS)
+================================================================================
+1. LONGITUD OBLIGATORIA: Cada respuesta debe tener ESTRICTAMENTE MENOS DE 5 LÍNEAS (ideal 2 a 4 líneas). Prohibido escribir parrafadas, textos largos o respuestas que aburran al cliente en su celular.
+2. ESTRUCTURA PERSUASIVA DIRECTA:
+   - Línea 1-2: Respuesta directa, concisa y empática a lo que preguntó el cliente (con 1 emoji).
+   - Línea 3: Beneficio clave, precio o solución del negocio.
+   - Línea 4: Pregunta de cierre persuasiva que empuje a la acción (CTA).
+3. CONSULTAS FUERA DE TEMA (ej: recetas, pizza, bromas, temas no relacionados al negocio):
+   - NUNCA saludes de nuevo ni te presentes como un robot.
+   - Responde con humor persuasivo en 2 líneas redirigiendo al negocio.
+     Ejemplo: "😄 ¡Esa receta te la debo! Mi especialidad es ayudarte a atender clientes y vender en WhatsApp 24/7 en ${busName}. ¿Te gustaría conocer cómo funciona?"
+
+================================================================================
+🚀 REGLA FUNDAMENTAL #2: IMPULSO COMERCIAL Y PROACTIVIDAD (CERO BUCLES)
 ================================================================================
 1. RESPUESTA INMEDIATA A INTERÉS Y OFERTAS (CRÍTICO):
    - Si el cliente pregunta "¿qué vendes?", "¿de qué se trata?", "precios", "cuéntame", "a ver dime", "sí", "dale", "muéstrame", "qué vale", "cómo es", o responde afirmativamente a tu pregunta anterior:
@@ -431,7 +444,7 @@ ${hasKnowledge
 Tu rol es actuar como un asesor comercial y cerrador de alto nivel. Conduce cada conversación hacia el cierre adecuado:
 
 1. POLÍTICAS DE META Y HUMANIZACIÓN (CERO SPAM):
-   - Responde de forma directa, ágil y atractiva (máximo 3 a 5 líneas por mensaje) con 1 o 2 emojis.
+   - Responde de forma directa, ágil y atractiva (ESTRICTAMENTE MENOS DE 5 LÍNEAS) con 1 o 2 emojis.
    - Termina SIEMPRE con UN SOLO llamado a la acción (CTA) claro y persuasivo.
 
 2. PROCESO DE TOMA DE PEDIDOS DE PRODUCTOS / REPUESTOS (VENTAS):
@@ -460,9 +473,9 @@ Tu rol es actuar como un asesor comercial y cerrador de alto nivel. Conduce cada
    - Si el cliente solicita fotos o imágenes de un producto que tenga imagen_url en el catálogo, incluye al final de tu respuesta: [ENVIAR_IMAGEN: Nombre del Producto].
 
 === REGLAS DE ORO EN WHATSAPP ===
-1. Responde de forma directa, ágil y concisa con 1 o 2 emojis apropiados.
+1. Responde de forma directa, ágil y concisa (ESTRICTAMENTE MENOS DE 5 LÍNEAS) con 1 o 2 emojis apropiados.
 2. NUNCA inventes información o precios que no existan en el catálogo.
-3. NUNCA repitas el saludo de bienvenida ni hagas la misma pregunta si ya estás conversando activamente.
+3. NUNCA repitas el saludo de bienvenida ni te presentes de nuevo si ya estás conversando activamente.
 4. Conduce siempre al cliente con amabilidad hacia la compra, prueba gratis o agendamiento en el calendario.`;
 };
 
@@ -480,44 +493,52 @@ const buildHumanAssistantReply = (userMessage, business, products = [], chatHist
     return business?.greeting_msg || `¡Hola! 👋 Te damos la bienvenida a ${busName}. ¿En qué te podemos asesorar hoy?`;
   }
 
+  // 1.1 Consultas fuera de tema (recetas, pizza, bromas, tareas)
+  if (norm.includes('pizza') || norm.includes('receta') || norm.includes('cocina') || norm.includes('chiste') || norm.includes('tarea')) {
+    return `😄 ¡Esa te la debo! Mi especialidad es asesorarte y atender clientes 24/7 en ${busName}. ¿Te gustaría conocer cómo funciona para tu negocio?`;
+  }
+
   const hasProds = Array.isArray(products) && products.length > 0;
   const isBotWASaaS = busName === 'BotWA' || (!hasProds && busCategory.includes('Consultoría'));
 
   if (isBotWASaaS) {
     // Consultas específicas del SaaS BotWA
     if (norm.includes('acaban') || norm.includes('limite') || norm.includes('tope') || norm.includes('mas mensajes')) {
-      return `En ${busName} tu negocio nunca deja de atender clientes. Si llegas al límite de mensajes de tu plan, puedes pasar de inmediato al plan superior pagando solo la diferencia o comprar paquetes adicionales desde tu panel en 2 minutos. ¿Te gustaría iniciar los 7 días de prueba gratis ($0 hoy)? 😊`;
+      return `En ${busName} nunca dejas de atender. Si llegas al límite, pasas al plan superior pagando la diferencia o compras mensajes extra desde tu panel. ¿Activamos tus 7 días gratis ($0 hoy)? 😊`;
     }
     if (norm.includes('pro') || norm.includes('medio') || norm.includes('segundo') || norm.includes('foto')) {
-      return `El *Plan Máquina de Ventas Pro ($249.000 COP/mes - ⭐ Más Popular)* incluye 1 línea de WhatsApp, envío automático de fotos multimedia de tu catálogo, agendador interactivo de citas/pedidos, hasta 5.000 mensajes IA/mes y 100 docs. Incluye 7 días gratis ($0 hoy). ¿Te gustaría activarlo para tu negocio? 😊`;
+      return `El *Plan Máquina de Ventas Pro ($249.000 COP/mes)* incluye fotos automáticas, agendador de citas/pedidos y hasta 5.000 msgs/mes con 7 días gratis ($0 hoy). ¿Te gustaría activarlo? 😊`;
     }
     if (norm.includes('basico') || norm.includes('starter') || norm.includes('primero') || norm.includes('economico')) {
-      return `El *Plan Vendedor Automático ($120.000 COP/mes)* incluye 1 línea de WhatsApp, catálogo interactivo RAG 24/7, respuestas en <2s y hasta 1.500 mensajes IA/mes. Incluye 7 días gratis ($0 hoy). ¿Te gustaría activarlo para tu negocio? 😊`;
+      return `El *Plan Vendedor Automático ($120.000 COP/mes)* incluye catálogo 24/7, respuestas en <2s y hasta 1.500 msgs/mes con 7 días gratis ($0 hoy). ¿Deseas activarlo? 😊`;
     }
     if (norm.includes('prueba') || norm.includes('interesa') || norm.includes('activar') || norm.includes('empezar')) {
-      return `¡Excelente elección! 🎉 Te ayudamos a conectar tu bot en menos de 10 minutos con los 7 Días de Prueba Gratis ($0 COP hoy). Para iniciar, ¿cuál es el nombre de tu negocio y qué productos o servicios vendes? 😊 [LEAD_CALIENTE]`;
+      return `¡Excelente! 🎉 Te conectamos en 10 minutos con 7 Días de Prueba Gratis ($0 COP hoy). ¿Cuál es el nombre de tu negocio y qué vendes? 😊 [LEAD_CALIENTE]`;
     }
   }
 
   // Para negocios con Catálogo de Productos / Servicios
   if (Array.isArray(products) && products.length > 0) {
-    // Si el usuario pregunta por un producto específico
     const matched = products.filter(p => norm.includes(p.name.toLowerCase()));
     const itemsToShow = matched.length > 0 ? matched : products.slice(0, 3);
     const top = itemsToShow.map(p => `• *${p.name}*: $${Number(p.price || 0).toLocaleString('es-CO')} ${p.currency || 'COP'}${p.description ? ` (${p.description})` : ''}`).join('\n');
 
     if (!isSales) {
-      return `¡Con gusto! En ${busName} contamos con los siguientes servicios disponibles:\n\n${top}\n\n📅 Atendemos de ${business?.active_hours_start || '08:00'} a ${business?.active_hours_end || '20:00'}. ¿Para qué día y hora te gustaría agendar tu cita?`;
+      return `Contamos con los siguientes servicios disponibles:\n\n${top}\n\n📅 Atendemos de ${business?.active_hours_start || '08:00'} a ${business?.active_hours_end || '20:00'}. ¿Para qué día y hora agendamos tu cita?`;
     }
 
-    return `¡Con gusto! En ${busName} te ofrecemos las siguientes opciones disponibles en nuestro catálogo:\n\n${top}\n\n📦 Realizamos envíos y domicilios. ¿Te gustaría apartar tu pedido o a qué dirección te lo enviamos? 😊`;
+    return `Tenemos las siguientes opciones en catálogo:\n\n${top}\n\n📦 Enviamos a domicilio. ¿A qué dirección te lo enviamos? 😊`;
   }
 
   if (!isSales) {
-    return `¡Hola! En ${busName} te atendemos en ${busCategory}. Horario: ${business?.active_hours_start || '08:00'} a ${business?.active_hours_end || '20:00'}. ¿Qué día y hora te gustaría reservar tu cita? 📅`;
+    return hasHistory
+      ? `Horario de atención: ${business?.active_hours_start || '08:00'} a ${business?.active_hours_end || '20:00'}. ¿Qué día y hora te queda bien para tu cita? 📅`
+      : `¡Hola! En ${busName} te atendemos en ${busCategory}. Horario: ${business?.active_hours_start || '08:00'} a ${business?.active_hours_end || '20:00'}. ¿Qué día y hora te gustaría reservar? 📅`;
   }
 
-  return `¡Hola! En ${busName} estamos para brindarte la mejor atención en ${busCategory}. ¿En qué te podemos colaborar hoy? 😊`;
+  return hasHistory
+    ? `Con gusto te colaboro en ${busCategory}. ¿Qué producto, repuesto o duda específica tienes? 😊`
+    : `¡Hola! En ${busName} estamos para brindarte la mejor atención en ${busCategory}. ¿En qué te podemos colaborar hoy? 😊`;
 };
 
 // ─── 6. Función principal RAG + Groq ─────────────────────────────────────────
@@ -576,11 +597,12 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
       }
     }
 
-    const isFirstMessage = formattedHistory.length === 0;
+    const hasAlreadyGreeted = formattedHistory.some(m => m.direction === 'outbound');
+    const isFirstMessage = !hasAlreadyGreeted && formattedHistory.length === 0;
 
     const subQueries = await generateSubQueries(userMessage, safeBusiness, formattedHistory);
     const relevantKnowledge = await ragSearch(userMessage, knowledge, safeBusiness, formattedHistory);
-    const systemPrompt = buildSystemPrompt(safeBusiness, relevantKnowledge, knowledge, products, isFirstMessage, userMessage, subQueries);
+    const systemPrompt = buildSystemPrompt(safeBusiness, relevantKnowledge, knowledge, products, isFirstMessage, userMessage, subQueries, hasAlreadyGreeted);
 
     const messages = [
       { role: 'system', content: systemPrompt },
@@ -602,8 +624,8 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
           const response = await client.chat.completions.create({
             model: modelName,
             messages,
-            max_tokens: 400,
-            temperature: 0.2,
+            max_tokens: 150,
+            temperature: 0.25,
           });
 
           if (response?.choices?.[0]?.message?.content) {

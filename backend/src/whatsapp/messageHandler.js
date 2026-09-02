@@ -169,7 +169,7 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
       const { data: newConv, error: insErr } = await supabase
         .from('conversations')
         .insert({
-          session_id: sessionUuid || '00000000-0000-0000-0000-000000000001',
+          session_id: sessionUuid || null,
           contact_phone: contactPhone,
           contact_name: contactName,
           bot_active: true,
@@ -448,6 +448,33 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
     }
   } catch (e) {
     console.error('[MSG] Error cargando historial:', e.message);
+  }
+
+  // Fallback a mensajes en RAM de Baileys si la DB aún no tiene historial acumulado
+  if (history.length <= 1) {
+    try {
+      const { getUserStore, getValidUserId } = require('./sessionManager');
+      const store = getUserStore(getValidUserId(userId));
+      if (store && store.messages) {
+        const jidDigits = contactPhone.replace(/[^0-9]/g, '');
+        const ramMsgs = [];
+        for (const [mId, mObj] of store.messages.entries()) {
+          const mPhone = (mObj.remoteJid || '').replace(/[^0-9]/g, '');
+          if (mPhone && (mPhone.includes(jidDigits) || jidDigits.includes(mPhone))) {
+            const mText = mObj.content || mObj.text || '';
+            if (mText) {
+              ramMsgs.push({
+                content: mText,
+                direction: mObj.fromMe ? 'outbound' : 'inbound',
+              });
+            }
+          }
+        }
+        if (ramMsgs.length > history.length) {
+          history = ramMsgs.slice(-10);
+        }
+      }
+    } catch (_) {}
   }
 
   // ── 10. RAG + Groq: generar respuesta ─────────────────────────────────────
