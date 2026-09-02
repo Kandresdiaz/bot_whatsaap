@@ -30,7 +30,10 @@ const DEFAULT_BOTWA_BUSINESS = {
   active_days: [1, 2, 3, 4, 5, 6],
   timezone: 'America/Bogota',
   bot_personality: 'persuasivo',
-  bot_enabled: true
+  bot_enabled: true,
+  main_goal: 'vender',
+  closing_instructions: 'Para cerrar, solicita con entusiasmo: Nombre, ciudad y método de pago preferido.',
+  custom_instructions: 'Responde siempre en menos de 5 líneas de manera persuasiva, cercana y enfocada en cerrar ventas o agendar citas.',
 };
 
 // Endpoint de diagnóstico rápido

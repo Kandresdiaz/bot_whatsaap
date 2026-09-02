@@ -429,6 +429,9 @@ ${businessInfo}
 === ESTADO DE LA CONVERSACIÓN ===
 ${greetingInstruction}
 
+${business?.custom_instructions ? `=== REGLAS E INSTRUCCIONES PERSONALIZADAS DE LA EMPRESA (PROMPT) ===
+${business.custom_instructions}
+=== FIN DE REGLAS PERSONALIZADAS ===\n` : ''}
 ${categoriesOverview ? `${categoriesOverview}\n` : ''}
 ${hasProducts
   ? `=== CATÁLOGO OFICIAL DE PRODUCTOS / SERVICIOS Y PRECIOS DISPONIBLES ===\n${productsContext}\n=== FIN DEL CATÁLOGO ===`
