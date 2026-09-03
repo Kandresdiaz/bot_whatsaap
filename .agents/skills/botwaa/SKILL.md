@@ -667,6 +667,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-03** | fix(prompt): eliminar frase experto en vender y enfocar en asesoria servicial y empatica (`379cc27`) | Auto-deploy |
 
+| **2026-09-03** | feat: soporte completo para agendar y cancelar citas en DB, consultas SQL por negocio y compatibilidad multi-cuenta sin requerir configuracion de Redis (`344977b`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
