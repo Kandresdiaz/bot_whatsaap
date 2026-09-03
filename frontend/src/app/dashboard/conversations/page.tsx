@@ -37,6 +37,7 @@ export default function ConversationsPage() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [active, setActive] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [loadingMessages, setLoadingMessages] = useState(false);
   const [reply, setReply] = useState('');
   const [search, setSearch] = useState('');
   const [filterTab, setFilterTab] = useState<'all' | 'unread' | 'leads' | 'bot' | 'personal'>('all');
@@ -239,6 +240,12 @@ export default function ConversationsPage() {
       if (data.conversations && Array.isArray(data.conversations)) {
         setConversations(data.conversations);
 
+        // Si hay conversaciones y alguna tiene actividad reciente (< 24h), el bot/sesión está operando
+        const hasRecent = data.conversations.some((c: Conversation) => c.last_message_at && (Date.now() - new Date(c.last_message_at).getTime() < 86400000));
+        if (hasRecent) {
+          setSessionStatus(prev => prev === 'connected' ? prev : 'connected');
+        }
+
         // Mantener sincronizado el estado y mensajes del chat activo del panel derecho
         if (activeRef.current) {
           const currentPhone = (activeRef.current.contact_phone || '').replace(/[^0-9]/g, '');
@@ -298,6 +305,7 @@ export default function ConversationsPage() {
     });
 
     socket.on('conversation_updated', (payload: { conversationId?: string; contactPhone?: string; contactName?: string; lastMessage?: string; timestamp?: string; is_lead?: boolean }) => {
+      setSessionStatus(prev => prev === 'connected' ? prev : 'connected');
       const { conversationId, contactPhone, contactName, lastMessage, timestamp, is_lead } = payload || {};
       const cleanIncomingPhone = contactPhone ? contactPhone.replace(/[^0-9]/g, '') : '';
 
@@ -360,6 +368,7 @@ export default function ConversationsPage() {
     });
 
     socket.on('new_message', (payload: { conversationId?: string; contactPhone?: string; message?: Message }) => {
+      setSessionStatus(prev => prev === 'connected' ? prev : 'connected');
       const { conversationId, contactPhone, message } = payload || {};
       if (!message || !message.content) return;
 
@@ -462,9 +471,14 @@ export default function ConversationsPage() {
     setActive(conv);
     activeRef.current = conv;
     setMessages([]); // Limpieza instantánea para evitar que se pegue la conversación previa
+    setLoadingMessages(true);
     setShowEmojiPicker(false);
 
-    await fetchActiveMessages(conv, true);
+    try {
+      await fetchActiveMessages(conv, true);
+    } finally {
+      setLoadingMessages(false);
+    }
     setConversations(prev => prev.map(c => c.id === conv.id ? { ...c, unread_count: 0 } : c));
   };
 
@@ -1002,7 +1016,21 @@ export default function ConversationsPage() {
               <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
                 {/* Historial de Mensajes */}
                 <div style={{ flex: 1, overflowY: 'auto', padding: '16px 24px', display: 'flex', flexDirection: 'column', gap: 10, background: '#0b141a' }}>
-                  {messages.map(msg => {
+                  {loadingMessages && messages.length === 0 ? (
+                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', gap: 12 }}>
+                      <div style={{ fontSize: 32 }}>⏳</div>
+                      <span style={{ fontSize: 13, color: '#94a3b8' }}>Cargando conversación...</span>
+                    </div>
+                  ) : messages.length === 0 ? (
+                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#64748b', textAlign: 'center', padding: 24, gap: 10 }}>
+                      <div style={{ fontSize: 44, opacity: 0.6 }}>💬</div>
+                      <div style={{ color: '#f1f5f9', fontWeight: 600, fontSize: 15 }}>No hay mensajes en este chat</div>
+                      <p style={{ fontSize: 13, maxWidth: 340, margin: 0, lineHeight: 1.5, color: '#94a3b8' }}>
+                        Los mensajes nuevos aparecerán aquí en tiempo real. Escribe un mensaje abajo para chatear directamente por WhatsApp.
+                      </p>
+                    </div>
+                  ) : (
+                    messages.map(msg => {
                     const isOutbound = msg.direction === 'outbound';
                     return (
                       <div
@@ -1090,8 +1118,9 @@ export default function ConversationsPage() {
                         </div>
                       </div>
                     );
-                  })}
-                  <div ref={messagesEndRef} />
+                  })
+                )}
+                <div ref={messagesEndRef} />
                 </div>
 
                 {/* Panel Lateral de Información del Contacto (Info Drawer) */}

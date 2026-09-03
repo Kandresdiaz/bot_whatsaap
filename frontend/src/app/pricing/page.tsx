@@ -247,10 +247,10 @@ function PricingContent() {
           </h1>
 
           <p style={{
-            fontSize: 16, color: 'var(--text-muted)', maxWidth: 680, margin: '0 auto', lineHeight: 1.5
+            fontSize: 16, color: 'var(--text-muted)', maxWidth: 720, margin: '0 auto', lineHeight: 1.5
           }}>
             Atiende a tus clientes en 2 segundos, cotiza desde tu catálogo con fotos y agenda pedidos en automático. 
-            <strong> Ingresa tu tarjeta hoy y úsalo 7 días gratis. Si no te encanta, cancelas con 1 clic y no pagas $1.</strong>
+            <strong> Ingresa tu tarjeta hoy y úsalo 7 días gratis con hasta 300 mensajes incluidos para cerrar tus primeras ventas. Si no te encanta, cancelas con 1 clic y no pagas $1.</strong>
           </p>
         </div>
 
@@ -345,6 +345,43 @@ function PricingContent() {
                     }}>
                       🎁 7 DÍAS GRATIS ($0 COP HOY)
                     </div>
+                  </div>
+
+                  {/* Message Quota Callout Box */}
+                  <div style={{
+                    background: 'linear-gradient(135deg, rgba(0, 207, 255, 0.1) 0%, rgba(26, 107, 255, 0.15) 100%)',
+                    border: '1px solid rgba(0, 207, 255, 0.35)',
+                    borderRadius: 12,
+                    padding: '10px 14px',
+                    marginBottom: 20,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 10
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 20 }}>💬</span>
+                      <div>
+                        <div style={{ fontSize: 10, color: '#94a3b8', textTransform: 'uppercase', fontWeight: 800, letterSpacing: '0.5px' }}>
+                          CUPO DE MENSAJES IA
+                        </div>
+                        <div style={{ fontSize: 14, fontWeight: 900, color: '#00CFFF' }}>
+                          {plan.id === 'starter' ? '1.500 Mensajes / mes' : plan.id === 'pro' ? '5.000 Mensajes / mes' : '20.000 Mensajes / mes'}
+                        </div>
+                      </div>
+                    </div>
+                    <span style={{
+                      fontSize: 11,
+                      background: 'rgba(34, 197, 94, 0.2)',
+                      border: '1px solid rgba(34, 197, 94, 0.4)',
+                      color: '#4ade80',
+                      padding: '3px 8px',
+                      borderRadius: 6,
+                      fontWeight: 700,
+                      whiteSpace: 'nowrap'
+                    }}>
+                      300 en prueba gratis
+                    </span>
                   </div>
 
                   {/* Features List */}

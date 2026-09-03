@@ -355,9 +355,6 @@ router.get('/status/:userId', async (req, res) => {
       }
     }
 
-    const userPlanKey = (user.plan || 'starter').toLowerCase();
-    const planInfo = HORMOZI_PLANS[userPlanKey] || HORMOZI_PLANS.starter;
-
     // ── Límites por plan y estado de suscripción ────────────────────────────
     const PLAN_LIMITS = {
       free: 100,         // Plan inicial de prueba sin tarjeta
@@ -598,5 +595,121 @@ router.post('/cancel-subscription', async (req, res) => {
     return res.status(500).json({ success: false, error: err.message });
   }
 });
+
+// ── Helper para validar cuota de mensajes antes de llamar a Groq ─────────────
+const checkUserMessageQuota = async (userId) => {
+  if (!userId) return { canSend: true, reason: 'no_user_id' };
+
+  try {
+    const isUuid = (str) => typeof str === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+
+    let user = null;
+    if (isUuid(userId)) {
+      const { data } = await supabase
+        .from('users')
+        .select('id, plan, status, is_admin, subscription_status, trial_ends_at, paid_until')
+        .eq('id', userId)
+        .maybeSingle();
+      user = data;
+    }
+
+    if (!user && (userId === 'admin' || userId === '00000000-0000-0000-0000-000000000001')) {
+      return { canSend: true, isAdmin: true, messageLimit: 999999, messagesUsed: 0 };
+    }
+
+    if (!user) {
+      user = { id: userId, plan: 'free', status: 'active', subscription_status: 'none' };
+    }
+
+    if (user.is_admin) {
+      return { canSend: true, isAdmin: true, messageLimit: 999999, messagesUsed: 0 };
+    }
+
+    // Verificar si la cuenta está pausada o cancelada
+    if (user.status === 'paused' || user.subscription_status === 'canceled') {
+      return { canSend: false, reason: 'account_paused', messageLimit: 0, messagesUsed: 0 };
+    }
+
+    const now = new Date();
+    const isTrialActive = user.subscription_status === 'trialing' && user.trial_ends_at && new Date(user.trial_ends_at) > now;
+    const isPaidActive = (user.subscription_status === 'active' || user.status === 'active') && (!user.paid_until || new Date(user.paid_until) > now);
+
+    const PLAN_LIMITS = {
+      free: 100,         // Plan gratis / demo
+      trial: 300,        // 7 Días de prueba gratis con tarjeta ($0 COP hoy)
+      starter: 1500,     // Plan Vendedor Automático ($120.000 COP)
+      pro: 5000,         // Plan Máquina de Ventas Pro ($249.000 COP)
+      business: 20000,   // Plan Dominio Agencia / VIP ($490.000 COP)
+    };
+
+    const userPlanKey = (user.plan || 'starter').toLowerCase();
+    let messageLimit = PLAN_LIMITS[userPlanKey] || 1500;
+
+    if (isTrialActive) {
+      messageLimit = PLAN_LIMITS.trial; // 300 msgs en prueba
+    } else if (!isPaidActive || user.subscription_status === 'none' || userPlanKey === 'free') {
+      messageLimit = PLAN_LIMITS.free; // 100 msgs en demo
+    }
+
+    // Calcular consumo mensual del bot
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    const sessionIdsSet = new Set();
+    if (isUuid(user.id)) sessionIdsSet.add(user.id);
+
+    const { data: userSessions } = await supabase
+      .from('whatsapp_sessions')
+      .select('id')
+      .eq('user_id', user.id);
+
+    if (Array.isArray(userSessions)) {
+      userSessions.forEach(s => { if (s?.id && isUuid(s.id)) sessionIdsSet.add(s.id); });
+    }
+
+    const sessionList = Array.from(sessionIdsSet);
+    let convIds = [];
+    if (sessionList.length > 0) {
+      const { data: convs } = await supabase
+        .from('conversations')
+        .select('id')
+        .in('session_id', sessionList);
+      if (Array.isArray(convs)) {
+        convIds = convs.map(c => c.id).filter(Boolean);
+      }
+    }
+
+    let messagesUsed = 0;
+    if (convIds.length > 0) {
+      const { data: msgsData } = await supabase
+        .from('messages')
+        .select('id')
+        .in('conversation_id', convIds)
+        .eq('sent_by', 'bot')
+        .gte('timestamp', startOfMonth);
+
+      if (Array.isArray(msgsData)) {
+        messagesUsed = msgsData.length;
+      }
+    }
+
+    const hasReachedLimit = messagesUsed >= messageLimit;
+
+    return {
+      canSend: !hasReachedLimit,
+      messagesUsed,
+      messageLimit,
+      hasReachedLimit,
+      plan: userPlanKey,
+      isTrial: isTrialActive,
+      isPaid: isPaidActive,
+      isAdmin: false,
+      reason: hasReachedLimit ? 'quota_exceeded' : 'ok'
+    };
+  } catch (err) {
+    console.warn('[BILLING] Error verificando cuota de usuario:', err.message);
+    return { canSend: true, reason: 'error_fallback' };
+  }
+};
+
+router.checkUserMessageQuota = checkUserMessageQuota;
 
 module.exports = router;

@@ -77,20 +77,24 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }, [effectiveUserId]);
 
   const [subInfo, setSubInfo] = useState<any>(null);
+  const [usageInfo, setUsageInfo] = useState<any>(null);
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
   const [cancelingSub, setCancelingSub] = useState(false);
   const [cancelSuccessMsg, setCancelSuccessMsg] = useState<string | null>(null);
 
-  // Cargar estado de suscripción de Mercado Pago
+  // Cargar estado de suscripción y cuota de mensajes
   useEffect(() => {
-    if (!effectiveUserId || effectiveUserId === 'admin') return;
+    if (!effectiveUserId) return;
     fetch(`${BACKEND}/api/billing/status/${effectiveUserId}`)
       .then(r => r.json())
       .then(d => {
-        if (d.success) setSubInfo(d.subscription);
+        if (d.success) {
+          setSubInfo(d.subscription);
+          setUsageInfo(d.usage);
+        }
       })
       .catch(() => {});
-  }, [effectiveUserId]);
+  }, [effectiveUserId, BACKEND]);
 
   const handleCancelSubscription = async () => {
     if (!effectiveUserId) return;
@@ -316,6 +320,112 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 🛡️ Volver a Admin
               </Link>
             </div>
+          </div>
+        )}
+
+        {/* Top Bar: Plan y Apartado Superior de Cuota de Mensajes IA */}
+        <div style={{
+          background: 'linear-gradient(90deg, rgba(13,20,40,0.95) 0%, rgba(19,29,53,0.95) 100%)',
+          borderBottom: '1px solid rgba(0, 207, 255, 0.2)',
+          padding: '10px 24px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: 12,
+          marginBottom: 16
+        }}>
+          {/* Plan Info */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 18 }}>🚀</span>
+            <div>
+              <span style={{ fontSize: 11, color: '#94a3b8', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.5px' }}>
+                Tu Plan:
+              </span>{' '}
+              <strong style={{ fontSize: 13, color: '#f8fafc' }}>
+                {subInfo?.is_trial_active
+                  ? `Prueba 7 Días ($0 Hoy) — ${subInfo?.plan === 'starter' ? 'Vendedor Automático' : subInfo?.plan === 'business' ? 'Dominio VIP' : 'Máquina de Ventas Pro ⭐'}`
+                  : user?.is_admin
+                  ? 'Super Admin (Ilimitado)'
+                  : subInfo?.plan === 'starter'
+                  ? 'Plan Vendedor Automático ($120.000 COP)'
+                  : subInfo?.plan === 'business'
+                  ? 'Plan Dominio VIP ($490.000 COP)'
+                  : 'Plan Máquina de Ventas Pro ($249.000 COP)'}
+              </strong>
+              {subInfo?.is_trial_active && (
+                <span style={{ marginLeft: 8, fontSize: 11, background: 'rgba(34,197,94,0.15)', color: '#4ade80', padding: '2px 8px', borderRadius: 6, fontWeight: 700 }}>
+                  {subInfo.days_left_in_trial} días restantes
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Cuota de Mensajes */}
+          {usageInfo && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 16 }}>💬</span>
+                <div style={{ display: 'flex', flexDirection: 'column', minWidth: 150 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, fontWeight: 700, marginBottom: 3 }}>
+                    <span style={{ color: '#94a3b8' }}>Mensajes IA:</span>
+                    <span style={{
+                      color: usageInfo.has_reached_limit ? '#ef4444' : usageInfo.is_approaching_limit ? '#f59e0b' : '#00CFFF'
+                    }}>
+                      {usageInfo.messages_used_this_month?.toLocaleString('es-CO') || 0} / {usageInfo.message_limit > 50000 ? 'Ilimitados' : `${usageInfo.message_limit?.toLocaleString('es-CO')} msgs`}
+                    </span>
+                  </div>
+                  {usageInfo.message_limit < 50000 && (
+                    <div style={{ width: '100%', height: 6, background: 'rgba(255,255,255,0.08)', borderRadius: 99, overflow: 'hidden' }}>
+                      <div style={{
+                        width: `${Math.max(usageInfo.percentage_used || 0, 4)}%`,
+                        height: '100%',
+                        background: usageInfo.has_reached_limit
+                          ? 'linear-gradient(90deg, #ef4444, #dc2626)'
+                          : usageInfo.is_approaching_limit
+                          ? 'linear-gradient(90deg, #f59e0b, #d97706)'
+                          : 'linear-gradient(90deg, #1A6BFF, #00CFFF)',
+                        borderRadius: 99,
+                        transition: 'width 0.4s ease'
+                      }} />
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <Link
+                href="/pricing"
+                className="btn btn-primary"
+                style={{ fontSize: 11, padding: '5px 12px', height: 28, textDecoration: 'none' }}
+              >
+                {usageInfo.has_reached_limit ? '⚡ Ampliar Plan' : '🔄 Cambiar Plan'}
+              </Link>
+            </div>
+          )}
+        </div>
+
+        {/* Quota Exceeded Alert Banner */}
+        {usageInfo?.has_reached_limit && !user?.is_admin && (
+          <div style={{
+            background: 'linear-gradient(90deg, rgba(239,68,68,0.25) 0%, rgba(220,38,38,0.15) 100%)',
+            borderBottom: '2px solid #ef4444',
+            padding: '12px 24px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: 12,
+            marginBottom: 16
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: '#fca5a5', fontSize: 13 }}>
+              <span style={{ fontSize: 22 }}>⚠️</span>
+              <span>
+                <strong>¡Límite de mensajes alcanzado!</strong> Has consumido el 100% de los mensajes de tu cuota ({usageInfo.messages_used_this_month} / {usageInfo.message_limit} msgs). El bot ha pausado sus respuestas automáticas para evitar consumos adicionales. Amplía tu plan para continuar vendiendo 24/7.
+              </span>
+            </div>
+            <Link href="/pricing" className="btn btn-primary" style={{ padding: '7px 16px', fontSize: 12, background: 'linear-gradient(135deg, #ef4444, #dc2626)', textDecoration: 'none' }}>
+              ⚡ Ampliar Cuota Ahora →
+            </Link>
           </div>
         )}
 

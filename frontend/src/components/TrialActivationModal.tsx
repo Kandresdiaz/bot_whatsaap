@@ -142,6 +142,10 @@ export default function TrialActivationModal({ isOpen, onClose }: Props) {
           </div>
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 13, color: '#e2e8f0' }}>
             <span style={{ color: '#4ade80', fontWeight: 800, fontSize: 15 }}>✓</span>
+            <span><strong>300 Mensajes IA Incluidos:</strong> Atiende clientes y cierra pedidos y citas sin gastar un solo peso.</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 13, color: '#e2e8f0' }}>
+            <span style={{ color: '#4ade80', fontWeight: 800, fontSize: 15 }}>✓</span>
             <span><strong>Cero Riesgo:</strong> Cancela con 1 clic en cualquier momento antes del día 7 sin cobro alguno.</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 13, color: '#4ade80', fontWeight: 600 }}>

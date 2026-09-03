@@ -657,7 +657,7 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-02** | fix(frontend): forzar BACKEND_URL a Render e ignorar variable obsoleta de Replit en Vercel (`22e0d24`) | Auto-deploy |
 
-| **2026-09-02** | fix(ui): apply global mobile overflow protection and responsive layout packaging across all pages (`bf49250`) | Auto-deploy |
+| **2026-09-02** | feat(metrics): control estricto de cuotas de mensajes por plan y prueba gratis (proteccion API Groq), barra superior en dashboard y metricas de valor comercial (pedidos cerrados, facturacion, citas y ROI) | Feature |
 
 | **2026-09-03** | fix: corregida resolucion de negocio a BotWA y eliminadas referencias fijas de repuestos/taller del prompt (`45d49c2`) | Auto-deploy |
 

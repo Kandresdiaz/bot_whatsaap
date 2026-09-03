@@ -242,19 +242,13 @@ router.get('/:conversationId/messages', async (req, res) => {
     // Buscar UUID real de la conversación si no lo tenemos
     if (!realConvId && cleanPhone) {
       try {
-        const sessionUuid = await getSessionUuid(validUserId);
-        const sessionIdsSet = new Set();
-        if (sessionUuid) sessionIdsSet.add(sessionUuid);
+        const { data: conv } = await supabase
+          .from('conversations')
+          .select('id')
+          .eq('contact_phone', cleanPhone)
+          .order('last_message_at', { ascending: false })
+          .limit(1);
 
-        const { data: userSessions } = await supabase.from('whatsapp_sessions').select('id').eq('user_id', validUserId);
-        if (userSessions) userSessions.forEach(s => sessionIdsSet.add(s.id));
-
-        const sessionList = Array.from(sessionIdsSet);
-
-        let convQuery = supabase.from('conversations').select('id').eq('contact_phone', cleanPhone);
-        if (sessionList.length > 0) convQuery = convQuery.in('session_id', sessionList);
-
-        const { data: conv } = await convQuery.limit(1);
         if (conv && conv[0]?.id) realConvId = conv[0].id;
       } catch (_) {}
     }
@@ -268,21 +262,33 @@ router.get('/:conversationId/messages', async (req, res) => {
         const { data: relatedConvs } = await supabase.from('conversations').select('id').eq('contact_phone', cleanPhone);
         if (relatedConvs && relatedConvs.length > 0) {
           relatedConvs.forEach(c => convIdsToQuery.add(c.id));
+        } else if (cleanPhone.length >= 7) {
+          const suffix = cleanPhone.slice(-10);
+          const { data: suffixConvs } = await supabase.from('conversations').select('id, contact_phone').like('contact_phone', `%${suffix}`);
+          if (suffixConvs && suffixConvs.length > 0) {
+            suffixConvs.forEach(c => convIdsToQuery.add(c.id));
+          }
         }
       } catch (_) {}
     }
 
     if (convIdsToQuery.size > 0) {
-      const { data } = await supabase
+      const { data, error: qErr } = await supabase
         .from('messages')
         .select('*')
         .in('conversation_id', Array.from(convIdsToQuery))
         .order('timestamp', { ascending: false })
         .limit(500);
 
+      if (qErr) {
+        console.warn('[GET Messages DB Warning]:', qErr.message);
+      }
       dbMsgs = data || [];
+
       if (realConvId) {
-        await supabase.from('conversations').update({ unread_count: 0 }).eq('id', realConvId).catch(() => {});
+        try {
+          await supabase.from('conversations').update({ unread_count: 0 }).eq('id', realConvId);
+        } catch (_) {}
       }
     }
 
