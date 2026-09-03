@@ -47,9 +47,20 @@ const extractText = (msg) => {
     || '';
 };
 
-// ─── Enviar mensaje con Baileys ───────────────────────────────────────────────
+// ─── Enviar mensaje con Baileys (Human Pacing & Presencia 'Escribiendo...') ────
 const sendText = async (sock, jid, text) => {
   try {
+    // 1. Simular presencia 'Escribiendo...' (Efecto humano y protección anti-ban)
+    try {
+      if (sock?.sendPresenceUpdate) {
+        await sock.sendPresenceUpdate('composing', jid);
+        const delayMs = Math.min(Math.max((text || '').length * 18, 1200), 2800);
+        await new Promise(r => setTimeout(r, delayMs));
+        await sock.sendPresenceUpdate('paused', jid);
+      }
+    } catch (_) {}
+
+    // 2. Enviar mensaje de texto
     await sock.sendMessage(jid, { text });
   } catch (e) {
     console.error('[MSG] Error enviando texto:', e.message);
