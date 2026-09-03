@@ -671,6 +671,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-03** | feat: limite estricto de memoria RAM de 1000 entradas y blindaje total de frontera de negocio en el prompt (`b648a5c`) | Auto-deploy |
 
+| **2026-09-03** | fix: prohibir preguntas tecnicas de volumen de mensajes al cliente, recomendar Plan Pro y preguntar por tipo de negocio (`2989b9c`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
