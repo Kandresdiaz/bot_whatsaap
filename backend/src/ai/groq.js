@@ -499,7 +499,14 @@ Sigue estrictamente estas indicaciones sobre qué datos pedir o qué cuentas/mé
         [LEAD_CALIENTE]
         [NUEVA_CITA: {"nombre": "Nombre Cliente", "servicio": "Servicio Agendado", "fecha": "YYYY-MM-DD", "hora": "HH:MM:00"}]
 
-4. ENVÍO DE FOTOS O IMÁGENES:
+4. PROCESO DE CANCELACIÓN O BORRADO DE CITAS EN CALENDARIO (${busName}):
+   - Cuando el cliente solicite cancelar, anular o borrar su cita (ej: "cancela mi cita", "no voy a poder asistir", "borra mi turno", "cancélame la cita de mañana", "anula mi reserva"):
+     1. Responde con calidez y comprensión, confirmándole la cancelación en menos de 3 líneas:
+        "¡Entendido [Nombre]! Tu cita ha sido cancelada con éxito. Cuando desees reprogramar o necesites algún servicio, con mucho gusto te atenderemos 😊"
+     2. Incluye SIEMPRE al final de tu respuesta la etiqueta:
+        [CANCELAR_CITA: {"nombre": "Nombre Cliente", "fecha": "YYYY-MM-DD", "servicio": "Servicio o General"}]
+
+5. ENVÍO DE FOTOS O IMÁGENES:
    - Si el cliente solicita fotos o imágenes de un producto que tenga imagen_url en el catálogo, incluye al final de tu respuesta: [ENVIAR_IMAGEN: Nombre del Producto].
 
 === REGLAS DE ORO EN WHATSAPP ===
@@ -562,14 +569,10 @@ const buildHumanAssistantReply = (userMessage, business, products = [], chatHist
   }
 
   if (!isSales) {
-    return hasHistory
-      ? `Horario de atención: ${business?.active_hours_start || '08:00'} a ${business?.active_hours_end || '20:00'}. ¿Qué día y hora te queda bien para tu cita? 📅`
-      : `¡Hola! En ${busName} te atendemos en ${busCategory}. Horario: ${business?.active_hours_start || '08:00'} a ${business?.active_hours_end || '20:00'}. ¿Qué día y hora te gustaría reservar? 📅`;
+    return `¡Hola! En ${busName} te asesoramos con gusto en ${busCategory}. ¿Para qué día y hora te gustaría agendar tu cita? 📅`;
   }
 
-  return hasHistory
-    ? `Con gusto te colaboro en ${busCategory}. ¿Qué producto, repuesto o duda específica tienes? 😊`
-    : `¡Hola! En ${busName} estamos para brindarte la mejor atención en ${busCategory}. ¿En qué te podemos colaborar hoy? 😊`;
+  return `¡Hola! En ${busName} estamos para asesorarte en ${busCategory}. ¿Qué necesidad puntual te gustaría consultar hoy? 😊`;
 };
 
 // ─── 6. Función principal RAG + Groq ─────────────────────────────────────────
@@ -600,20 +603,22 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
         tokensUsed: 0,
         imageName: null,
         newAppointmentData: null,
+        cancelAppointmentData: null,
+        newOrderData: null,
         clientData: null,
         ragChunksUsed: 1,
       };
     }
   }
 
-  // ── 1. Caché Redis / RAM (Solo para preguntas aisladas sin historial previo) ──
+  // ── 1. Caché Redis / RAM (0 Tokens Gastados) ────────────────────────────
   const validHistory = Array.isArray(chatHistory) ? chatHistory.filter(m => m && m.content) : [];
-  const isFirstOrIsolated = validHistory.length === 0;
+  const isFirstOrIsolated = validHistory.length <= 2;
 
-  if (isFirstOrIsolated && normQuery.length > 5) {
+  if (isFirstOrIsolated) {
     try {
       const cached = await getCachedAiResponse(safeBusiness?.id, userMessage);
-      if (cached && cached.reply) {
+      if (cached) {
         return { ...cached, tokensUsed: 0 };
       }
     } catch (_) {}
@@ -628,8 +633,13 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
       }
     }
 
-    const hasAlreadyGreeted = formattedHistory.some(m => m.direction === 'outbound');
-    const isFirstMessage = !hasAlreadyGreeted && formattedHistory.length === 0;
+    const isFirstMessage = formattedHistory.length === 0;
+
+    // Detectar si el bot ya saludó al usuario en mensajes previos salientes
+    const hasAlreadyGreeted = formattedHistory.some(m =>
+      m.direction === 'outbound' &&
+      (m.content.toLowerCase().includes('hola') || m.content.toLowerCase().includes('bienvenid'))
+    );
 
     const subQueries = await generateSubQueries(userMessage, safeBusiness, formattedHistory);
     const relevantKnowledge = await ragSearch(userMessage, knowledge, safeBusiness, formattedHistory);
@@ -690,6 +700,14 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
       } catch (_) {}
     }
 
+    const cancelMatch = fullReply.match(/\[CANCELAR_CITA:\s*(\{[\s\S]*?\})\]/i);
+    let cancelAppointmentData = null;
+    if (cancelMatch) {
+      try {
+        cancelAppointmentData = JSON.parse(cancelMatch[1]);
+      } catch (_) {}
+    }
+
     const orderMatch = fullReply.match(/\[NUEVO_PEDIDO:\s*(\{[\s\S]*?\})\]/i);
     let newOrderData = null;
     if (orderMatch) {
@@ -706,12 +724,13 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
       } catch (_) {}
     }
 
-    const isLeadHot = isLeadHotFlag || Boolean(newAppointmentData) || Boolean(newOrderData) || Boolean(clientData);
+    const isLeadHot = isLeadHotFlag || Boolean(newAppointmentData) || Boolean(newOrderData) || Boolean(clientData) || Boolean(cancelAppointmentData);
 
     const reply = fullReply
       .replace(/\[LEAD_CALIENTE\]/gi, '')
       .replace(/\[ENVIAR_IMAGEN:[^\]]+\]/gi, '')
       .replace(/\[NUEVA_CITA:[^\]]+\]/gi, '')
+      .replace(/\[CANCELAR_CITA:[^\]]+\]/gi, '')
       .replace(/\[NUEVO_PEDIDO:[^\]]+\]/gi, '')
       .replace(/\[DATOS_CLIENTE:[^\]]+\]/gi, '')
       .trim();
@@ -735,6 +754,7 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
       tokensUsed,
       imageName,
       newAppointmentData,
+      cancelAppointmentData,
       newOrderData,
       clientData,
       ragChunksUsed: relevantKnowledge.length

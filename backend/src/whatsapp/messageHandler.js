@@ -414,13 +414,8 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
     console.error('[MSG] Error verificando horario:', e.message);
   }
 
-  // ── 7. Flujo de citas (si aplica) ─────────────────────────────────────────
-  try {
-    const tookOver = await handleAppointmentFlow(sock, msg, conversation, business, jid);
-    if (tookOver) return;
-  } catch (e) {
-    console.error('[MSG] Error en appointmentFlow:', e.message);
-  }
+  // ── 7. Flujo de citas inteligente manejado directamente por Groq AI (Citas / Ventas / Cancelaciones) ──
+  // (El interceptor rígido de texto queda desactivado para que la IA maneje con contexto completo y empatía)
 
   // ── 8. Cargar knowledge base completa y Catálogo de Productos/Servicios ────
   let knowledge = [];
@@ -510,14 +505,14 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
   }
 
   // ── 10. RAG + Groq: generar respuesta ─────────────────────────────────────
-  const { reply, isLeadHot, tokensUsed, imageName, newAppointmentData, newOrderData, clientData, ragChunksUsed } = await askGroq(
+  const { reply, isLeadHot, tokensUsed, imageName, newAppointmentData, cancelAppointmentData, newOrderData, clientData, ragChunksUsed } = await askGroq(
     text, business, knowledge, history, products
   );
 
   console.log(`[RAG] Chunks usados: ${ragChunksUsed} | Tokens: ${tokensUsed}`);
 
   // ── 11. Actualizar Nombre de Contacto si fue capturado en el Cierre ────────
-  const capturedName = newOrderData?.nombre || clientData?.nombre || newAppointmentData?.nombre;
+  const capturedName = newOrderData?.nombre || clientData?.nombre || newAppointmentData?.nombre || cancelAppointmentData?.nombre;
   if (capturedName && conversation?.id && (conversation.contact_name === contactPhone || !conversation.contact_name)) {
     await safeQuery(() => supabase.from('conversations').update({ contact_name: capturedName }).eq('id', conversation.id));
   }
@@ -543,6 +538,37 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
       }
     } catch (eAppt) {
       console.error('[MSG] Error guardando cita automática:', eAppt.message);
+    }
+  }
+
+  // ── 12.0 Cancelar o Borrar Cita en Base de Datos (si aplica) ─────────────
+  if (cancelAppointmentData && business?.id) {
+    try {
+      let cancelQuery = supabase
+        .from('appointments')
+        .update({ status: 'cancelled' })
+        .eq('business_id', business.id)
+        .eq('status', 'confirmed');
+
+      if (conversation?.id) {
+        cancelQuery = cancelQuery.or(`conversation_id.eq.${conversation.id},client_phone.eq.${contactPhone}`);
+      } else {
+        cancelQuery = cancelQuery.eq('client_phone', contactPhone);
+      }
+
+      if (cancelAppointmentData.fecha) {
+        cancelQuery = cancelQuery.eq('appointment_date', cancelAppointmentData.fecha);
+      }
+
+      const { data: cancelledList } = await cancelQuery.select();
+      console.log(`[MSG] 🛑 Citas canceladas en DB: ${cancelledList?.length || 0}`);
+
+      if (cancelledList && cancelledList.length > 0 && global.io) {
+        const { emitToUserRooms } = require('./sessionManager');
+        emitToUserRooms(global.io, userId, 'appointment_cancelled', cancelledList[0]);
+      }
+    } catch (eCancel) {
+      console.error('[MSG] Error cancelando cita en DB:', eCancel.message);
     }
   }
 
