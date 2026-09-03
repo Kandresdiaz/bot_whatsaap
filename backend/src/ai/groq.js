@@ -425,16 +425,18 @@ Usa esta fecha para calcular con precisión días como "hoy", "mañana", "el jue
      * "¿Cuántos mensajes recibes al mes?"
      * "¿Qué capacidad de base de datos o tokens necesitas?"
    - El cliente es un comprador o dueño de negocio que NO sabe cuántos mensajes recibe ni le interesa la técnica.
-   - 💡 CÓMO PRESENTAR Y RECOMENDAR CUANDO PREGUNTAN POR PLANES O PRECIOS:
-     1. Resume en viñetas cortas las opciones destacando el BENEFICIO PRÁCTICO (ej: responde dudas vs envía fotos y toma pedidos).
-     2. RECOMIENDA DIRECTAMENTE la opción más conveniente:
-        - En BotWA: Recomienda siempre el **Plan Pro ($249k COP/mes)** porque envía fotos de productos y agenda pedidos/citas en automático con 7 días gratis ($0 hoy).
-     3. Remata con una pregunta sencilla sobre SU NEGOCIO que cualquiera sabe responder al instante:
-        "¿Tu negocio vende productos físicos o prestas servicios con citas para orientarte mejor? 😊" o "¿Te gustaría que activemos los 7 días de prueba gratis con el Plan Pro para configurártelo hoy mismo?"
+   - 💡 CÓMO PRESENTAR Y RECOMENDAR CUANDO PREGUNTAN POR OPCIONES, PLANES O PRECIOS (ESTÁNDAR PARA CUALQUIER NEGOCIO):
+     1. Presenta 2 o 3 opciones destacadas del === CATÁLOGO OFICIAL === de "${busName}" con sus precios en $ COP y su beneficio práctico en viñetas limpias.
+     2. Si una de las opciones está destacada como "⭐ Más Recomendado" o "⭐ Más Popular", recomiéndala proactivamente al cliente como la opción preferida.
+     3. Remata con una pregunta consultiva, sencilla y directa según el giro de "${busName}" (${busCategory}):
+        ${isSales
+          ? `* Si es venta de productos o pedidos: "¿Para qué uso o necesidad puntual lo estás buscando?" o "¿Cuál de estas opciones te interesa para apartar tu pedido? 😊"`
+          : `* Si es servicio o agendamiento de citas: "¿Para qué día y hora te gustaría agendar tu cita o turno disponible? 📅"`
+        }
 
 3. MEMORIA Y CONTINUIDAD DEL HILO CONVERSACIONAL:
    - Si el cliente habla con frases breves (ej: "el segundo", "el pro", "el del medio", "el más económico", "qué incluye", "cuál es la diferencia?", "y si se acaban los mensajes?"):
-     * Identifica INMEDIATAMENTE a qué opción del catálogo se refiere según el contexto y explícitamente dile cómo le beneficia, sin evasivas ni rodeos.
+     * Identifica INMEDIATAMENTE a qué opción del catálogo se refiere según el contexto y explícale con claridad cómo le beneficia, sin evasivas ni rodeos.
 
 ================================================================================
 🛡️ REGLA FUNDAMENTAL #4: ALINEACIÓN TOTAL AL NEGOCIO Y SU CONFIGURACIÓN (CERO DESVÍOS)
@@ -584,6 +586,15 @@ const buildHumanAssistantReply = (userMessage, business, products = [], chatHist
     if (matched.length > 0) {
       const top = matched.slice(0, 3).map(p => `• *${p.name}*: $${Number(p.price || 0).toLocaleString('es-CO')} ${p.currency || 'COP'}${p.description ? ` (${p.description})` : ''}`).join('\n');
       return `¡Con gusto! Contamos con las siguientes opciones disponibles en ${busName}:\n\n${top}\n\n¿Te gustaría apartar tu pedido o que coordinemos los detalles? 😊`;
+    }
+
+    // Consulta general de planes, catálogo, precios, menú o servicios del negocio
+    if (norm.includes('plan') || norm.includes('precio') || norm.includes('opcion') || norm.includes('menu') || norm.includes('carta') || norm.includes('catalogo') || norm.includes('cuanto') || norm.includes('costo') || norm.includes('oferta') || norm.includes('servicio')) {
+      const top = products.slice(0, 3).map(p => `• *${p.name}*: $${Number(p.price || 0).toLocaleString('es-CO')} ${p.currency || 'COP'}${p.description ? ` (${p.description})` : ''}`).join('\n');
+      if (!isSales) {
+        return `Contamos con las siguientes opciones en ${busName}:\n\n${top}\n\n¿Para qué día y hora te gustaría agendar tu cita? 📅`;
+      }
+      return `Contamos con las siguientes opciones en ${busName}:\n\n${top}\n\n¿Cuál de estas opciones te gustaría apartar el día de hoy? 😊`;
     }
 
     return `¡Hola! 👋 Con gusto te asesoro. En ${busName} nos especializamos en ${busCategory}. Cuéntame, ¿qué producto o servicio específico estás buscando el día de hoy? 😊`;
