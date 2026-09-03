@@ -87,6 +87,8 @@ const getCachedAiResponse = async (businessId, userMessage) => {
   return null;
 };
 
+const MAX_RAM_CACHE_ENTRIES = 1000;
+
 /**
  * Guardar respuesta de IA en caché (TTL por defecto: 2 horas = 7200 seg)
  */
@@ -103,7 +105,12 @@ const setCachedAiResponse = async (businessId, userMessage, responseObj, ttlSeco
     } catch (_) {}
   }
 
-  // 2. Guardar en Memoria RAM
+  // 2. Guardar en Memoria RAM con límite estricto de elementos (previene fugas de memoria)
+  if (memoryCache.size >= MAX_RAM_CACHE_ENTRIES) {
+    const oldestKey = memoryCache.keys().next().value;
+    if (oldestKey) memoryCache.delete(oldestKey);
+  }
+
   memoryCache.set(key, {
     value: responseObj,
     expiresAt: Date.now() + (ttlSeconds * 1000),
@@ -111,11 +118,18 @@ const setCachedAiResponse = async (businessId, userMessage, responseObj, ttlSeco
 };
 
 /**
- * Limpiar caché de respuestas de un negocio
+ * Limpiar caché de respuestas de un negocio específico
  */
 const clearBusinessAiCache = async (businessId) => {
   if (!businessId) return;
-  memoryCache.clear();
+
+  // Limpiar en RAM solo las entradas de este negocio
+  for (const key of memoryCache.keys()) {
+    if (key.startsWith(`ai_cache:${businessId}:`)) {
+      memoryCache.delete(key);
+    }
+  }
+
   if (isRedisConnected && redisClient) {
     try {
       const keys = await redisClient.keys(`ai_cache:${businessId}:*`);
