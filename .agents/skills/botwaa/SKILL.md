@@ -665,6 +665,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-03** | feat: aislamiento estricto multi-tenant por usuario y tono de asesor comercial consultivo que pregunta antes de suponer (`afb3fd9`) | Auto-deploy |
 
+| **2026-09-03** | fix(prompt): eliminar frase experto en vender y enfocar en asesoria servicial y empatica (`379cc27`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
