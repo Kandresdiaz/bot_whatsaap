@@ -663,6 +663,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-03** | chore: sync billing and conversations dashboard updates (`837b534`) | Auto-deploy |
 
+| **2026-09-03** | feat: aislamiento estricto multi-tenant por usuario y tono de asesor comercial consultivo que pregunta antes de suponer (`afb3fd9`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
