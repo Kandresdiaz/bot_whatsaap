@@ -452,9 +452,9 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
     if (products.length === 0 && (business?.name === 'BotWA' || !business?.name)) {
       const { data: defaultProds } = await supabase.from('products_services').select('name, description, price, currency, category, image_url').eq('is_active', true).limit(15);
       products = (defaultProds && defaultProds.length > 0) ? defaultProds : [
-        { name: 'Plan Vendedor Automático', description: '1 Línea WhatsApp, Catálogo interactivo RAG 24/7, respuestas en <2s, 1.500 msgs IA/mes, 20 docs FAQs.', price: 120000, currency: 'COP', category: 'Planes BotWA' },
-        { name: 'Plan Máquina de Ventas Pro (⭐ Más Popular)', description: 'Catálogo con Fotos Multimedia automáticas, Agendador de Citas y Pedidos, 5.000 msgs IA/mes, 100 docs.', price: 249000, currency: 'COP', category: 'Planes BotWA' },
-        { name: 'Plan Dominio Agencia / VIP', description: 'Multi-línea WhatsApp, Marca Blanca con tu logo, Prompting y RAG a medida (Done-For-You), 20.000 msgs IA/mes.', price: 490000, currency: 'COP', category: 'Planes BotWA' },
+        { name: 'Plan Vendedor Básico', description: 'Automatización 24/7 con respuestas inmediatas en <2s para resolver dudas y catálogo de texto. Incluye 7 días gratis ($0 hoy).', price: 120000, currency: 'COP', category: 'Planes BotWA' },
+        { name: 'Plan Máquina de Ventas Pro (⭐ Más Recomendado)', description: 'Catálogo interactivo con envío automático de fotos de productos, agendador de citas/pedidos y seguimiento. Incluye 7 días gratis ($0 hoy).', price: 249000, currency: 'COP', category: 'Planes BotWA' },
+        { name: 'Plan Dominio VIP / Multi-Línea', description: 'Para empresas consolidadas con alto tráfico: múltiples líneas de WhatsApp, marca blanca y soporte personalizado.', price: 490000, currency: 'COP', category: 'Planes BotWA' },
       ];
     }
   } catch (e) {
