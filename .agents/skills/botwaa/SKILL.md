@@ -673,6 +673,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-03** | fix: prohibir preguntas tecnicas de volumen de mensajes al cliente, recomendar Plan Pro y preguntar por tipo de negocio (`2989b9c`) | Auto-deploy |
 
+| **2026-09-03** | feat: prompt 100% universal y estandarizado para cualquier tipo de negocio y nicho (`44e5398`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
