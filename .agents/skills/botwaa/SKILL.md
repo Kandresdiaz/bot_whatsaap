@@ -661,6 +661,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-03** | fix: corregida resolucion de negocio a BotWA y eliminadas referencias fijas de repuestos/taller del prompt (`45d49c2`) | Auto-deploy |
 
+| **2026-09-03** | chore: sync billing and conversations dashboard updates (`837b534`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
