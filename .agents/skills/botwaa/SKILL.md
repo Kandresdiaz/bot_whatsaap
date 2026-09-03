@@ -679,6 +679,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-03** | fix: aislamiento multi-tenant en chats/desconexión, prevención de regeneración redundante de QR y desconexión limpia desde celular (WhatsApp móvil) | Auto-deploy |
 
+| **2026-09-03** | fix: aislamiento multi-tenant en desconexion/chats, deduplicacion de QR y desconexion limpia desde celular (`38d9195`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
