@@ -675,6 +675,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-03** | feat: prompt 100% universal y estandarizado para cualquier tipo de negocio y nicho (`44e5398`) | Auto-deploy |
 
+| **2026-09-03** | feat: implementar principios de One-Thumb, preguntas de baja friccion guiadas, CTA unico y simulacion de typing presence anti-ban sin alterar configuracion de usuarios (`231246f`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
