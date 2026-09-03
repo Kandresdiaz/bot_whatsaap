@@ -659,6 +659,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-02** | fix(ui): apply global mobile overflow protection and responsive layout packaging across all pages (`bf49250`) | Auto-deploy |
 
+| **2026-09-03** | fix: corregida resolucion de negocio a BotWA y eliminadas referencias fijas de repuestos/taller del prompt (`45d49c2`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
