@@ -669,6 +669,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-03** | feat: soporte completo para agendar y cancelar citas en DB, consultas SQL por negocio y compatibilidad multi-cuenta sin requerir configuracion de Redis (`344977b`) | Auto-deploy |
 
+| **2026-09-03** | feat: limite estricto de memoria RAM de 1000 entradas y blindaje total de frontera de negocio en el prompt (`b648a5c`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
