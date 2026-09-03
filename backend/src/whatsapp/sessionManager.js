@@ -213,11 +213,12 @@ const deleteSessionFolder = (userId) => {
   }
 };
 
+const PRIMARY_ADMIN_ID = '0b8c0710-b97a-4e2d-acf8-b7f33dcd5b3d';
 const ADMIN_UUID = '00000000-0000-0000-0000-000000000001';
 const sessionUuidToUserMap = new Map();
 
 const getValidUserId = (userId) => {
-  if (!userId || userId === 'admin') return ADMIN_UUID;
+  if (!userId || userId === 'admin' || userId === ADMIN_UUID) return PRIMARY_ADMIN_ID;
   if (sessionUuidToUserMap.has(userId)) return sessionUuidToUserMap.get(userId);
   return userId;
 };
@@ -229,8 +230,10 @@ const emitToUserRooms = (io, userId, event, payload, sessionUuid = null) => {
   const rooms = new Set([
     `user_${userId}`,
     `user_${validId}`,
+    `user_${PRIMARY_ADMIN_ID}`,
     `session_${userId}`,
     `session_${validId}`,
+    `session_${PRIMARY_ADMIN_ID}`,
   ]);
   if (sessionUuid) {
     rooms.add(`session_${sessionUuid}`);
@@ -1154,19 +1157,18 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
 
         try {
           const sessionUuid = await getSessionUuid(userId);
-          if (!sessionUuid) continue;
 
           const { data: convRows } = await supabase
             .from('conversations')
             .select('id')
-            .eq('session_id', sessionUuid)
             .eq('contact_phone', contactPhone)
+            .order('last_message_at', { ascending: false })
             .limit(1);
 
           let conversationId = convRows && convRows[0]?.id;
           if (!conversationId) {
             const { data: newConvRows } = await supabase.from('conversations').insert({
-              session_id: sessionUuid,
+              session_id: sessionUuid || null,
               contact_phone: contactPhone,
               contact_name: contactPhone,
               bot_active: true,

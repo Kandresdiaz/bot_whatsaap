@@ -268,32 +268,50 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
     return;
   }
 
-  // ── 3.5. Verificar estado de suscripción y prueba de 7 días ────────────────
+  // ── 3.5. Verificar estado de suscripción, prueba y límite estricto de mensajes ────
   try {
-    const { getValidUserId } = require('./sessionManager');
+    const { getValidUserId, emitToUserRooms } = require('./sessionManager');
     const validUserId = getValidUserId(userId);
     const isUuid = (str) => typeof str === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
 
     if (validUserId && isUuid(validUserId)) {
-      const { data: u } = await supabase
-        .from('users')
-        .select('id, is_admin, status, subscription_status, trial_ends_at, paid_until')
-        .eq('id', validUserId)
-        .maybeSingle();
+      const { checkUserMessageQuota } = require('../routes/billing');
+      const quotaCheck = await checkUserMessageQuota(validUserId);
 
-      if (u && !u.is_admin) {
-        const now = new Date();
-        const isTrialActive = u.subscription_status === 'trialing' && u.trial_ends_at && new Date(u.trial_ends_at) > now;
-        const isPaidActive = (u.subscription_status === 'active' || u.status === 'active') && (!u.paid_until || new Date(u.paid_until) > now);
+      if (!quotaCheck.canSend) {
+        if (quotaCheck.reason === 'quota_exceeded') {
+          console.log(`[QUOTA] 🛑 Límite de mensajes mensual alcanzado para ${userId}: ${quotaCheck.messagesUsed}/${quotaCheck.messageLimit} msgs.`);
 
-        if (u.status === 'paused' || (!isTrialActive && !isPaidActive)) {
-          console.log(`[MSG] 🛑 Bot pausado para ${userId}: suscripción vencida o inactiva.`);
+          // 1. Emitir evento inmediato al dashboard del usuario
+          if (global.io) {
+            try {
+              emitToUserRooms(global.io, userId, 'quota_exceeded', {
+                messagesUsed: quotaCheck.messagesUsed,
+                messageLimit: quotaCheck.messageLimit,
+                plan: quotaCheck.plan,
+                isTrial: quotaCheck.isTrial,
+              });
+            } catch (_) {}
+          }
+
+          // 2. Respuesta de cortesía al cliente final en WhatsApp (sin consumir API de Groq)
+          await randomDelay();
+          await sendText(
+            sock,
+            jid,
+            'Hola, gracias por comunicarte. En este momento tu mensaje ha sido transferido a un asesor de nuestro equipo, quien te responderá en breve. 🙏'
+          );
+          return;
+        }
+
+        if (quotaCheck.reason === 'account_paused') {
+          console.log(`[MSG] 🛑 Bot pausado para ${userId}: cuenta pausada o suscripción inactiva.`);
           return;
         }
       }
     }
   } catch (subErr) {
-    console.warn('[MSG] Aviso verificando suscripción de usuario:', subErr.message);
+    console.warn('[MSG] Aviso verificando suscripción y cuota de usuario:', subErr.message);
   }
 
   // ── 4. Rate limit anti-spam ───────────────────────────────────────────────
@@ -315,11 +333,11 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
       if (bById && bById.length > 0) business = bById[0];
     }
 
-    if (!business) {
+    if (!business && validUserId) {
       const { data: bData } = await supabase
         .from('businesses')
         .select('*')
-        .or(`user_id.eq.${userId},user_id.eq.${validUserId}`)
+        .eq('user_id', validUserId)
         .order('created_at', { ascending: false })
         .limit(1);
 
@@ -328,14 +346,28 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
       }
     }
 
-    if (!business || business.name === 'Asistente Virtual') {
-      const { data: fallback } = await supabase
+    if (!business && userId && userId !== validUserId) {
+      const { data: bData2 } = await supabase
         .from('businesses')
         .select('*')
+        .eq('user_id', userId)
         .order('created_at', { ascending: false })
         .limit(1);
-      if (fallback && fallback.length > 0) {
-        business = fallback[0];
+
+      if (bData2 && bData2.length > 0) {
+        business = bData2[0];
+      }
+    }
+
+    // Fallback prioritario al negocio principal del SaaS (BotWA)
+    if (!business || business.name === 'Asistente Virtual') {
+      const { data: botwaBus } = await supabase
+        .from('businesses')
+        .select('*')
+        .eq('name', 'BotWA')
+        .limit(1);
+      if (botwaBus && botwaBus.length > 0) {
+        business = botwaBus[0];
       }
     }
   } catch (e) {
