@@ -677,6 +677,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-03** | feat: implementar principios de One-Thumb, preguntas de baja friccion guiadas, CTA unico y simulacion de typing presence anti-ban sin alterar configuracion de usuarios (`231246f`) | Auto-deploy |
 
+| **2026-09-03** | fix: aislamiento multi-tenant en chats/desconexión, prevención de regeneración redundante de QR y desconexión limpia desde celular (WhatsApp móvil) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |

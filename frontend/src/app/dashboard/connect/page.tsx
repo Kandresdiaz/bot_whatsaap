@@ -118,9 +118,14 @@ export default function ConnectPage() {
       router.push('/pricing');
       return;
     }
+    // Si ya tenemos un QR listo y no se solicitó forzar, reutilizar sin parpadeos
+    if (!force && qr && status === 'qr_ready') {
+      return;
+    }
+
     setStatus('connecting');
     setError(null);
-    setQr(null);
+    if (force) setQr(null);
 
     try {
       const controller = new AbortController();
@@ -159,7 +164,7 @@ export default function ConnectPage() {
       }
       setStatus('error');
     }
-  }, [effectiveUserId]);
+  }, [effectiveUserId, qr, status, hasAccess, router]);
 
   // ── Desconectar ───────────────────────────────────────────────────────────
   const stopSession = async () => {
@@ -251,20 +256,26 @@ export default function ConnectPage() {
         <div className="card" style={{ flex: 1, minWidth: 200 }}>
           <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>Acciones</div>
           <div className="action-buttons-row" style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            {status !== 'connected' && (
-              <button className="btn btn-primary btn-mobile-full" onClick={() => startSession(true)}>
-                {status === 'connecting' ? (
-                  <>
-                    <span className="spinner" style={{ width: 14, height: 14, marginRight: 6 }} />
-                    Iniciando... (Clic para forzar nuevo QR)
-                  </>
-                ) : (
-                  '🔌 Conectar WhatsApp / Obtener QR'
-                )}
+            {status === 'disconnected' && (
+              <button className="btn btn-primary btn-mobile-full" onClick={() => startSession(false)}>
+                🔌 Conectar WhatsApp / Obtener QR
               </button>
             )}
 
-            {(status === 'qr_ready' || status === 'connected') && (
+            {status === 'connecting' && (
+              <button className="btn btn-primary btn-mobile-full" disabled style={{ opacity: 0.8 }}>
+                <span className="spinner" style={{ width: 14, height: 14, marginRight: 6 }} />
+                Iniciando conexión...
+              </button>
+            )}
+
+            {status === 'qr_ready' && (
+              <button className="btn btn-danger btn-mobile-full" onClick={stopSession}>
+                ⏹ Cancelar
+              </button>
+            )}
+
+            {status === 'connected' && (
               <button className="btn btn-danger btn-mobile-full" onClick={stopSession}>
                 ⏹ Desconectar
               </button>

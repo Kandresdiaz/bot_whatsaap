@@ -61,22 +61,8 @@ router.get('/:sessionId', async (req, res) => {
       if (d) data = d;
     }
 
-    // Fallback: si no hay resultados, traer TODAS las conversaciones de la DB
-    if (data.length === 0) {
-      let fbQ = supabase.from('conversations').select('*').order('last_message_at', { ascending: false }).limit(200);
-      if (status) fbQ = fbQ.eq('status', status);
-      if (search) fbQ = fbQ.or(`contact_name.ilike.%${search}%,contact_phone.ilike.%${search}%`);
-      const { data: fbData } = await fbQ;
-      if (fbData) data = fbData;
-    }
-
-    // Obtener la tienda RAM: intentar con validUserId, luego con admin UUID
+    // Obtener la tienda RAM única y exclusivamente de este usuario
     let store = getUserStore(validUserId);
-    const ADMIN_UUID = '00000000-0000-0000-0000-000000000001';
-    if (!store || store.chats.size === 0) {
-      const adminStore = getUserStore(ADMIN_UUID);
-      if (adminStore && adminStore.chats.size > 0) store = adminStore;
-    }
 
     const phoneSet = new Set();
     const merged = [];
@@ -297,10 +283,6 @@ router.get('/:conversationId/messages', async (req, res) => {
     if (cleanPhone) {
       try {
         let store = getUserStore(validUserId);
-        const ADMIN_UUID = '00000000-0000-0000-0000-000000000001';
-        if (!store || !store.messages || store.messages.size === 0) {
-          store = getUserStore(ADMIN_UUID);
-        }
 
         if (store && store.messages) {
           for (const [mId, m] of store.messages.entries()) {

@@ -78,9 +78,32 @@ router.post('/start', async (req, res) => {
       console.warn('DB session upsert aviso (continuando con Baileys):', dbErr.message);
     }
 
-    // 3. Iniciar sesión de Baileys (forzando limpieza si no estaba conectada)
+    // 2.5 Si ya hay un QR activo o sesión conectada y no se forzó nuevo QR, responder inmediatamente
     const active = getSession(userId) || getSession(validUserId);
-    const forceClean = !!force || !active || active.status !== 'connected';
+    if (!force && active) {
+      if (active.status === 'qr_ready' && active.qr) {
+        console.log(`[Sessions API] Reutilizando QR existente para ${validUserId}`);
+        return res.json({
+          success: true,
+          sessionId,
+          status: 'qr_ready',
+          qr: active.qr,
+          phone: null
+        });
+      }
+      if (active.status === 'connected') {
+        return res.json({
+          success: true,
+          sessionId,
+          status: 'connected',
+          qr: null,
+          phone: active.phone || null
+        });
+      }
+    }
+
+    // 3. Iniciar sesión de Baileys (solo forzar borrado si force es explícito)
+    const forceClean = Boolean(force);
 
     createSession(validUserId, businessId, global.io, forceClean).catch(err => {
       console.error('Error en Baileys createSession:', err);
@@ -115,7 +138,7 @@ router.post('/start', async (req, res) => {
     });
   } catch (err) {
     console.error('Error iniciando sesión:', err);
-    createSession(userId, businessId, global.io, !!force).catch(e => console.error('Baileys fallback err:', e));
+    createSession(userId, businessId, global.io, Boolean(force)).catch(e => console.error('Baileys fallback err:', e));
     return res.json({ success: true, sessionId: userId, status: 'connecting', qr: null });
   }
 });
@@ -123,10 +146,10 @@ router.post('/start', async (req, res) => {
 // Estado de la sesión
 router.get('/status/:userId', async (req, res) => {
   const { userId } = req.params;
-  const { getSession, getSessionUuid, isExplicitlyDisconnected } = require('../whatsapp/sessionManager');
+  const { getSession, getSessionUuid, isExplicitlyDisconnected, getValidUserId } = require('../whatsapp/sessionManager');
 
   try {
-    const validUserId = (!userId || userId === 'admin') ? '00000000-0000-0000-0000-000000000001' : userId;
+    const validUserId = getValidUserId(userId);
     const active = getSession(userId) || getSession(validUserId);
 
     const { data: dbSession } = await supabase
@@ -134,6 +157,22 @@ router.get('/status/:userId', async (req, res) => {
       .select('*')
       .eq('user_id', validUserId)
       .maybeSingle();
+
+    // Si el usuario fue desconectado manualmente y no hay sesión activa en RAM
+    if (isExplicitlyDisconnected(validUserId) && (!active || active.status === 'disconnected')) {
+      const sessionUuid = await getSessionUuid(validUserId);
+      return res.json({
+        success: true,
+        session: {
+          id: sessionUuid,
+          user_id: validUserId,
+          status: 'disconnected',
+          phone_number: null,
+          qr_code: null,
+          bot_enabled: dbSession?.bot_enabled ?? false,
+        }
+      });
+    }
 
     // Si la memoria RAM tiene sesión activa (Socket / QR), RAM MANDA
     if (active) {

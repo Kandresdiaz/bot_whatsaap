@@ -240,12 +240,6 @@ export default function ConversationsPage() {
       if (data.conversations && Array.isArray(data.conversations)) {
         setConversations(data.conversations);
 
-        // Si hay conversaciones y alguna tiene actividad reciente (< 24h), el bot/sesión está operando
-        const hasRecent = data.conversations.some((c: Conversation) => c.last_message_at && (Date.now() - new Date(c.last_message_at).getTime() < 86400000));
-        if (hasRecent) {
-          setSessionStatus(prev => prev === 'connected' ? prev : 'connected');
-        }
-
         // Mantener sincronizado el estado y mensajes del chat activo del panel derecho
         if (activeRef.current) {
           const currentPhone = (activeRef.current.contact_phone || '').replace(/[^0-9]/g, '');
@@ -290,8 +284,10 @@ export default function ConversationsPage() {
       socket.emit('join_session', userIdToUse);
       if (user?.id) socket.emit('join_session', user.id);
       if (sessionId) socket.emit('join_session', sessionId);
-      socket.emit('join_session', '00000000-0000-0000-0000-000000000001');
-      socket.emit('join_session', 'admin');
+      if (user?.is_admin) {
+        socket.emit('join_session', '00000000-0000-0000-0000-000000000001');
+        socket.emit('join_session', 'admin');
+      }
     };
 
     socket.on('connect', () => {
@@ -359,6 +355,8 @@ export default function ConversationsPage() {
 
     socket.on('disconnected', () => {
       setSessionStatus('disconnected');
+      setConversations([]);
+      setActive(null);
     });
 
     socket.on('global_bot_updated', ({ bot_enabled }: { bot_enabled: boolean }) => {
@@ -650,11 +648,31 @@ export default function ConversationsPage() {
                   padding: '2px 8px',
                   borderRadius: 12,
                   fontWeight: 600,
-                  background: sessionStatus === 'connected' ? 'rgba(34,197,94,0.15)' : 'rgba(234,179,8,0.15)',
-                  color: sessionStatus === 'connected' ? '#4ade80' : '#eab308',
-                  border: `1px solid ${sessionStatus === 'connected' ? 'rgba(34,197,94,0.3)' : 'rgba(234,179,8,0.3)'}`
+                  background: sessionStatus === 'connected'
+                    ? 'rgba(34,197,94,0.15)'
+                    : sessionStatus === 'connecting' || sessionStatus === 'qr_ready'
+                    ? 'rgba(234,179,8,0.15)'
+                    : 'rgba(239,68,68,0.15)',
+                  color: sessionStatus === 'connected'
+                    ? '#4ade80'
+                    : sessionStatus === 'connecting' || sessionStatus === 'qr_ready'
+                    ? '#eab308'
+                    : '#f87171',
+                  border: `1px solid ${
+                    sessionStatus === 'connected'
+                      ? 'rgba(34,197,94,0.3)'
+                      : sessionStatus === 'connecting' || sessionStatus === 'qr_ready'
+                      ? 'rgba(234,179,8,0.3)'
+                      : 'rgba(239,68,68,0.3)'
+                  }`
                 }}>
-                  {sessionStatus === 'connected' ? '🟢 Conectado' : '🟡 Verificando'}
+                  {sessionStatus === 'connected'
+                    ? '🟢 Conectado'
+                    : sessionStatus === 'connecting'
+                    ? '🟡 Conectando...'
+                    : sessionStatus === 'qr_ready'
+                    ? '🟡 Esperando QR'
+                    : '🔴 Desconectado'}
                 </span>
               </div>
 

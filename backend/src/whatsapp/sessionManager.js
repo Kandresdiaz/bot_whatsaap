@@ -223,27 +223,35 @@ const getValidUserId = (userId) => {
   return userId;
 };
 
-// Emisor seguro e instantáneo de eventos Socket.io a todas las salas del usuario
+// Emisor seguro de eventos Socket.io aislado a las salas del usuario
 const emitToUserRooms = (io, userId, event, payload, sessionUuid = null) => {
-  if (!io) return;
+  if (!io || !userId) return;
   const validId = getValidUserId(userId);
   const rooms = new Set([
     `user_${userId}`,
     `user_${validId}`,
-    `user_${PRIMARY_ADMIN_ID}`,
     `session_${userId}`,
     `session_${validId}`,
-    `session_${PRIMARY_ADMIN_ID}`,
   ]);
+
+  const isAdmin = (userId === 'admin' || userId === ADMIN_UUID || validId === PRIMARY_ADMIN_ID);
+  if (isAdmin) {
+    rooms.add(`user_${PRIMARY_ADMIN_ID}`);
+    rooms.add(`session_${PRIMARY_ADMIN_ID}`);
+    rooms.add(`user_${ADMIN_UUID}`);
+    rooms.add(`session_${ADMIN_UUID}`);
+    rooms.add('user_admin');
+    rooms.add('session_admin');
+  }
+
   if (sessionUuid) {
     rooms.add(`session_${sessionUuid}`);
     rooms.add(`user_${sessionUuid}`);
   }
+
   for (const room of rooms) {
     try { io.to(room).emit(event, payload); } catch (_) {}
   }
-  // Emisión global a todos los clientes para garantizar tiempo real 0ms instantáneo
-  try { io.emit(event, payload); } catch (_) {}
 };
 
 // Obtener o crear el UUID de sesión en whatsapp_sessions (mapeo consistente por user_id)
@@ -781,6 +789,12 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
     return existingSession.sock;
   }
 
+  // Si ya tiene QR listo y activo y no se solicitó forzar nuevo QR, reutilizamos la sesión activa
+  if (existingSession?.sock && existingSession?.status === 'qr_ready' && existingSession?.qr && !forceClean) {
+    console.log(`[Baileys] QR ya generado y activo para ${userId}, reutilizando sesión existente`);
+    return existingSession.sock;
+  }
+
   // Solo si se solicita limpieza forzada explícita (ej. escanear nuevo QR o desconexión manual) borramos credenciales
   if (forceClean) {
     if (existingSession?.sock) {
@@ -970,21 +984,28 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
 
     // ── QR generado ──────────────────────────────────────────────────────
     if (qr) {
+      const validId = getValidUserId(userId);
+      const sData = sessions.get(userId) || sessions.get(validId) || {};
+      
+      // Si es exactamente el mismo código QR que ya tenemos en memoria, no regenerar ni re-emitir
+      if (sData.rawQr === qr && sData.qr) {
+        return;
+      }
+
       console.log(`[QR] Generado correctamente para ${userId}`);
       try {
         const QRCode = require('qrcode');
         const qrDataUrl = await QRCode.toDataURL(qr, { width: 300, margin: 2 });
 
-        // Guardar en memoria activa para respuesta instantánea de API en todas las claves posibles
-        const validId = getValidUserId(userId);
-        const sData = sessions.get(userId) || sessions.get(validId) || {};
-        const updatedState = { ...sData, qr: qrDataUrl, status: 'qr_ready' };
+        // Guardar en memoria activa para respuesta instantánea de API
+        const updatedState = { ...sData, qr: qrDataUrl, rawQr: qr, status: 'qr_ready' };
 
         sessions.set(userId, updatedState);
         sessions.set(validId, updatedState);
-        if (userId === ADMIN_UUID || validId === ADMIN_UUID) sessions.set('admin', updatedState);
+        const isAdmin = (userId === 'admin' || userId === ADMIN_UUID || validId === PRIMARY_ADMIN_ID);
+        if (isAdmin) sessions.set('admin', updatedState);
 
-        // Emitir al frontend por Socket.io a todas las salas del usuario
+        // Emitir al frontend por Socket.io a las salas del usuario
         emitToUserRooms(io, userId, 'qr', { qr: qrDataUrl });
 
         // Guardar en DB (no bloquear si falla)
@@ -1010,7 +1031,8 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
 
       sessions.set(userId, connectedState);
       sessions.set(validId, connectedState);
-      if (userId === ADMIN_UUID || validId === ADMIN_UUID) sessions.set('admin', connectedState);
+      const isAdmin = (userId === 'admin' || userId === ADMIN_UUID || validId === PRIMARY_ADMIN_ID);
+      if (isAdmin) sessions.set('admin', connectedState);
 
       // 2. Emitir por Socket.io INMEDIATAMENTE a todas las salas del usuario
       if (io) {
@@ -1067,14 +1089,21 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
         || 0;
 
       const errMsg = (lastDisconnect?.error?.message || '').toLowerCase();
+      const errData = String(lastDisconnect?.error?.data || '').toLowerCase();
 
       const isLoggedOut =
         code === DisconnectReason.loggedOut ||
         code === DisconnectReason.badSession ||
+        code === DisconnectReason.connectionReplaced ||
         code === 401 ||
+        code === 403 ||
         errMsg.includes('logged out') ||
         errMsg.includes('unauthorized') ||
-        errMsg.includes('bad session');
+        errMsg.includes('forbidden') ||
+        errMsg.includes('bad session') ||
+        errMsg.includes('device_removed') ||
+        errMsg.includes('conflict') ||
+        errData.includes('logged out');
 
       const validId = getValidUserId(userId);
       const isExplicitDisconnect = userDisconnectedMap.has(userId) || userDisconnectedMap.has(validId);
@@ -1084,10 +1113,27 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
       console.log(`[Baileys] Conexión cerrada para ${userId}. Código: ${code}. LoggedOut: ${isLoggedOut}. Desconexión manual: ${isExplicitDisconnect}. Reconectar: ${shouldReconnect}`);
 
       if (isLoggedOut || isExplicitDisconnect) {
-        // Eliminar de RAM solo si está desconectado definitivamente o es logout
+        userDisconnectedMap.add(userId);
+        userDisconnectedMap.add(validId);
+
+        try { sock.ev.removeAllListeners(); } catch (_) {}
+        try { sock.end(new Error('Sesión cerrada')); } catch (_) {}
+
+        // Eliminar de RAM
         sessions.delete(userId);
         sessions.delete(validId);
-        if (userId === ADMIN_UUID || validId === ADMIN_UUID) sessions.delete('admin');
+        const isAdmin = (userId === 'admin' || userId === ADMIN_UUID || validId === PRIMARY_ADMIN_ID);
+        if (isAdmin) {
+          sessions.delete('admin');
+          sessions.delete(ADMIN_UUID);
+          sessions.delete(PRIMARY_ADMIN_ID);
+        }
+
+        // Limpiar memoria RAM de chats y contactos para que no persistan chats viejos
+        userStores.delete(userId);
+        userStores.delete(validId);
+        userContacts.delete(userId);
+        userContacts.delete(validId);
 
         // Limpiar carpetas físicas de credenciales invalidadas
         deleteSessionFolder(userId);
@@ -1098,6 +1144,7 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
           status: 'disconnected',
           phone_number: null,
           qr_code: null,
+          session_data: null,
           connected_at: null,
         }).catch(e => console.warn('[DB] Error guardando desconexión:', e.message));
 
@@ -1112,7 +1159,8 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
         const sData = { ...prevS, sock: null, status: 'connecting' };
         sessions.set(userId, sData);
         sessions.set(validId, sData);
-        if (userId === ADMIN_UUID || validId === ADMIN_UUID) sessions.set('admin', sData);
+        const isAdmin = (userId === 'admin' || userId === ADMIN_UUID || validId === PRIMARY_ADMIN_ID);
+        if (isAdmin) sessions.set('admin', sData);
 
         safeUpsert('whatsapp_sessions', {
           user_id: validId,
@@ -1235,29 +1283,45 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
 };
 
 const disconnectSession = async (userId) => {
+  if (!userId) return;
   const validId = getValidUserId(userId);
   userDisconnectedMap.add(userId);
   userDisconnectedMap.add(validId);
 
-  const session = getSession(userId) || getSession(validId);
+  const isAdmin = (userId === 'admin' || userId === ADMIN_UUID || validId === PRIMARY_ADMIN_ID);
+  const session = sessions.get(userId) || sessions.get(validId) || (isAdmin ? sessions.get('admin') : null);
+
   if (session?.sock) {
     try {
       await session.sock.logout();
     } catch (e) {
       try { session.sock.end(new Error('Desconexión manual')); } catch (_) {}
     }
+    try { session.sock.ev.removeAllListeners(); } catch (_) {}
   }
+
   deleteSessionFolder(userId);
   deleteSessionFolder(validId);
   sessions.delete(userId);
   sessions.delete(validId);
-  if (userId === ADMIN_UUID || validId === ADMIN_UUID) sessions.delete('admin');
+  if (isAdmin) {
+    sessions.delete('admin');
+    sessions.delete(ADMIN_UUID);
+    sessions.delete(PRIMARY_ADMIN_ID);
+  }
+
+  // Limpiar memoria RAM de chats y contactos de este usuario para que no sigan mostrándose
+  userStores.delete(userId);
+  userStores.delete(validId);
+  userContacts.delete(userId);
+  userContacts.delete(validId);
 
   await safeUpsert('whatsapp_sessions', {
     user_id: validId,
     status: 'disconnected',
     phone_number: null,
     qr_code: null,
+    session_data: null,
     connected_at: null,
   });
 
@@ -1269,39 +1333,29 @@ const disconnectSession = async (userId) => {
 };
 
 const getSession = (userId) => {
-  if (!userId) {
-    for (const s of sessions.values()) {
-      if (s && (s.status === 'connected' || s.sock)) return s;
-    }
-    return sessions.values().next().value || null;
-  }
+  if (!userId) return null;
 
   // 1. Coincidencia exacta de clave
   if (sessions.has(userId)) return sessions.get(userId);
 
-  // 2. Coincidencia por validUserId ('admin' o ADMIN_UUID)
+  // 2. Coincidencia por validUserId
   const validId = getValidUserId(userId);
   if (sessions.has(validId)) return sessions.get(validId);
-  if (sessions.has('admin')) return sessions.get('admin');
-  if (sessions.has(ADMIN_UUID)) return sessions.get(ADMIN_UUID);
 
-  // 3. Buscar si alguna clave coincide en getValidUserId
+  // Si userId es Admin, probar las claves reservadas del admin
+  const isAdmin = (userId === 'admin' || userId === ADMIN_UUID || validId === PRIMARY_ADMIN_ID);
+  if (isAdmin) {
+    if (sessions.has('admin')) return sessions.get('admin');
+    if (sessions.has(ADMIN_UUID)) return sessions.get(ADMIN_UUID);
+    if (sessions.has(PRIMARY_ADMIN_ID)) return sessions.get(PRIMARY_ADMIN_ID);
+  }
+
+  // 3. Buscar si alguna clave registrada mapea a este mismo usuario
   for (const [key, s] of sessions.entries()) {
     if (getValidUserId(key) === validId) return s;
   }
 
-  // 4. Buscar CUALQUIER sesión conectada en memoria RAM (RAM MANDA)
-  for (const s of sessions.values()) {
-    if (s && (s.status === 'connected' || s.sock)) {
-      return s;
-    }
-  }
-
-  // 5. Fallback a cualquier sesión en RAM
-  if (sessions.size > 0) {
-    return sessions.values().next().value;
-  }
-
+  // NUNCA devolver sesiones ajenas de otros usuarios
   return null;
 };
 
