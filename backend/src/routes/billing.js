@@ -508,11 +508,17 @@ router.get('/status/:userId', async (req, res) => {
     // Sueldo mínimo en Colombia con prestaciones ~1.600.000 COP/mes (aprox 10.000 COP/hora)
     const moneySavedCOP = Math.round(timeSavedHours * 10000);
 
+    const effectiveStatus = (isPaidActive || user.status === 'active')
+      ? 'active'
+      : (isTrialActive ? 'trialing' : (user.subscription_status || 'none'));
+
     return res.json({
       success: true,
       subscription: {
-        status: user.subscription_status || 'none',
+        status: effectiveStatus,
         is_trial_active: isTrialActive,
+        is_paid_active: isPaidActive,
+        has_access: Boolean(user.is_admin || isTrialActive || isPaidActive || user.status === 'active'),
         days_left_in_trial: daysLeftInTrial,
         trial_ends_at: user.trial_ends_at,
         paid_until: user.paid_until,

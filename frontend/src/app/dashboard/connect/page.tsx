@@ -40,10 +40,18 @@ export default function ConnectPage() {
       .finally(() => setLoadingSub(false));
   }, [effectiveUserId, user?.is_admin, user?.status]);
 
+  const isPaidActive = Boolean(
+    subInfo?.is_paid_active ||
+    subInfo?.has_access ||
+    (user?.status === 'active' && (!subInfo?.paid_until || new Date(subInfo.paid_until) > new Date())) ||
+    (subInfo?.status === 'active' && user?.status === 'active') ||
+    user?.status === 'active'
+  );
+
   const hasAccess = Boolean(
     user?.is_admin ||
     subInfo?.is_trial_active ||
-    (subInfo?.status === 'active' && user?.status === 'active')
+    isPaidActive
   );
 
   // Cargar info del negocio al montar
