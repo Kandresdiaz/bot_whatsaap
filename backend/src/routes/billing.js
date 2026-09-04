@@ -355,6 +355,11 @@ router.get('/status/:userId', async (req, res) => {
       }
     }
 
+    const isPaidActive = Boolean(
+      user.is_admin ||
+      (user.subscription_status === 'active' || user.status === 'active') && (!user.paid_until || new Date(user.paid_until) > now)
+    );
+
     // ── Límites por plan y estado de suscripción ────────────────────────────
     const PLAN_LIMITS = {
       free: 100,         // Plan inicial de prueba sin tarjeta

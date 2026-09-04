@@ -32,25 +32,30 @@ export default function ConnectPage() {
     fetch(`${BACKEND}/api/billing/status/${effectiveUserId}`)
       .then(r => r.json())
       .then(d => {
-        if (d.success) {
+        if (d.success && d.subscription) {
           setSubInfo(d.subscription);
+          if (user && d.subscription.user_status && user.status !== d.subscription.user_status) {
+            const updated = { ...user, status: d.subscription.user_status, plan: d.subscription.plan || user.plan };
+            localStorage.setItem('wbot_user', JSON.stringify(updated));
+          }
         }
       })
       .catch(() => {})
       .finally(() => setLoadingSub(false));
-  }, [effectiveUserId, user?.is_admin, user?.status]);
+  }, [effectiveUserId, user?.is_admin]);
 
   const isPaidActive = Boolean(
     subInfo?.is_paid_active ||
     subInfo?.has_access ||
-    (user?.status === 'active' && (!subInfo?.paid_until || new Date(subInfo.paid_until) > new Date())) ||
-    (subInfo?.status === 'active' && user?.status === 'active') ||
-    user?.status === 'active'
+    subInfo?.status === 'active' ||
+    user?.status === 'active' ||
+    user?.is_admin
   );
 
   const hasAccess = Boolean(
     user?.is_admin ||
     subInfo?.is_trial_active ||
+    subInfo?.has_access ||
     isPaidActive
   );
 
@@ -122,10 +127,7 @@ export default function ConnectPage() {
   // ── Iniciar sesión / pedir QR ─────────────────────────────────────────────
   const startSession = useCallback(async (force = false) => {
     if (!effectiveUserId) return;
-    if (!hasAccess) {
-      router.push('/pricing');
-      return;
-    }
+
     // Si ya tenemos un QR listo y no se solicitó forzar, reutilizar sin parpadeos
     if (!force && qr && status === 'qr_ready') {
       return;
@@ -159,6 +161,10 @@ export default function ConnectPage() {
           setPhone(data.phone || null);
         }
         setError(null);
+      } else if (res.status === 403 && data.requires_subscription) {
+        setIsTrialModalOpen(true);
+        setError('⚠️ Se requiere una suscripción activa para conectar WhatsApp.');
+        setStatus('error');
       } else {
         const msg = data.error || `Error del servidor (HTTP ${res.status})`;
         setError(`⚠️ ${msg}`);
@@ -172,7 +178,7 @@ export default function ConnectPage() {
       }
       setStatus('error');
     }
-  }, [effectiveUserId, qr, status, hasAccess, router]);
+  }, [effectiveUserId, qr, status]);
 
   // ── Desconectar ───────────────────────────────────────────────────────────
   const stopSession = async () => {
