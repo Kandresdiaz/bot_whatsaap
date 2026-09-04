@@ -710,6 +710,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-04** | fix: otorgar acceso directo al QR a clientes activos manualmente y evitar apertura de pasarela de pago (`40d690e`) | Auto-deploy |
 
+| **2026-09-04** | fix: corregir variable isPaidActive en backend billing y eliminar redireccion a pricing en connect (`62a1b19`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
