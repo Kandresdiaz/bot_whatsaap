@@ -58,9 +58,16 @@ export default function AdminClientsPage() {
   const [actionLoading, setActionLoading] = useState(false);
 
   const BACKEND = BACKEND_URL;
-  const headers = {
-    'Content-Type': 'application/json',
-    'x-admin-key': process.env.NEXT_PUBLIC_ADMIN_KEY || 'admin123'
+
+  const getHeaders = () => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('wbot_token') || '' : '';
+    const adminKey = process.env.NEXT_PUBLIC_ADMIN_KEY || 'admin123';
+    const h: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'x-admin-key': adminKey,
+    };
+    if (token) h['Authorization'] = `Bearer ${token}`;
+    return h;
   };
 
   useEffect(() => {
@@ -71,7 +78,7 @@ export default function AdminClientsPage() {
     setLoading(true);
     setErrorMsg(null);
     try {
-      const res = await fetch(`${BACKEND}/api/admin/clients`, { headers });
+      const res = await fetch(`${BACKEND}/api/admin/clients`, { headers: getHeaders() });
       const data = await res.json();
       if (data.success) {
         setClients(data.clients || []);
@@ -110,7 +117,7 @@ export default function AdminClientsPage() {
     try {
       const resAct = await fetch(`${BACKEND}/api/admin/clients/${client.id}/activate`, {
         method: 'PATCH',
-        headers,
+        headers: getHeaders(),
         body: JSON.stringify(payload),
       });
       const dataAct = await resAct.json();
@@ -122,7 +129,7 @@ export default function AdminClientsPage() {
 
       await fetch(`${BACKEND}/api/admin/payments`, {
         method: 'POST',
-        headers,
+        headers: getHeaders(),
         body: JSON.stringify({ userId: client.id, ...payload }),
       });
 
@@ -139,7 +146,7 @@ export default function AdminClientsPage() {
   const pauseClient = async (id: string) => {
     if (!confirm('¿Estás seguro de pausar la cuenta y el bot de este cliente?')) return;
     try {
-      const res = await fetch(`${BACKEND}/api/admin/clients/${id}/pause`, { method: 'PATCH', headers });
+      const res = await fetch(`${BACKEND}/api/admin/clients/${id}/pause`, { method: 'PATCH', headers: getHeaders() });
       const data = await res.json();
       if (data.success) {
         alert('Cliente pausado correctamente.');
@@ -155,7 +162,7 @@ export default function AdminClientsPage() {
   const resetClientSession = async (client: Client) => {
     if (!confirm(`¿Resetear la conexión de WhatsApp de ${client.name}? El cliente deberá escanear un nuevo QR.`)) return;
     try {
-      const res = await fetch(`${BACKEND}/api/admin/clients/${client.id}/reset-session`, { method: 'POST', headers });
+      const res = await fetch(`${BACKEND}/api/admin/clients/${client.id}/reset-session`, { method: 'POST', headers: getHeaders() });
       const data = await res.json();
       if (data.success) {
         alert('Sesión de WhatsApp desvinculada exitosamente.');
@@ -171,7 +178,7 @@ export default function AdminClientsPage() {
   const deleteClient = async (client: Client) => {
     if (!confirm(`⚠️ ¡ATENCIÓN! ¿Eliminar permanentemente a "${client.name}" y todos sus datos?`)) return;
     try {
-      const res = await fetch(`${BACKEND}/api/admin/clients/${client.id}`, { method: 'DELETE', headers });
+      const res = await fetch(`${BACKEND}/api/admin/clients/${client.id}`, { method: 'DELETE', headers: getHeaders() });
       const data = await res.json();
       if (data.success) {
         alert('Cliente eliminado correctamente.');
@@ -194,7 +201,7 @@ export default function AdminClientsPage() {
     try {
       const res = await fetch(`${BACKEND}/api/admin/clients`, {
         method: 'POST',
-        headers,
+        headers: getHeaders(),
         body: JSON.stringify({
           ...newClientForm,
           days: newClientForm.durationDays,

@@ -3,10 +3,11 @@
 Bot de WhatsApp 24/7 con IA que actúa como empleado real de cualquier negocio.
 
 ## Stack
-- **Backend**: Node.js + Express + whatsapp-web.js + Socket.io
-- **IA**: Groq (Llama 3.1 - GRATIS)
-- **Base de datos**: Supabase (PostgreSQL - GRATIS)
-- **Frontend**: Next.js 14
+- **Backend**: Node.js + Express + Baileys v7 + Socket.io
+- **IA**: Groq (Llama 3.3 70B + Llama 3.1 8B fallback)
+- **Base de datos**: Supabase (PostgreSQL)
+- **Pasarela de pagos**: Mercado Pago (Suscripciones PreApproval con 7 días de prueba gratis)
+- **Frontend**: Next.js 14 + TypeScript
 
 ## Inicio rápido
 
@@ -14,7 +15,7 @@ Bot de WhatsApp 24/7 con IA que actúa como empleado real de cualquier negocio.
 ```bash
 cd backend
 npm install
-# Editar .env con tus keys de Groq
+# Editar .env con tus keys
 npm run dev
 ```
 
@@ -29,7 +30,9 @@ npm run dev
 
 ### backend/.env
 - `GROQ_API_KEY` → https://console.groq.com (gratis)
+- `SUPABASE_URL` → URL del proyecto Supabase
 - `SUPABASE_SERVICE_KEY` → Supabase Dashboard > Settings > API > service_role key
+- `MP_ACCESS_TOKEN` → Mercado Pago Developers (Producción: `APP_USR-...`, Sandbox: `TEST-...`)
 - `ADMIN_WHATSAPP` → Tu número sin + (ej: 573001234567)
 - `ADMIN_PASSWORD` → Contraseña del admin
 

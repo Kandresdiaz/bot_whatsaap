@@ -175,6 +175,31 @@ WhatsApp → Baileys (protocolo directo, sin API de Meta)
 | **Máquina de Ventas Pro** (Pro ⭐) | $249.000 | ~$62 | $0 Hoy | **Catálogo + Fotos Multimedia + Citas:** Envío automático de fotos multimedia de productos/servicios, agendador interactivo de citas/pedidos en dashboard, 5.000 msgs IA/mes, 100 docs, generador de FAQs con IA. Bono: Guía Anti-Baneo y Cierre Persuasivo. |
 | **Dominio Agencia / VIP** (Business) | $490.000 | ~$120 | $0 Hoy | **Múltiples líneas & White-Label:** Múltiples números WA, Marca blanca con tu logo, Prompting y RAG a la medida (Done-For-You), 20.000 msgs IA/mes, Catálogo ilimitado, Soporte prioritario 1 a 1 directo por WhatsApp. |
 
+### Integración de Mercado Pago (Suscripciones & Producción)
+
+#### 1. Arquitectura de Cobro Recurrente (PreApproval)
+* **SDK utilizado:** `mercadopago` (oficial de Mercado Pago v2 para Node.js).
+* **Endpoint de creación:** `POST /api/billing/create-trial-subscription`.
+* **Periodo de prueba ($0 COP hoy):** Se envía `auto_recurring.free_trial: { frequency: 7, frequency_type: 'days' }`. El cliente registra su tarjeta débito o crédito y no se le cobra la mensualidad completa hasta el día 7.
+* **Micro-cargo de validación:** Mercado Pago realiza un cargo temporal de verificación por $1.600 COP (~$0.40 USD) que reembolsa de manera inmediata para validar que la tarjeta esté activa.
+* **Soporte de Débito (Nequi / Bancolombia Débito):** Las tarjetas débito se procesan en un único pago mensual (no admiten diferidos a cuotas).
+
+#### 2. Configuración de Notificaciones: Webhooks vs IPN
+> ⚠️ **IMPORTANTE:** En el panel de Mercado Pago Developers existen dos secciones de notificaciones:
+> * **IPN (Instant Payment Notification):** Es el sistema legacy y **NO incluye suscripciones** (solo pagos simples, órdenes y contracargos).
+> * **Webhooks (Sección superior en Developers):** Es la sección obligatoria donde sí se pueden suscribir los eventos de suscripción.
+
+* **URL del Webhook (Producción):**
+  `https://bot-whatsaap-tkjd.onrender.com/api/billing/mp-webhook`
+* **Eventos a seleccionar en Webhooks:**
+  * `subscription_preapproval` (o Suscripciones): Activa los 7 días de trial en Supabase (`subscription_status = 'trialing'`, `status = 'active'`).
+  * `payment` (o Pagos): Detecta el cobro mensual exitoso y renueva por +30 días (`subscription_status = 'active'`, `paid_until`).
+
+#### 3. Variables de Entorno y Producción
+* Modo Sandbox: `MP_ACCESS_TOKEN=TEST-...` (solo acepta tarjetas de prueba y cuentas test payer de MP).
+* Modo Producción: `MP_ACCESS_TOKEN=APP_USR-...` (permite pagos reales de clientes con tarjetas Visa, Mastercard, Nequi, etc.).
+* Configurada en Render: Dashboard → Servicio backend `bot-whatsaap-tkjd` → Environment.
+
 ---
 
 ## Variables de entorno requeridas
@@ -679,7 +704,7 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-03** | fix: aislamiento multi-tenant en chats/desconexión, prevención de regeneración redundante de QR y desconexión limpia desde celular (WhatsApp móvil) | Auto-deploy |
 
-| **2026-09-03** | fix: aislamiento multi-tenant en desconexion/chats, deduplicacion de QR y desconexion limpia desde celular (`38d9195`) | Auto-deploy |
+| **2026-09-04** | feat(billing): validación y pase a producción de suscripciones recurrentes Mercado Pago (PreApproval con 7 días gratis, micro-validación y configuración de Webhooks en vivo) | Billing |
 
 ## Próximas mejoras sugeridas
 

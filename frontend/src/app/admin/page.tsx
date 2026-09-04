@@ -40,9 +40,16 @@ export default function AdminDashboardPage() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const BACKEND = BACKEND_URL;
-  const headers = {
-    'Content-Type': 'application/json',
-    'x-admin-key': process.env.NEXT_PUBLIC_ADMIN_KEY || 'admin123'
+
+  const getHeaders = () => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('wbot_token') || '' : '';
+    const adminKey = process.env.NEXT_PUBLIC_ADMIN_KEY || 'admin123';
+    const h: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'x-admin-key': adminKey,
+    };
+    if (token) h['Authorization'] = `Bearer ${token}`;
+    return h;
   };
 
   useEffect(() => {
@@ -54,9 +61,9 @@ export default function AdminDashboardPage() {
     setErrorMsg(null);
     try {
       const [cRes, sRes, pRes] = await Promise.all([
-        fetch(`${BACKEND}/api/admin/clients`, { headers }),
-        fetch(`${BACKEND}/api/admin/stats`, { headers }),
-        fetch(`${BACKEND}/api/admin/payments`, { headers }),
+        fetch(`${BACKEND}/api/admin/clients`, { headers: getHeaders() }),
+        fetch(`${BACKEND}/api/admin/stats`, { headers: getHeaders() }),
+        fetch(`${BACKEND}/api/admin/payments`, { headers: getHeaders() }),
       ]);
       const cData = await cRes.json();
       const sData = await sRes.json();
