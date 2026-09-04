@@ -20,9 +20,16 @@ export default function AdminPaymentsPage() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const BACKEND = BACKEND_URL;
-  const headers = {
-    'Content-Type': 'application/json',
-    'x-admin-key': process.env.NEXT_PUBLIC_ADMIN_KEY || 'admin123'
+
+  const getHeaders = () => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('wbot_token') || '' : '';
+    const adminKey = process.env.NEXT_PUBLIC_ADMIN_KEY || 'admin123';
+    const h: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'x-admin-key': adminKey,
+    };
+    if (token) h['Authorization'] = `Bearer ${token}`;
+    return h;
   };
 
   useEffect(() => {
@@ -33,7 +40,7 @@ export default function AdminPaymentsPage() {
     setLoading(true);
     setErrorMsg(null);
     try {
-      const res = await fetch(`${BACKEND}/api/admin/payments`, { headers });
+      const res = await fetch(`${BACKEND}/api/admin/payments`, { headers: getHeaders() });
       const data = await res.json();
       if (data.success) {
         setPayments(data.payments || []);
