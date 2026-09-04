@@ -708,6 +708,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-04** | Merge commit 'bb52ea3' (`fd812c4`) | Auto-deploy |
 
+| **2026-09-04** | fix: otorgar acceso directo al QR a clientes activos manualmente y evitar apertura de pasarela de pago (`40d690e`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
