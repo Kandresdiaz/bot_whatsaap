@@ -706,6 +706,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-04** | feat(billing): validación y pase a producción de suscripciones recurrentes Mercado Pago (PreApproval con 7 días gratis, micro-validación y configuración de Webhooks en vivo) | Billing |
 
+| **2026-09-04** | Merge commit 'bb52ea3' (`fd812c4`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
