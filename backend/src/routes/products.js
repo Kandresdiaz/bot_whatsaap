@@ -9,9 +9,9 @@ const resolveBusinessId = async (idOrUserId) => {
 
   try {
     if (idOrUserId === 'admin' || !isUuid(idOrUserId)) {
-      const { data: firstBus } = await supabase.from('businesses').select('id').order('created_at', { ascending: true }).limit(1);
+      const { data: firstBus } = await supabase.from('businesses').select('id').eq('name', 'BotWA').limit(1);
       if (firstBus && firstBus[0]?.id) return firstBus[0].id;
-      return '00000000-0000-0000-0000-000000000001';
+      return '8fd9a59d-77d7-4db7-8637-9aaebca1158e';
     }
 
     const { data: bById } = await supabase
@@ -29,13 +29,10 @@ const resolveBusinessId = async (idOrUserId) => {
       .limit(1);
 
     if (bByUser && bByUser[0]?.id) return bByUser[0].id;
-
-    const { data: fallback } = await supabase.from('businesses').select('id').limit(1);
-    if (fallback && fallback[0]?.id) return fallback[0].id;
   } catch (e) {
     console.error('[Products] Error resolviendo businessId:', e.message);
   }
-  return '00000000-0000-0000-0000-000000000001';
+  return null;
 };
 
 // ─── 1. Listar productos y servicios de un negocio ───────────────────────────
@@ -44,24 +41,26 @@ router.get('/:businessId', async (req, res) => {
     const { businessId: rawId } = req.params;
     const businessId = await resolveBusinessId(rawId);
 
-    const { data, error } = await supabase.from('products_services').select('*');
-    let allProds = data || [];
+    if (!businessId) {
+      return res.json({ success: true, products: [] });
+    }
 
-    if (allProds.length === 0) {
+    const { data: bus } = await supabase.from('businesses').select('name').eq('id', businessId).limit(1);
+    const isBotWaBusiness = bus && bus[0]?.name === 'BotWA';
+
+    const { data, error } = await supabase.from('products_services').select('*').eq('business_id', businessId);
+    let products = data || [];
+
+    // Solo sembrar planes si es el negocio oficial de BotWA (Kevin Super Admin)
+    if (products.length === 0 && isBotWaBusiness) {
       const { seedDefaultProductsAndKB } = require('../db/seedHelper');
-      await seedDefaultProductsAndKB(businessId || '00000000-0000-0000-0000-000000000001');
-      const reFetch = await supabase.from('products_services').select('*');
-      allProds = reFetch.data || [];
+      await seedDefaultProductsAndKB(businessId);
+      const reFetch = await supabase.from('products_services').select('*').eq('business_id', businessId);
+      products = reFetch.data || [];
     }
 
-    let filtered = allProds.filter(p => p.business_id === businessId);
-
-    if (filtered.length === 0) {
-      const defaultMatched = allProds.filter(p => p.business_id === '00000000-0000-0000-0000-000000000001' || !p.business_id);
-      filtered = defaultMatched.length > 0 ? defaultMatched : allProds;
-    }
-
-    return res.json({ success: true, products: filtered });
+    // Para cualquier otro negocio de clientes, lista vacía si aún no ha agregado productos
+    return res.json({ success: true, products });
   } catch (err) {
     console.error('[GET Products Crash Safe]:', err.message);
     return res.json({ success: true, products: [] });

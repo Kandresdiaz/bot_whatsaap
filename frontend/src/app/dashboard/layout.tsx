@@ -4,6 +4,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { BACKEND_URL } from '@/lib/config';
+import GuidedTour from '@/components/GuidedTour';
 
 type ClientItem = {
   id: string;
@@ -13,14 +14,14 @@ type ClientItem = {
 };
 
 const navItems = [
-  { href: '/dashboard', icon: '🏠', label: 'Inicio' },
-  { href: '/dashboard/connect', icon: '📱', label: 'Conectar WhatsApp' },
-  { href: '/dashboard/conversations', icon: '💬', label: 'Conversaciones' },
-  { href: '/dashboard/products', icon: '📦', label: 'Catálogo Productos' },
-  { href: '/dashboard/orders', icon: '🛍️', label: 'Pedidos y Ventas' },
-  { href: '/dashboard/appointments', icon: '📅', label: 'Calendario y Citas' },
-  { href: '/dashboard/knowledge', icon: '🧠', label: 'Knowledge Base' },
-  { href: '/dashboard/bot-config', icon: '⚙️', label: 'Configurar Bot' },
+  { href: '/dashboard', icon: '🏠', label: 'Inicio', tourKey: 'nav-inicio' },
+  { href: '/dashboard/connect', icon: '📱', label: 'Conectar WhatsApp', tourKey: 'nav-connect' },
+  { href: '/dashboard/conversations', icon: '💬', label: 'Conversaciones', tourKey: 'nav-conversations' },
+  { href: '/dashboard/products', icon: '📦', label: 'Catálogo Productos', tourKey: 'nav-products' },
+  { href: '/dashboard/orders', icon: '🛍️', label: 'Pedidos y Ventas', tourKey: 'nav-orders' },
+  { href: '/dashboard/appointments', icon: '📅', label: 'Calendario y Citas', tourKey: 'nav-appointments' },
+  { href: '/dashboard/knowledge', icon: '🧠', label: 'Knowledge Base', tourKey: 'nav-knowledge' },
+  { href: '/dashboard/bot-config', icon: '⚙️', label: 'Configurar Bot', tourKey: 'nav-bot-config' },
 ];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -95,6 +96,37 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       })
       .catch(() => {});
   }, [effectiveUserId, BACKEND]);
+
+  const [isTourOpen, setIsTourOpen] = useState(false);
+  const [business, setBusiness] = useState<any>(null);
+
+  // Cargar estado de negocio y verificar si debe lanzarse el tour guiado
+  useEffect(() => {
+    if (!effectiveUserId) return;
+    fetch(`${BACKEND}/api/business/${effectiveUserId}`, { cache: 'no-store' })
+      .then(r => r.json())
+      .then(d => {
+        if (d.business) {
+          setBusiness(d.business);
+          const configured = Boolean(d.business.is_configured);
+          const tourDone = localStorage.getItem(`botwa_tour_completed_${effectiveUserId}`);
+          if (!tourDone && !user?.is_admin) {
+            setIsTourOpen(true);
+          } else if (!configured && !user?.is_admin && pathname !== '/dashboard/connect') {
+            router.push('/dashboard/connect');
+          }
+        }
+      })
+      .catch(() => {});
+  }, [effectiveUserId, user?.is_admin, BACKEND, pathname, router]);
+
+  const handleTourComplete = () => {
+    setIsTourOpen(false);
+    const configured = Boolean(business?.is_configured);
+    if (!configured && !user?.is_admin) {
+      router.push('/dashboard/connect');
+    }
+  };
 
   const handleCancelSubscription = async () => {
     if (!effectiveUserId) return;
@@ -203,6 +235,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <Link
               key={item.href}
               href={item.href}
+              data-tour={item.tourKey}
               className={`nav-link ${pathname === item.href ? 'active' : ''}`}
               onClick={() => setIsMobileMenuOpen(false)}
             >
@@ -213,14 +246,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </nav>
 
         {/* Global Bot Toggle Widget */}
-        <div style={{
-          margin: '12px 12px 0 12px',
-          padding: '12px',
-          borderRadius: 12,
-          background: globalBotEnabled ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)',
-          border: `1px solid ${globalBotEnabled ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`,
-          transition: 'all 0.2s',
-        }}>
+        <div
+          data-tour="bot-toggle"
+          style={{
+            margin: '12px 12px 0 12px',
+            padding: '12px',
+            borderRadius: 12,
+            background: globalBotEnabled ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)',
+            border: `1px solid ${globalBotEnabled ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`,
+            transition: 'all 0.2s',
+          }}
+        >
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ fontSize: 16 }}>{globalBotEnabled ? '🤖' : '⏸️'}</span>
@@ -241,7 +277,31 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
 
         <div style={{ padding: '16px 12px', borderTop: '1px solid var(--border)' }}>
-          <div style={{ padding: '10px 14px', marginBottom: 8 }}>
+          {/* Botón para iniciar / revivir el Recorrido por la App */}
+          <button
+            className="nav-link"
+            onClick={() => setIsTourOpen(true)}
+            style={{
+              color: '#00CFFF',
+              marginBottom: 10,
+              width: '100%',
+              background: 'rgba(0, 207, 255, 0.08)',
+              border: '1px solid rgba(0, 207, 255, 0.25)',
+              borderRadius: 8,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '8px 12px',
+              fontSize: 12,
+              fontWeight: 700,
+            }}
+            title="Hacer un recorrido interactivo por cada sección de la aplicación"
+          >
+            <span>🧭</span> Recorrido por la App
+          </button>
+
+          <div style={{ padding: '6px 10px', marginBottom: 8 }}>
             <div style={{ fontSize: 13, fontWeight: 600 }}>{user.name}</div>
             <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{user.email}</div>
             <div style={{ marginTop: 6, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
@@ -569,6 +629,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
         <div style={{ flex: 1 }}>{children}</div>
       </main>
+
+      {/* Recorrido Guiado Interactivo sobre la Misma Vista del Usuario */}
+      <GuidedTour
+        userId={effectiveUserId}
+        isOpen={isTourOpen}
+        onClose={() => setIsTourOpen(false)}
+        onCompleteTour={handleTourComplete}
+      />
     </div>
   );
 }

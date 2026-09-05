@@ -7,14 +7,14 @@ const { supabase } = require('../db/supabase');
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 const resolveBusinessId = async (idOrUserId) => {
-  if (!idOrUserId) return '00000000-0000-0000-0000-000000000001';
+  if (!idOrUserId) return null;
   const isUuid = (str) => typeof str === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
 
   try {
     if (idOrUserId === 'admin' || !isUuid(idOrUserId)) {
-      const { data: firstBus } = await supabase.from('businesses').select('id').order('created_at', { ascending: true }).limit(1);
+      const { data: firstBus } = await supabase.from('businesses').select('id').eq('name', 'BotWA').limit(1);
       if (firstBus && firstBus[0]?.id) return firstBus[0].id;
-      return '00000000-0000-0000-0000-000000000001';
+      return '8fd9a59d-77d7-4db7-8637-9aaebca1158e';
     }
 
     const { data: bById } = await supabase.from('businesses').select('id').eq('id', idOrUserId).limit(1);
@@ -22,11 +22,8 @@ const resolveBusinessId = async (idOrUserId) => {
 
     const { data: bByUser } = await supabase.from('businesses').select('id').eq('user_id', idOrUserId).limit(1);
     if (bByUser && bByUser[0]?.id) return bByUser[0].id;
-
-    const { data: fallback } = await supabase.from('businesses').select('id').limit(1);
-    if (fallback && fallback[0]?.id) return fallback[0].id;
   } catch (e) {}
-  return '00000000-0000-0000-0000-000000000001';
+  return null;
 };
 
 // Listar knowledge base de un business
@@ -35,24 +32,26 @@ router.get('/:businessId', async (req, res) => {
     const { businessId: rawId } = req.params;
     const businessId = await resolveBusinessId(rawId);
 
-    const { data, error } = await supabase.from('knowledge_base').select('*');
-    let allItems = data || [];
+    if (!businessId) {
+      return res.json({ success: true, items: [] });
+    }
 
-    if (allItems.length === 0) {
+    const { data: bus } = await supabase.from('businesses').select('name').eq('id', businessId).limit(1);
+    const isBotWaBusiness = bus && bus[0]?.name === 'BotWA';
+
+    const { data, error } = await supabase.from('knowledge_base').select('*').eq('business_id', businessId);
+    let items = data || [];
+
+    // Solo sembrar FAQs si es el negocio oficial de BotWA (Kevin Super Admin)
+    if (items.length === 0 && isBotWaBusiness) {
       const { seedDefaultProductsAndKB } = require('../db/seedHelper');
-      await seedDefaultProductsAndKB(businessId || '00000000-0000-0000-0000-000000000001');
-      const reFetch = await supabase.from('knowledge_base').select('*');
-      allItems = reFetch.data || [];
+      await seedDefaultProductsAndKB(businessId);
+      const reFetch = await supabase.from('knowledge_base').select('*').eq('business_id', businessId);
+      items = reFetch.data || [];
     }
 
-    let filtered = allItems.filter(k => k.business_id === businessId);
-
-    if (filtered.length === 0) {
-      const defaultMatched = allItems.filter(k => k.business_id === '00000000-0000-0000-0000-000000000001' || !k.business_id);
-      filtered = defaultMatched.length > 0 ? defaultMatched : allItems;
-    }
-
-    res.json({ success: true, items: filtered });
+    // Para cualquier otro negocio de clientes, lista vacía si aún no ha agregado documentos
+    res.json({ success: true, items });
   } catch (err) {
     res.json({ success: true, items: [] });
   }

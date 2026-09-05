@@ -67,7 +67,7 @@ export default function ConnectPage() {
       .then(d => {
         if (d.business) {
           setBusiness(d.business);
-          const isConfigured = !!(d.business.name && d.business.name.trim() !== '' && d.business.name !== 'Mi Negocio');
+          const isConfigured = Boolean(d.business.is_configured);
           if (!isConfigured) {
             setIsWizardOpen(true);
           }
@@ -80,7 +80,7 @@ export default function ConnectPage() {
 
   // Si WhatsApp se conecta y el negocio NO está configurado aún, abrir el Wizard de configuración
   useEffect(() => {
-    const isConfigured = !!(business?.name && business.name.trim() !== '' && business.name !== 'Mi Negocio');
+    const isConfigured = Boolean(business?.is_configured);
     if (status === 'connected' && business && !isConfigured) {
       setIsWizardOpen(true);
     }
@@ -127,6 +127,12 @@ export default function ConnectPage() {
   // ── Iniciar sesión / pedir QR ─────────────────────────────────────────────
   const startSession = useCallback(async (force = false) => {
     if (!effectiveUserId) return;
+
+    // Si el negocio no está configurado aún, obligar primero al Wizard de configuración
+    if (business && !business.is_configured) {
+      setIsWizardOpen(true);
+      return;
+    }
 
     // Si ya tenemos un QR listo y no se solicitó forzar, reutilizar sin parpadeos
     if (!force && qr && status === 'qr_ready') {
@@ -202,13 +208,16 @@ export default function ConnectPage() {
     const r = await fetch(`${BACKEND}/api/business/${effectiveUserId}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updatedConfig),
+      body: JSON.stringify({ ...updatedConfig, is_configured: true }),
     });
     const data = await r.json();
     if (data.success && data.business) {
       setBusiness(data.business);
+      setIsWizardOpen(false);
       // Iniciar sesión para obtener QR automáticamente tras configurar
-      startSession(true);
+      setTimeout(() => {
+        startSession(true);
+      }, 300);
     }
   };
 
@@ -230,12 +239,19 @@ export default function ConnectPage() {
         onClose={() => setIsTrialModalOpen(false)}
       />
 
-      {/* Modal Flotante de Configuración del Negocio */}
+      {/* Modal Flotante de Configuración del Negocio (Obligatorio para usuarios no configurados) */}
       <OnboardingWizardModal
         isOpen={isWizardOpen}
-        onClose={() => setIsWizardOpen(false)}
+        onClose={() => {
+          if (!business?.is_configured) {
+            alert('⚠️ La configuración inicial es obligatoria para poder conectar y activar tu bot.');
+            return;
+          }
+          setIsWizardOpen(false);
+        }}
         onSave={handleSaveBusiness}
         initialConfig={business || {}}
+        isMandatory={!business?.is_configured}
       />
 
       <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
@@ -312,8 +328,39 @@ export default function ConnectPage() {
         </div>
       </div>
 
+      {/* Aviso de Configuración Pendiente si no está configurado */}
+      {business && !business.is_configured && (
+        <div className="card" style={{
+          marginBottom: 24,
+          border: '1px solid rgba(245, 158, 11, 0.35)',
+          background: 'rgba(245, 158, 11, 0.06)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: 12,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ fontSize: 26 }}>⚙️</div>
+            <div>
+              <strong style={{ fontSize: 14, color: '#fbbf24' }}>Configuración Inicial Pendiente</strong>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+                Ingresa el nombre de tu negocio, qué vendes y cómo cerrar a tus clientes para poder generar el código QR.
+              </div>
+            </div>
+          </div>
+          <button
+            className="btn btn-primary"
+            onClick={() => setIsWizardOpen(true)}
+            style={{ fontSize: 12, padding: '8px 16px' }}
+          >
+            ✏️ Configurar Ahora
+          </button>
+        </div>
+      )}
+
       {/* Tarjeta de Estado de Configuración Guardada (Permanente) */}
-      {business && (business.is_configured || business.name) && (
+      {business && business.is_configured && business.name && (
         <div className="card" style={{
           marginBottom: 24,
           border: '1px solid rgba(0, 207, 255, 0.3)',
@@ -400,6 +447,25 @@ export default function ConnectPage() {
           <p style={{ fontSize: 13, color: 'var(--text-muted)', textAlign: 'center', maxWidth: 260 }}>
             Abre WhatsApp → Ajustes → Dispositivos vinculados → Vincular dispositivo
           </p>
+          {/* Aviso claro de configuración previa y estado apagado inicial por seguridad */}
+          <div style={{
+            background: 'rgba(26, 107, 255, 0.08)',
+            border: '1px solid rgba(0, 207, 255, 0.3)',
+            borderRadius: 10,
+            padding: '10px 14px',
+            fontSize: 12,
+            color: '#E8F0FF',
+            textAlign: 'center',
+            maxWidth: 290,
+            margin: '8px auto 14px auto',
+            lineHeight: 1.45,
+          }}>
+            ✅ <strong>Bot configurado para {business?.name || 'tu negocio'}.</strong>
+            <div style={{ color: '#94A3B8', fontSize: 11, marginTop: 4 }}>
+              Al escanear el QR, tu bot arranca en <strong>OFF (apagado)</strong> por seguridad. Podrás encenderlo cuando desees con el switch superior.
+            </div>
+          </div>
+
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={qr}

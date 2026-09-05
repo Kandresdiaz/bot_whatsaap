@@ -32,6 +32,7 @@ const DEFAULT_BOTWA_BUSINESS = {
   main_goal: 'vender',
   closing_instructions: 'Para cerrar, solicita con entusiasmo: Nombre completo, correo o ciudad y método de pago preferido.',
   custom_instructions: 'Actúa como asesor comercial consultivo: sigue la cuerda al cliente, valida sus necesidades, pregunta antes de suponer y responde en menos de 4 líneas.',
+  is_configured: true,
 };
 
 // Endpoint de diagnóstico rápido
@@ -63,25 +64,26 @@ router.get('/:userId', async (req, res) => {
     // 2. Si no existe aún registro para este usuario, crearlo con su propio user_id
     if (!business) {
       const isPrimaryAdmin = targetUserId === PRIMARY_ADMIN_ID;
-      const initialName = isPrimaryAdmin ? 'BotWA' : 'Mi Negocio';
+      const initialName = isPrimaryAdmin ? 'BotWA' : '';
       const initialCategory = isPrimaryAdmin ? 'Automatización de WhatsApp con IA' : 'General';
-      const initialDesc = isPrimaryAdmin ? DEFAULT_BOTWA_BUSINESS.description : 'Atención comercial y asesoría para clientes.';
+      const initialDesc = isPrimaryAdmin ? DEFAULT_BOTWA_BUSINESS.description : '';
 
       const { data: newBus } = await supabase.from('businesses').insert({
         user_id: targetUserId,
         name: initialName,
         category: initialCategory,
         description: initialDesc,
-        city: 'Colombia',
+        city: '',
         timezone: 'America/Bogota',
-        bot_personality: 'persuasivo',
-        greeting_msg: isPrimaryAdmin ? DEFAULT_BOTWA_BUSINESS.greeting_msg : `¡Hola! 👋 Bienvenido a ${initialName}. ¿En qué te podemos ayudar hoy?`,
+        bot_personality: 'amigable',
+        greeting_msg: isPrimaryAdmin ? DEFAULT_BOTWA_BUSINESS.greeting_msg : '¡Hola! 👋 Bienvenido. ¿En qué te podemos ayudar hoy?',
         away_msg: isPrimaryAdmin ? DEFAULT_BOTWA_BUSINESS.away_msg : 'Gracias por escribirnos 🙏 En este momento estamos fuera de horario. Te respondemos pronto.',
         active_hours_start: '08:00:00',
-        active_hours_end: '20:00:00',
-        active_days: [1, 2, 3, 4, 5, 6],
+        active_hours_end: '18:00:00',
+        active_days: [1, 2, 3, 4, 5],
         main_goal: 'vender',
-        bot_enabled: true,
+        bot_enabled: isPrimaryAdmin ? true : false,
+        is_configured: isPrimaryAdmin ? true : false,
       }).select().single();
 
       if (newBus) {
@@ -90,17 +92,46 @@ router.get('/:userId', async (req, res) => {
     }
 
     if (!business) {
-      business = { ...DEFAULT_BOTWA_BUSINESS, user_id: targetUserId };
+      if (targetUserId === PRIMARY_ADMIN_ID) {
+        business = { ...DEFAULT_BOTWA_BUSINESS, user_id: targetUserId, is_configured: true, bot_enabled: true };
+      } else {
+        business = {
+          user_id: targetUserId,
+          name: '',
+          category: 'General',
+          city: '',
+          description: '',
+          payment_or_booking_link: '',
+          closing_objective: '',
+          bot_personality: 'amigable',
+          greeting_msg: '¡Hola! 👋 Bienvenido. ¿En qué te podemos ayudar hoy?',
+          away_msg: 'Gracias por escribirnos 🙏 En este momento estamos fuera de horario. Te respondemos pronto.',
+          active_hours_start: '08:00:00',
+          active_hours_end: '18:00:00',
+          active_days: [1, 2, 3, 4, 5],
+          main_goal: 'vender',
+          bot_enabled: false,
+          is_configured: false,
+        };
+      }
     }
 
     if (business?.id && business.name === 'BotWA') {
       seedDefaultProductsAndKB(business.id).catch(e => console.error('[BUSINESS GET] Auto-seed error:', e.message));
     }
 
-    return res.json({ success: true, business });
+    return res.json({
+      success: true,
+      business: {
+        ...business,
+        name: business.is_configured ? (business.name || '') : (business.name === 'BotWA' ? 'BotWA' : ''),
+        description: business.is_configured ? (business.description || '') : (business.name === 'BotWA' ? business.description : ''),
+        is_configured: Boolean(business.is_configured),
+      }
+    });
   } catch (e) {
     console.error('[BUSINESS GET] Exception:', e.message);
-    return res.json({ success: true, business: { ...DEFAULT_BOTWA_BUSINESS, user_id: targetUserId } });
+    return res.json({ success: true, business: { ...DEFAULT_BOTWA_BUSINESS, user_id: targetUserId, is_configured: false, bot_enabled: false } });
   }
 });
 
@@ -109,7 +140,6 @@ router.post('/:userId', async (req, res) => {
   const { userId } = req.params;
   const targetUserId = resolveTargetUserId(userId);
   const fields = { ...req.body };
-  delete fields.is_configured;
 
   try {
     // Buscar si este usuario ya tiene un negocio registrado
@@ -138,10 +168,17 @@ router.post('/:userId', async (req, res) => {
       }
     }
 
-    return res.json({ success: true, business: resBus, error: result.error?.message });
+    return res.json({
+      success: true,
+      business: {
+        ...resBus,
+        is_configured: typeof resBus.is_configured === 'boolean' ? resBus.is_configured : true,
+      },
+      error: result.error?.message
+    });
   } catch (e) {
     console.error('[BUSINESS POST] Exception:', e.message);
-    return res.json({ success: true, business: { ...DEFAULT_BOTWA_BUSINESS, user_id: targetUserId } });
+    return res.json({ success: true, business: { ...DEFAULT_BOTWA_BUSINESS, user_id: targetUserId, is_configured: false } });
   }
 });
 

@@ -51,14 +51,30 @@ export default function KnowledgePage() {
       const res = await fetch(`${BACKEND}/api/knowledge/${bId}`);
       if (res.ok) {
         const data = await res.json();
-        if (data.items && Array.isArray(data.items) && data.items.length > 0) {
-          setItems(data.items);
-          return;
+        if (data.items && Array.isArray(data.items)) {
+          if (data.items.length > 0) {
+            setItems(data.items);
+            return;
+          } else if (user?.is_admin && (!effectiveUserId || effectiveUserId === 'admin')) {
+            setItems(DEFAULT_KB);
+            return;
+          } else {
+            setItems([]);
+            return;
+          }
         }
       }
-      setItems(DEFAULT_KB);
+      if (user?.is_admin && (!effectiveUserId || effectiveUserId === 'admin')) {
+        setItems(DEFAULT_KB);
+      } else {
+        setItems([]);
+      }
     } catch (_) {
-      setItems(DEFAULT_KB);
+      if (user?.is_admin && (!effectiveUserId || effectiveUserId === 'admin')) {
+        setItems(DEFAULT_KB);
+      } else {
+        setItems([]);
+      }
     }
   };
 

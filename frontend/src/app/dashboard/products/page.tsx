@@ -103,31 +103,30 @@ export default function ProductsPage() {
   // Cargar productos al montar
   const loadProducts = async () => {
     const targetId = effectiveUserId || user?.id || 'admin';
+    const isPrimaryAdminSelf = user?.is_admin && (!effectiveUserId || effectiveUserId === 'admin');
     setLoading(true);
     try {
       let res = await fetch(`${BACKEND}/api/products/${targetId}`);
       if (res.ok) {
         let data = await res.json();
-        if (data.products && Array.isArray(data.products) && data.products.length > 0) {
+        if (data.products && Array.isArray(data.products)) {
           setProducts(data.products);
           return;
         }
       }
-      if (targetId !== 'admin') {
-        const fallbackRes = await fetch(`${BACKEND}/api/products/admin`);
-        if (fallbackRes.ok) {
-          const fallbackData = await fallbackRes.json();
-          if (fallbackData.products && Array.isArray(fallbackData.products) && fallbackData.products.length > 0) {
-            setProducts(fallbackData.products);
-            return;
-          }
-        }
+      // Solo el super admin principal viendo su propia cuenta muestra planes por defecto
+      if (isPrimaryAdminSelf) {
+        setProducts(DEFAULT_PRODUCTS);
+      } else {
+        setProducts([]);
       }
-      // Salvaguarda final en frontend
-      setProducts(DEFAULT_PRODUCTS);
     } catch (e) {
       console.error('Error cargando productos:', e);
-      setProducts(DEFAULT_PRODUCTS);
+      if (isPrimaryAdminSelf) {
+        setProducts(DEFAULT_PRODUCTS);
+      } else {
+        setProducts([]);
+      }
     } finally {
       setLoading(false);
     }

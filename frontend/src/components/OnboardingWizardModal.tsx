@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 interface BusinessConfig {
   name: string;
@@ -14,6 +14,7 @@ interface BusinessConfig {
   away_msg: string;
   active_hours_start: string;
   active_hours_end: string;
+  is_configured?: boolean;
 }
 
 interface Props {
@@ -21,6 +22,7 @@ interface Props {
   onClose: () => void;
   onSave: (config: Partial<BusinessConfig>) => Promise<void>;
   initialConfig?: Partial<BusinessConfig>;
+  isMandatory?: boolean;
 }
 
 const CATEGORIES = [
@@ -42,23 +44,35 @@ const PERSONALITIES = [
   { value: 'casual', label: '😎 Casual', desc: 'Relajado, fresco e informal' },
 ];
 
-export default function OnboardingWizardModal({ isOpen, onClose, onSave, initialConfig }: Props) {
+export default function OnboardingWizardModal({ isOpen, onClose, onSave, initialConfig, isMandatory = false }: Props) {
   const [step, setStep] = useState(1);
   const [saving, setSaving] = useState(false);
-  const [config, setConfig] = useState<BusinessConfig>({
-    name: initialConfig?.name || '',
-    category: initialConfig?.category || 'Restaurante / Comida',
-    city: initialConfig?.city || '',
-    description: initialConfig?.description || '',
-    main_goal: initialConfig?.main_goal || 'vender',
-    closing_objective: initialConfig?.closing_objective || '',
-    payment_or_booking_link: initialConfig?.payment_or_booking_link || '',
-    bot_personality: initialConfig?.bot_personality || 'amigable',
-    greeting_msg: initialConfig?.greeting_msg || '¡Hola! 👋 Bienvenido. ¿En qué te puedo ayudar hoy?',
-    away_msg: initialConfig?.away_msg || 'Gracias por escribirnos 🙏 En este momento estamos fuera de horario. Te respondemos pronto.',
-    active_hours_start: initialConfig?.active_hours_start || '08:00',
-    active_hours_end: initialConfig?.active_hours_end || '18:00',
-  });
+
+  const getCleanInitial = (cfg?: Partial<BusinessConfig>) => {
+    const isConfigured = Boolean(cfg?.is_configured);
+    return {
+      name: isConfigured ? (cfg?.name || '') : (cfg?.name === 'BotWA' || cfg?.name?.startsWith('Negocio de ') ? '' : cfg?.name || ''),
+      category: cfg?.category || 'Restaurante / Comida',
+      city: isConfigured ? (cfg?.city || '') : '',
+      description: isConfigured ? (cfg?.description || '') : '',
+      main_goal: cfg?.main_goal || 'vender',
+      closing_objective: isConfigured ? (cfg?.closing_objective || '') : '',
+      payment_or_booking_link: isConfigured ? (cfg?.payment_or_booking_link || '') : '',
+      bot_personality: cfg?.bot_personality || 'amigable',
+      greeting_msg: cfg?.greeting_msg || '¡Hola! 👋 Bienvenido. ¿En qué te puedo ayudar hoy?',
+      away_msg: cfg?.away_msg || 'Gracias por escribirnos 🙏 En este momento estamos fuera de horario. Te respondemos pronto.',
+      active_hours_start: cfg?.active_hours_start || '08:00',
+      active_hours_end: cfg?.active_hours_end || '18:00',
+    };
+  };
+
+  const [config, setConfig] = useState<BusinessConfig>(getCleanInitial(initialConfig));
+
+  useEffect(() => {
+    if (initialConfig) {
+      setConfig(getCleanInitial(initialConfig));
+    }
+  }, [initialConfig]);
 
   if (!isOpen) return null;
 
@@ -68,10 +82,21 @@ export default function OnboardingWizardModal({ isOpen, onClose, onSave, initial
 
   const handleFinish = async () => {
     if (!config.name.trim()) {
-      alert('Por favor ingresa el nombre de tu negocio');
+      alert('⚠️ Por favor ingresa el nombre de tu negocio para que el bot sepa presentarse.');
       setStep(1);
       return;
     }
+    if (!config.description.trim() || config.description.trim().length < 6) {
+      alert('⚠️ Por favor escribe qué ofrece tu negocio para que el bot pueda responder a las dudas de tus clientes.');
+      setStep(1);
+      return;
+    }
+    if (!config.payment_or_booking_link.trim() && !config.closing_objective.trim()) {
+      alert('⚠️ Por favor ingresa la instrucción de cierre, precios o enlace de pago para que el bot sepa concretar ventas.');
+      setStep(3);
+      return;
+    }
+
     setSaving(true);
     try {
       await onSave({ ...config, is_configured: true } as any);
@@ -87,7 +112,7 @@ export default function OnboardingWizardModal({ isOpen, onClose, onSave, initial
     <div style={{
       position: 'fixed',
       top: 0, left: 0, right: 0, bottom: 0,
-      backgroundColor: 'rgba(5, 10, 24, 0.85)',
+      backgroundColor: 'rgba(5, 10, 24, 0.88)',
       backdropFilter: 'blur(8px)',
       zIndex: 9999,
       display: 'flex',
@@ -97,8 +122,8 @@ export default function OnboardingWizardModal({ isOpen, onClose, onSave, initial
     }}>
       <div style={{
         background: '#0B132B',
-        border: '1px solid rgba(0, 207, 255, 0.3)',
-        boxShadow: '0 20px 50px rgba(0, 0, 0, 0.6), 0 0 30px rgba(26, 107, 255, 0.2)',
+        border: '1px solid rgba(0, 207, 255, 0.35)',
+        boxShadow: '0 20px 50px rgba(0, 0, 0, 0.7), 0 0 35px rgba(26, 107, 255, 0.25)',
         borderRadius: 16,
         width: '100%',
         maxWidth: 580,
@@ -115,33 +140,51 @@ export default function OnboardingWizardModal({ isOpen, onClose, onSave, initial
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          background: 'linear-gradient(90deg, rgba(26, 107, 255, 0.1) 0%, rgba(0, 207, 255, 0.05) 100%)',
+          background: 'linear-gradient(90deg, rgba(26, 107, 255, 0.12) 0%, rgba(0, 207, 255, 0.06) 100%)',
         }}>
           <div>
-            <span style={{
-              fontSize: 11,
-              fontWeight: 700,
-              textTransform: 'uppercase',
-              letterSpacing: 1.2,
-              color: '#00CFFF',
-            }}>
-              Configuración Inicial • Paso {step} de 4
-            </span>
-            <h2 style={{ fontSize: 18, fontWeight: 700, margin: '2px 0 0 0' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <span style={{
+                fontSize: 11,
+                fontWeight: 700,
+                textTransform: 'uppercase',
+                letterSpacing: 1.2,
+                color: '#00CFFF',
+              }}>
+                Configuración Inicial • Paso {step} de 4
+              </span>
+              {isMandatory && (
+                <span style={{
+                  fontSize: 10,
+                  fontWeight: 800,
+                  background: 'rgba(239, 68, 68, 0.15)',
+                  color: '#f87171',
+                  border: '1px solid rgba(239, 68, 68, 0.3)',
+                  padding: '2px 8px',
+                  borderRadius: 6,
+                }}>
+                  🔒 Obligatorio para activar el bot
+                </span>
+              )}
+            </div>
+            <h2 style={{ fontSize: 18, fontWeight: 700, margin: '4px 0 0 0' }}>
               {step === 1 && '🏢 Datos de tu Negocio'}
               {step === 2 && '🎯 Objetivo Principal del Bot'}
               {step === 3 && '💰 Canal de Cierre y Conversión'}
               {step === 4 && '🎭 Empleado Virtual & Tono'}
             </h2>
           </div>
-          <button
-            onClick={onClose}
-            style={{
-              background: 'none', border: 'none', color: '#94A3B8', fontSize: 20, cursor: 'pointer', padding: 4
-            }}
-          >
-            ✕
-          </button>
+          {!isMandatory && (
+            <button
+              onClick={onClose}
+              style={{
+                background: 'none', border: 'none', color: '#94A3B8', fontSize: 20, cursor: 'pointer', padding: 4
+              }}
+              title="Cerrar"
+            >
+              ✕
+            </button>
+          )}
         </div>
 
         {/* Indicador de Progreso Minimalista */}
@@ -385,9 +428,21 @@ export default function OnboardingWizardModal({ isOpen, onClose, onSave, initial
             <button
               className="btn btn-primary"
               onClick={() => {
-                if (step === 1 && !config.name.trim()) {
-                  alert('Ingresa el nombre del negocio para continuar');
-                  return;
+                if (step === 1) {
+                  if (!config.name.trim()) {
+                    alert('⚠️ Ingresa el nombre oficial de tu negocio para continuar.');
+                    return;
+                  }
+                  if (!config.description.trim() || config.description.trim().length < 6) {
+                    alert('⚠️ Por favor escribe qué ofrece tu negocio. Esta información es obligatoria para que el bot pueda atender y vender a tus clientes.');
+                    return;
+                  }
+                }
+                if (step === 3) {
+                  if (!config.payment_or_booking_link.trim() && !config.closing_objective.trim()) {
+                    alert('⚠️ Por favor ingresa el enlace de pago/agenda o los precios/instrucción de cierre para que tu bot sepa concretar ventas.');
+                    return;
+                  }
                 }
                 setStep(step + 1);
               }}

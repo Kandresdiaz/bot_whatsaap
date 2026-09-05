@@ -134,12 +134,13 @@ router.post('/clients', isAdmin, async (req, res) => {
         .from('businesses')
         .insert({
           user_id: clientUser.id,
-          name: businessName || `Negocio de ${name}`,
+          name: businessName || '',
           category: category || 'General',
-          city: 'Medellín',
+          city: '',
           timezone: 'America/Bogota',
           is_configured: false,
-          active_days: [1, 2, 3, 4, 5, 6],
+          bot_enabled: false,
+          active_days: [1, 2, 3, 4, 5],
         })
         .select()
         .single();
