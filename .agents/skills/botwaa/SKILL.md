@@ -712,6 +712,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-04** | fix: corregir variable isPaidActive en backend billing y eliminar redireccion a pricing en connect (`62a1b19`) | Auto-deploy |
 
+| **2026-09-05** | fix: aislamiento de clientes sin planes admin, configuracion obligatoria antes de QR y tour guiado (`b387b76`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
