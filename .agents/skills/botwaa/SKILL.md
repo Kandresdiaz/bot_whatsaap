@@ -736,6 +736,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-06** | feat: aislar y purgar automaticamente conversaciones al conectar un numero de WhatsApp diferente (`f91c43c`) | Auto-deploy |
 
+| **2026-09-06** | feat: tutorial guiado automatico solo la primera vez por seccion con pasos de configuracion y boton omitir (`3f6d245`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
