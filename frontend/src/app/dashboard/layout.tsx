@@ -1,7 +1,7 @@
 'use client';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter, usePathname } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { BACKEND_URL } from '@/lib/config';
 import GuidedTour from '@/components/GuidedTour';
@@ -98,10 +98,26 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }, [effectiveUserId, BACKEND]);
 
   const [isTourOpen, setIsTourOpen] = useState(false);
+  const [tourStep, setTourStep] = useState<number>(0);
   const [business, setBusiness] = useState<any>(null);
 
-  // Cargar estado de negocio y verificar si debe lanzarse el tour guiado
-  useEffect(() => {
+  // Determinar paso del tour según la ruta activa
+  const getStepForPath = useCallback((path: string) => {
+    if (path.includes('/connect')) return 1;
+    if (path.includes('/conversations')) return 3;
+    if (path.includes('/products')) return 4;
+    if (path.includes('/bot-config')) return 5;
+    return 0; // Inicio por defecto
+  }, []);
+
+  const openTour = (step?: number) => {
+    const targetStep = step !== undefined ? step : getStepForPath(pathname);
+    setTourStep(targetStep);
+    setIsTourOpen(true);
+  };
+
+  // Cargar estado de negocio y escuchar actualizaciones
+  const loadBusiness = useCallback(() => {
     if (!effectiveUserId) return;
     fetch(`${BACKEND}/api/business/${effectiveUserId}`, { cache: 'no-store' })
       .then(r => r.json())
@@ -109,10 +125,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         if (d.business) {
           setBusiness(d.business);
           const configured = Boolean(d.business.is_configured);
-          const tourDone = localStorage.getItem(`botwa_tour_completed_${effectiveUserId}`);
-          if (!tourDone && !user?.is_admin) {
-            setIsTourOpen(true);
-          } else if (!configured && !user?.is_admin && pathname !== '/dashboard/connect') {
+          if (!configured && !user?.is_admin && pathname !== '/dashboard/connect') {
             router.push('/dashboard/connect');
           }
         }
@@ -120,8 +133,32 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       .catch(() => {});
   }, [effectiveUserId, user?.is_admin, BACKEND, pathname, router]);
 
+  useEffect(() => {
+    loadBusiness();
+    const handleBusUpdated = () => loadBusiness();
+    window.addEventListener('botwa_business_updated', handleBusUpdated);
+    return () => window.removeEventListener('botwa_business_updated', handleBusUpdated);
+  }, [loadBusiness]);
+
+  // Verificar si debe lanzarse el tour guiado por PRIMERA Y ÚNICA VEZ
+  useEffect(() => {
+    if (loading || !user) return; // NUNCA ejecutar mientras auth esté cargando
+    if (user.is_admin) return; // NUNCA forzar al administrador
+
+    const tourSeen = localStorage.getItem(`botwa_tour_completed_${user.id}`) || localStorage.getItem('botwa_tour_seen');
+    if (!tourSeen) {
+      // Registrar que ya se abrió para que no vuelva a salir automáticamente al recargar
+      localStorage.setItem(`botwa_tour_completed_${user.id}`, 'true');
+      localStorage.setItem('botwa_tour_seen', 'true');
+      setTourStep(-1);
+      setIsTourOpen(true);
+    }
+  }, [loading, user]);
+
   const handleTourComplete = () => {
     setIsTourOpen(false);
+    if (user?.id) localStorage.setItem(`botwa_tour_completed_${user.id}`, 'true');
+    localStorage.setItem('botwa_tour_seen', 'true');
     const configured = Boolean(business?.is_configured);
     if (!configured && !user?.is_admin) {
       router.push('/dashboard/connect');
@@ -280,7 +317,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           {/* Botón para iniciar / revivir el Recorrido por la App */}
           <button
             className="nav-link"
-            onClick={() => setIsTourOpen(true)}
+            onClick={() => openTour()}
             style={{
               color: '#00CFFF',
               marginBottom: 10,
@@ -419,6 +456,28 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 </span>
               )}
             </div>
+
+            {/* Botón para ver explicación / tour de la sección actual */}
+            <button
+              onClick={() => openTour()}
+              style={{
+                background: 'rgba(0, 207, 255, 0.12)',
+                border: '1px solid rgba(0, 207, 255, 0.35)',
+                color: '#00CFFF',
+                borderRadius: 8,
+                padding: '5px 12px',
+                fontSize: 12,
+                fontWeight: 700,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                transition: 'all 0.2s',
+              }}
+              title="Ver explicación y recorrido interactivo de esta sección"
+            >
+              <span>🧭</span> Guía de esta sección
+            </button>
           </div>
 
           {/* Cuota de Mensajes */}
@@ -632,9 +691,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       {/* Recorrido Guiado Interactivo sobre la Misma Vista del Usuario */}
       <GuidedTour
-        userId={effectiveUserId}
+        userId={user?.id || effectiveUserId}
         isOpen={isTourOpen}
-        onClose={() => setIsTourOpen(false)}
+        initialStep={tourStep}
+        onClose={() => {
+          setIsTourOpen(false);
+          if (user?.id) localStorage.setItem(`botwa_tour_completed_${user.id}`, 'true');
+          localStorage.setItem('botwa_tour_seen', 'true');
+        }}
         onCompleteTour={handleTourComplete}
       />
     </div>

@@ -65,14 +65,27 @@ export default function BotConfigPage() {
     const targetId = effectiveUserId || user?.id || 'admin';
     if (!targetId) return;
     setLoading(true);
-    await fetch(`${BACKEND}/api/business/${targetId}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(config),
-    });
-    setSaved(true);
-    setTimeout(() => setSaved(false), 3000);
-    setLoading(false);
+    try {
+      const res = await fetch(`${BACKEND}/api/business/${targetId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...config, is_configured: true }),
+      });
+      const d = await res.json();
+      if (d.success) {
+        setSaved(true);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('botwa_business_updated'));
+        }
+        setTimeout(() => setSaved(false), 3000);
+      } else {
+        alert('Error al guardar: ' + (d.error || 'Intenta de nuevo'));
+      }
+    } catch (e: any) {
+      alert('Error al conectar con el servidor: ' + e.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const set = (key: string, val: any) => setConfig((prev: any) => ({ ...prev, [key]: val }));

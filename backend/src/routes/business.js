@@ -124,8 +124,10 @@ router.get('/:userId', async (req, res) => {
       success: true,
       business: {
         ...business,
-        name: business.is_configured ? (business.name || '') : (business.name === 'BotWA' ? 'BotWA' : ''),
-        description: business.is_configured ? (business.description || '') : (business.name === 'BotWA' ? business.description : ''),
+        name: business.name || '',
+        description: business.description || '',
+        closing_objective: business.closing_objective || business.closing_instructions || '',
+        closing_instructions: business.closing_instructions || business.closing_objective || '',
         is_configured: Boolean(business.is_configured),
       }
     });
@@ -142,6 +144,54 @@ router.post('/:userId', async (req, res) => {
   const fields = { ...req.body };
 
   try {
+    const allowedColumns = [
+      'name', 'category', 'city', 'description', 'whatsapp_number',
+      'greeting_msg', 'away_msg', 'active_hours_start', 'active_hours_end',
+      'active_days', 'timezone', 'bot_personality', 'bot_enabled',
+      'main_goal', 'appointment_duration', 'payment_or_booking_link',
+      'closing_instructions', 'closing_objective', 'custom_instructions', 'is_configured'
+    ];
+
+    const cleanData = {};
+    for (const col of allowedColumns) {
+      if (fields[col] !== undefined) {
+        cleanData[col] = fields[col];
+      }
+    }
+
+    // Sincronizar closing_objective y closing_instructions
+    if (fields.closing_objective && !cleanData.closing_instructions) {
+      cleanData.closing_instructions = fields.closing_objective;
+    }
+    if (fields.closing_instructions && !cleanData.closing_objective) {
+      cleanData.closing_objective = fields.closing_instructions;
+    }
+
+    // Formato de horas para columna TIME
+    if (cleanData.active_hours_start) {
+      if (cleanData.active_hours_start.length === 5) cleanData.active_hours_start += ':00';
+    } else if (cleanData.active_hours_start === '') {
+      cleanData.active_hours_start = '08:00:00';
+    }
+
+    if (cleanData.active_hours_end) {
+      if (cleanData.active_hours_end.length === 5) cleanData.active_hours_end += ':00';
+    } else if (cleanData.active_hours_end === '') {
+      cleanData.active_hours_end = '18:00:00';
+    }
+
+    if (cleanData.appointment_duration !== undefined) {
+      const parsed = parseInt(cleanData.appointment_duration, 10);
+      cleanData.appointment_duration = isNaN(parsed) ? 30 : parsed;
+    }
+
+    // Si tiene un nombre ingresado, marcar como configurado
+    if (cleanData.name && cleanData.name.trim().length > 0) {
+      cleanData.is_configured = true;
+    } else if (fields.is_configured !== undefined) {
+      cleanData.is_configured = Boolean(fields.is_configured);
+    }
+
     // Buscar si este usuario ya tiene un negocio registrado
     const { data: existing } = await supabase
       .from('businesses')
@@ -151,15 +201,27 @@ router.post('/:userId', async (req, res) => {
       .limit(1);
 
     let result;
-    const configData = { ...fields, user_id: targetUserId };
-
     if (existing && existing.length > 0) {
-      result = await supabase.from('businesses').update(configData).eq('id', existing[0].id).select().single();
+      result = await supabase
+        .from('businesses')
+        .update(cleanData)
+        .eq('id', existing[0].id)
+        .select()
+        .single();
     } else {
-      result = await supabase.from('businesses').insert(configData).select().single();
+      result = await supabase
+        .from('businesses')
+        .insert({ ...cleanData, user_id: targetUserId })
+        .select()
+        .single();
     }
 
-    const resBus = result.data || { ...DEFAULT_BOTWA_BUSINESS, ...configData };
+    if (result.error) {
+      console.error('[BUSINESS POST] Supabase Error:', result.error);
+      return res.status(400).json({ success: false, error: result.error.message });
+    }
+
+    const resBus = result.data || { ...DEFAULT_BOTWA_BUSINESS, ...cleanData, user_id: targetUserId };
     if (resBus?.id) {
       const { clearBusinessAiCache } = require('../ai/aiCache');
       clearBusinessAiCache(resBus.id).catch(() => {});
@@ -172,13 +234,14 @@ router.post('/:userId', async (req, res) => {
       success: true,
       business: {
         ...resBus,
-        is_configured: typeof resBus.is_configured === 'boolean' ? resBus.is_configured : true,
-      },
-      error: result.error?.message
+        closing_objective: resBus.closing_objective || resBus.closing_instructions || '',
+        closing_instructions: resBus.closing_instructions || resBus.closing_objective || '',
+        is_configured: Boolean(resBus.is_configured),
+      }
     });
   } catch (e) {
     console.error('[BUSINESS POST] Exception:', e.message);
-    return res.json({ success: true, business: { ...DEFAULT_BOTWA_BUSINESS, user_id: targetUserId, is_configured: false } });
+    return res.status(500).json({ success: false, error: e.message });
   }
 });
 

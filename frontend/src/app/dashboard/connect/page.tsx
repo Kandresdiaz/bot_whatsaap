@@ -214,10 +214,15 @@ export default function ConnectPage() {
     if (data.success && data.business) {
       setBusiness(data.business);
       setIsWizardOpen(false);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('botwa_business_updated'));
+      }
       // Iniciar sesión para obtener QR automáticamente tras configurar
       setTimeout(() => {
         startSession(true);
       }, 300);
+    } else {
+      throw new Error(data.error || 'No se pudo guardar en la base de datos');
     }
   };
 

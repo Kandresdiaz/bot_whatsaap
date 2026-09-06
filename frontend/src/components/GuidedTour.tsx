@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 export interface TourStep {
   target: string; // selector CSS, ej: '[data-tour="nav-inicio"]'
   title: string;
+  shortTitle: string;
   description: string;
   badge?: string;
   icon?: string;
@@ -14,6 +15,7 @@ const TOUR_STEPS: TourStep[] = [
   {
     target: '[data-tour="nav-inicio"]',
     icon: '🏠',
+    shortTitle: 'Inicio',
     badge: 'Paso 1 de 6',
     title: 'Panel de Inicio y Métricas',
     description: 'Tu centro de comando. Aquí ves en tiempo real las ventas cerradas por el bot, pedidos concretados, tiempo ahorrado y el consumo de mensajes de IA.',
@@ -22,6 +24,7 @@ const TOUR_STEPS: TourStep[] = [
   {
     target: '[data-tour="nav-connect"]',
     icon: '📱',
+    shortTitle: 'Conectar',
     badge: 'Paso 2 de 6',
     title: 'Conectar WhatsApp (QR)',
     description: 'Aquí escaneas el código QR desde tu celular para vincular tu WhatsApp. Tu bot se configura primero antes de escanearlo para que quede listo desde el primer segundo.',
@@ -30,6 +33,7 @@ const TOUR_STEPS: TourStep[] = [
   {
     target: '[data-tour="bot-toggle"]',
     icon: '🎛️',
+    shortTitle: 'Bot ON/OFF',
     badge: 'Paso 3 de 6',
     title: 'Interruptor Maestro Bot ON/OFF',
     description: 'Tu control total. Por seguridad, el bot arranca apagado (OFF) al vincular WhatsApp para que revises todo con calma. Cuando quieras que responda 24/7, solo actívalo aquí.',
@@ -38,6 +42,7 @@ const TOUR_STEPS: TourStep[] = [
   {
     target: '[data-tour="nav-conversations"]',
     icon: '💬',
+    shortTitle: 'Chats',
     badge: 'Paso 4 de 6',
     title: 'Conversaciones en Vivo',
     description: 'Bandeja completa estilo WhatsApp Web. Puedes supervisar en vivo lo que responde la IA a cada contacto o pausar la IA por chat para atender manualmente cuando gustes.',
@@ -46,6 +51,7 @@ const TOUR_STEPS: TourStep[] = [
   {
     target: '[data-tour="nav-products"]',
     icon: '📦',
+    shortTitle: 'Productos',
     badge: 'Paso 5 de 6',
     title: 'Catálogo de Productos',
     description: 'Sube tus productos con fotos, precios y descripciones. El bot enviará fotos multimedia de tus productos automáticamente en WhatsApp a los clientes interesados.',
@@ -54,6 +60,7 @@ const TOUR_STEPS: TourStep[] = [
   {
     target: '[data-tour="nav-bot-config"]',
     icon: '⚙️',
+    shortTitle: 'Configuración',
     badge: 'Paso 6 de 6',
     title: 'Configuración del Bot',
     description: 'Ajusta el objetivo de tu asistente (vender productos vs agendar citas), su tono de voz (persuasivo, amigable o profesional), horarios y preguntas frecuentes.',
@@ -64,12 +71,13 @@ const TOUR_STEPS: TourStep[] = [
 interface GuidedTourProps {
   userId: string;
   isOpen: boolean;
+  initialStep?: number;
   onClose: () => void;
   onCompleteTour: () => void;
 }
 
-export default function GuidedTour({ userId, isOpen, onClose, onCompleteTour }: GuidedTourProps) {
-  const [currentStep, setCurrentStep] = useState<number>(-1); // -1 = Prompt inicial (Tomar u Omitir)
+export default function GuidedTour({ userId, isOpen, initialStep, onClose, onCompleteTour }: GuidedTourProps) {
+  const [currentStep, setCurrentStep] = useState<number>(initialStep !== undefined ? initialStep : -1);
   const [highlightRect, setHighlightRect] = useState<{ top: number; left: number; width: number; height: number } | null>(null);
   const [popoverPos, setPopoverPos] = useState<{ top: number; left: number }>({ top: 100, left: 100 });
   const isUpdating = useRef(false);
@@ -138,6 +146,9 @@ export default function GuidedTour({ userId, isOpen, onClose, onCompleteTour }: 
 
   useEffect(() => {
     if (isOpen) {
+      if (initialStep !== undefined) {
+        setCurrentStep(initialStep);
+      }
       updatePositions();
       window.addEventListener('resize', updatePositions);
       window.addEventListener('scroll', updatePositions, true);
@@ -146,11 +157,19 @@ export default function GuidedTour({ userId, isOpen, onClose, onCompleteTour }: 
         window.removeEventListener('scroll', updatePositions, true);
       };
     }
-  }, [isOpen, currentStep, updatePositions]);
+  }, [isOpen, initialStep, currentStep, updatePositions]);
 
   if (!isOpen) return null;
 
+  const markTourDone = () => {
+    if (userId) {
+      localStorage.setItem(`botwa_tour_completed_${userId}`, 'true');
+    }
+    localStorage.setItem('botwa_tour_seen', 'true');
+  };
+
   const handleStartTour = () => {
+    markTourDone();
     setCurrentStep(0);
   };
 
@@ -169,18 +188,14 @@ export default function GuidedTour({ userId, isOpen, onClose, onCompleteTour }: 
   };
 
   const handleFinish = () => {
-    if (userId) {
-      localStorage.setItem(`botwa_tour_completed_${userId}`, 'true');
-    }
+    markTourDone();
     setCurrentStep(-1);
     onClose();
     onCompleteTour();
   };
 
   const handleSkip = () => {
-    if (userId) {
-      localStorage.setItem(`botwa_tour_completed_${userId}`, 'true');
-    }
+    markTourDone();
     setCurrentStep(-1);
     onClose();
     onCompleteTour();
@@ -380,6 +395,35 @@ export default function GuidedTour({ userId, isOpen, onClose, onCompleteTour }: 
           >
             Saltar ✕
           </button>
+        </div>
+
+        {/* Selector rápido directo de secciones */}
+        <div style={{ display: 'flex', gap: 4, marginBottom: 12, overflowX: 'auto', paddingBottom: 4 }}>
+          {TOUR_STEPS.map((s, idx) => (
+            <button
+              key={idx}
+              onClick={() => setCurrentStep(idx)}
+              style={{
+                background: currentStep === idx ? 'rgba(0, 207, 255, 0.25)' : 'rgba(255, 255, 255, 0.05)',
+                border: currentStep === idx ? '1px solid #00CFFF' : '1px solid rgba(255, 255, 255, 0.08)',
+                color: currentStep === idx ? '#00CFFF' : '#94A3B8',
+                padding: '3px 7px',
+                borderRadius: 6,
+                fontSize: 10,
+                fontWeight: 700,
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 3,
+                transition: 'all 0.15s ease',
+              }}
+              title={s.title}
+            >
+              <span>{s.icon}</span>
+              <span>{s.shortTitle}</span>
+            </button>
+          ))}
         </div>
 
         {/* Título y descripción */}
