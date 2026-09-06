@@ -73,6 +73,9 @@ router.get('/:sessionId', async (req, res) => {
     const phoneSet = new Set();
     const merged = [];
 
+    const activeSession = active || getSession(ownerUserId);
+    const selfPhone = (activeSession?.phone || '').split(':')[0].replace(/[^0-9]/g, '');
+
     // 1. Primero: conversaciones de DB
     for (const c of data) {
       if (!c) continue;
@@ -80,6 +83,10 @@ router.get('/:sessionId', async (req, res) => {
       if (!rawPhone) continue;
       const resolved = resolvePhoneAndJid(rawPhone);
       const cleanPhone = resolved.phone || rawPhone;
+      if (!cleanPhone) continue;
+      if (selfPhone && cleanPhone === selfPhone) continue;
+      if (cleanPhone.length >= 14 && !resolved.isGroup && !cleanPhone.startsWith('120363')) continue;
+
       if (phoneSet.has(cleanPhone)) continue;
       phoneSet.add(cleanPhone);
       merged.push({
@@ -103,6 +110,8 @@ router.get('/:sessionId', async (req, res) => {
           const resolved = resolveFn(chat.id);
           const phone = resolved.phone || (chat.id || '').split('@')[0].replace(/[^0-9]/g, '');
           if (!phone || phone.length < 5) continue;
+          if (selfPhone && phone === selfPhone) continue;
+          if (phone.length >= 14 && !resolved.isGroup && !phone.startsWith('120363')) continue;
           if (phoneSet.has(phone)) continue;
           phoneSet.add(phone);
 
@@ -357,20 +366,27 @@ router.get('/:conversationId/messages', async (req, res) => {
       }
     }
 
-    // Fusionar y ordenar mensajes por timestamp
-    const msgMap = new Map();
-    dbMsgs.forEach(m => msgMap.set(m.id || `${m.timestamp}_${m.content}`, m));
-    ramMsgs.forEach(m => {
-      const key = `${m.timestamp}_${m.content}`;
-      if (!msgMap.has(key) && !msgMap.has(m.id)) {
-        msgMap.set(m.id, m);
-      }
-    });
+    // Fusionar y deduplicar mensajes por contenido y ventana de tiempo
+    const rawCombined = [...dbMsgs, ...ramMsgs];
+    const dedupedMsgs = [];
 
-    const allMsgs = Array.from(msgMap.values());
-    allMsgs.sort((a, b) => new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime());
+    for (const m of rawCombined) {
+      if (!m || !m.content) continue;
+      const mTime = new Date(m.timestamp || 0).getTime();
+      const isDup = dedupedMsgs.some(ex => {
+        if (m.id && ex.id && m.id === ex.id) return true;
+        if (m.direction === ex.direction && m.content.trim() === ex.content.trim()) {
+          const exTime = new Date(ex.timestamp || 0).getTime();
+          if (Math.abs(mTime - exTime) < 10000) return true;
+        }
+        return false;
+      });
+      if (!isDup) dedupedMsgs.push(m);
+    }
 
-    res.json({ success: true, messages: allMsgs });
+    dedupedMsgs.sort((a, b) => new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime());
+
+    res.json({ success: true, messages: dedupedMsgs });
   } catch (err) {
     console.error('[GET Messages Error]:', err.message);
     res.json({ success: true, messages: [] });

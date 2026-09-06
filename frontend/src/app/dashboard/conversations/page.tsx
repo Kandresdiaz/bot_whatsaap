@@ -95,6 +95,25 @@ export default function ConversationsPage() {
     return name.slice(0, 2).toUpperCase();
   };
 
+  const dedupeMessageList = (list: Message[]): Message[] => {
+    const result: Message[] = [];
+    for (const m of list) {
+      if (!m || !m.content) continue;
+      const mTime = new Date(m.timestamp || 0).getTime();
+      const isDup = result.some(existing => {
+        if (m.id && existing.id && m.id === existing.id) return true;
+        if (m.direction === existing.direction && m.content.trim() === existing.content.trim()) {
+          const eTime = new Date(existing.timestamp || 0).getTime();
+          if (Math.abs(mTime - eTime) < 10000) return true;
+        }
+        return false;
+      });
+      if (!isDup) result.push(m);
+    }
+    result.sort((a, b) => new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime());
+    return result;
+  };
+
   const formatPhoneNumber = (phone: string) => {
     if (!phone) return '';
     const clean = phone.replace(/[^0-9]/g, '');
@@ -226,14 +245,8 @@ export default function ConversationsPage() {
 
       if (isCurrentStillActive && data.messages && Array.isArray(data.messages)) {
         setMessages(prev => {
-          if (isInitial || prev.length === 0) return data.messages;
-          // Unir y deduplicar mensajes
-          const msgMap = new Map();
-          prev.forEach(m => msgMap.set(m.id || `${m.timestamp}_${m.content}`, m));
-          data.messages.forEach((m: Message) => msgMap.set(m.id || `${m.timestamp}_${m.content}`, m));
-          const merged = Array.from(msgMap.values());
-          merged.sort((a, b) => new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime());
-          return merged;
+          if (isInitial || prev.length === 0) return dedupeMessageList(data.messages);
+          return dedupeMessageList([...prev, ...data.messages]);
         });
       }
     } catch (_) {}
@@ -428,19 +441,18 @@ export default function ConversationsPage() {
         );
 
         if (isMatch) {
-          setMessages(prevMsgs => {
-            const exists = prevMsgs.some(m =>
-              (message.id && m.id === message.id) ||
-              (m.content === message.content && m.direction === message.direction && Math.abs(new Date(m.timestamp).getTime() - new Date(message.timestamp).getTime()) < 3000)
-            );
-            if (exists) return prevMsgs;
-            return [...prevMsgs, message];
-          });
+          setMessages(prevMsgs => dedupeMessageList([...prevMsgs, message]));
         }
       }
 
       setConversations(prevConvs => {
-        const index = prevConvs.findIndex(c => c.id === conversationId || (cleanIncomingPhone && c.contact_phone.replace(/[^0-9]/g, '') === cleanIncomingPhone));
+        const index = prevConvs.findIndex(c => {
+          if (c.id === conversationId) return true;
+          const cp = c.contact_phone ? c.contact_phone.replace(/[^0-9]/g, '') : '';
+          if (!cleanIncomingPhone || !cp) return false;
+          return cp === cleanIncomingPhone ||
+            (cp.length >= 7 && cleanIncomingPhone.length >= 7 && (cp.endsWith(cleanIncomingPhone) || cleanIncomingPhone.endsWith(cp)));
+        });
         const nowTs = message.timestamp || new Date().toISOString();
 
         if (index !== -1) {
@@ -452,6 +464,10 @@ export default function ConversationsPage() {
           const rest = prevConvs.filter((_, i) => i !== index);
           return [updatedConv, ...rest];
         } else {
+          // If incoming phone is an internal LID (length >= 14 and not a group), ignore creating ghost conversation
+          if (cleanIncomingPhone.length >= 14 && !contactPhone?.includes('@g.us')) {
+            return prevConvs;
+          }
           const newConvItem: Conversation = {
             id: conversationId || `conv_${cleanIncomingPhone}`,
             contact_phone: cleanIncomingPhone,
@@ -580,17 +596,13 @@ export default function ConversationsPage() {
       setSendSuccessToast(true);
       setTimeout(() => setSendSuccessToast(false), 3000);
 
-      setMessages(prev => {
-        const exists = prev.some(m => m.content === messageText && m.direction === 'outbound');
-        if (exists) return prev;
-        return [...prev, {
-          id: Date.now().toString(),
-          content: messageText,
-          direction: 'outbound',
-          sent_by: 'human',
-          timestamp: new Date().toISOString()
-        }];
-      });
+      setMessages(prev => dedupeMessageList([...prev, {
+        id: Date.now().toString(),
+        content: messageText,
+        direction: 'outbound',
+        sent_by: 'human',
+        timestamp: new Date().toISOString()
+      }]));
 
       loadConversations(targetId);
     } catch (e: any) {

@@ -497,6 +497,9 @@ const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts =
       }
     }
 
+    const userSessionObj = sessions.get(userId) || sessions.get(getValidUserId(userId));
+    const userOwnPhone = (userSessionObj?.phone || userSessionObj?.sock?.user?.id || '').split(':')[0].replace(/[^0-9]/g, '');
+
     // Mapa de último mensaje por número de teléfono
     const latestMsgByPhone = new Map();
     for (const msg of allMessagesList) {
@@ -505,6 +508,10 @@ const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts =
       const resolved = resolvePhoneAndJid(jid);
       const phone = resolved.phone || cleanPhoneFromJid(jid);
       if (!phone) continue;
+
+      const isGroup = resolved.isGroup || jid.endsWith('@g.us');
+      if (userOwnPhone && phone === userOwnPhone) continue;
+      if (phone.length >= 14 && !isGroup) continue;
 
       const text = extractText(msg);
       const ts = msg.messageTimestamp ? Number(msg.messageTimestamp) : 0;
@@ -529,6 +536,9 @@ const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts =
         if (!contactPhone) continue;
 
         const isGroup = resolved.isGroup || jid.endsWith('@g.us');
+        if (userOwnPhone && contactPhone === userOwnPhone) continue;
+        if (contactPhone.length >= 14 && !isGroup) continue;
+
         let contactName = chat.name || contactsMap.get(jid) || contactsMap.get(contactPhone) || (isGroup ? 'Grupo WA' : contactPhone);
 
         // Si no tenemos nombre, buscar si hay pushName en mensajes recibidos de este JID
@@ -732,7 +742,7 @@ const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts =
           for (let i = 0; i < uniqueMessages.length; i += BATCH_SIZE) {
             const batch = uniqueMessages.slice(i, i + BATCH_SIZE);
             try {
-              await supabase.from('messages').insert(batch);
+              await supabase.from('messages').upsert(batch, { onConflict: 'conversation_id,content,timestamp', ignoreDuplicates: true });
             } catch (errMsg) {
               console.warn(`[Sync] Error en lote de mensajes (${i}):`, errMsg.message);
             }
