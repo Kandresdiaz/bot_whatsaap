@@ -726,6 +726,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-06** | fix: sincronizar chats reales con ultimo mensaje, eliminar inyeccion de contactos vacios y deduplicar conversaciones (`2644036`) | Auto-deploy |
 
+| **2026-09-06** | fix: corregir resolucion de sessionId y permitir carga de chats en estado conectado sin bloqueos (`f7e0e59`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
