@@ -213,6 +213,38 @@ const deleteSessionFolder = (userId) => {
   }
 };
 
+// Helper para limpiar conversaciones y mensajes de una sesión desvinculada/cerrada
+const clearUserConversationsFromDb = async (userId) => {
+  if (!supabase || !userId) return;
+  try {
+    const validUserId = getValidUserId(userId);
+    const { data: userSessions } = await supabase
+      .from('whatsapp_sessions')
+      .select('id')
+      .eq('user_id', validUserId);
+
+    const sessionIds = [];
+    if (Array.isArray(userSessions)) {
+      userSessions.forEach(s => { if (s?.id) sessionIds.push(s.id); });
+    }
+    if (sessionIds.length === 0) return;
+
+    const { data: convs } = await supabase
+      .from('conversations')
+      .select('id')
+      .in('session_id', sessionIds);
+
+    if (convs && convs.length > 0) {
+      const convIds = convs.map(c => c.id);
+      await supabase.from('messages').delete().in('conversation_id', convIds);
+      await supabase.from('conversations').delete().in('session_id', sessionIds);
+      console.log(`[Baileys Auth] 🧹 Eliminadas ${convs.length} conversaciones de sesión desvinculada para ${validUserId}`);
+    }
+  } catch (e) {
+    console.warn('[Baileys Auth] Aviso limpiando conversaciones en DB:', e.message);
+  }
+};
+
 const PRIMARY_ADMIN_ID = '0b8c0710-b97a-4e2d-acf8-b7f33dcd5b3d';
 const ADMIN_UUID = '00000000-0000-0000-0000-000000000001';
 const sessionUuidToUserMap = new Map();
@@ -1049,6 +1081,9 @@ const createSession = async (userId, businessId, io, forceClean = false, isManua
         deleteSessionFolder(userId);
         deleteSessionFolder(validId);
 
+        // Limpiar conversaciones y mensajes en base de datos para no dejar chats huérfanos
+        clearUserConversationsFromDb(validId).catch(() => {});
+
         safeUpsert('whatsapp_sessions', {
           user_id: validId,
           status: 'disconnected',
@@ -1216,6 +1251,9 @@ const createSession = async (userId, businessId, io, forceClean = false, isManua
         // Limpiar carpetas físicas de credenciales invalidadas
         deleteSessionFolder(userId);
         deleteSessionFolder(validId);
+
+        // Limpiar conversaciones y mensajes en base de datos para no dejar chats huérfanos
+        clearUserConversationsFromDb(validId).catch(() => {});
 
         safeUpsert('whatsapp_sessions', {
           user_id: validId,
@@ -1397,6 +1435,9 @@ const disconnectSession = async (userId) => {
   userStores.delete(validId);
   userContacts.delete(userId);
   userContacts.delete(validId);
+
+  // Limpiar conversaciones y mensajes en base de datos para no dejar chats huérfanos
+  clearUserConversationsFromDb(validId).catch(() => {});
 
   await safeUpsert('whatsapp_sessions', {
     user_id: validId,

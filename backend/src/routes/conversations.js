@@ -10,8 +10,26 @@ router.get('/:sessionId', async (req, res) => {
     let { sessionId } = req.params;
     const { search, status } = req.query;
 
-    const { getValidUserId, getUserStore, resolvePhoneAndJid, safeToIsoString } = require('../whatsapp/sessionManager');
+    const { getValidUserId, getUserStore, resolvePhoneAndJid, safeToIsoString, getSession } = require('../whatsapp/sessionManager');
     const validUserId = getValidUserId(sessionId);
+
+    // 0. VERIFICAR ESTADO DE CONEXIÓN: Si no hay WhatsApp conectado, no mostrar chats
+    const active = getSession(sessionId) || getSession(validUserId);
+    const isConnInRam = active && active.status === 'connected';
+
+    let isConnInDb = false;
+    if (supabase) {
+      const { data: ws } = await supabase
+        .from('whatsapp_sessions')
+        .select('status')
+        .eq('user_id', validUserId)
+        .maybeSingle();
+      isConnInDb = ws?.status === 'connected';
+    }
+
+    if (!isConnInRam && !isConnInDb) {
+      return res.json({ success: true, conversations: [] });
+    }
 
     // Recopilar todos los session_ids asociados al usuario (para recuperar todas sus conversaciones)
     const sessionIdsSet = new Set();

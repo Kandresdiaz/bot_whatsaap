@@ -57,6 +57,15 @@ export default function ConversationsPage() {
   const [sendSuccessToast, setSendSuccessToast] = useState(false);
   const [sendErrorToast, setSendErrorToast] = useState<string | null>(null);
   const [sessionStatus, setSessionStatus] = useState<string>('connecting');
+  const sessionStatusRef = useRef<string>('connecting');
+  useEffect(() => {
+    sessionStatusRef.current = sessionStatus;
+    if (sessionStatus !== 'connected') {
+      setActive(null);
+      setConversations([]);
+      setMessages([]);
+    }
+  }, [sessionStatus]);
 
   // Generador de color de avatar determinista por contacto estilo WhatsApp Web
   const getAvatarBg = (identifier: string) => {
@@ -231,12 +240,22 @@ export default function ConversationsPage() {
   };
 
   const loadConversations = async (targetId: string) => {
+    if (sessionStatusRef.current !== 'connected') {
+      setConversations([]);
+      setActive(null);
+      return;
+    }
     const idToFetch = effectiveUserId || targetId || 'admin';
     if (!idToFetch) return;
     try {
       const res = await fetch(`${BACKEND}/api/conversations/${idToFetch}`);
       if (!res.ok) return;
       const data = await res.json();
+      if (sessionStatusRef.current !== 'connected') {
+        setConversations([]);
+        setActive(null);
+        return;
+      }
       if (data.conversations && Array.isArray(data.conversations)) {
         setConversations(data.conversations);
 
@@ -270,12 +289,16 @@ export default function ConversationsPage() {
     loadConversations(userIdToUse);
 
     const interval = setInterval(() => {
-      loadConversations(userIdToUse);
       fetch(`${BACKEND}/api/sessions/status/${userIdToUse}`)
         .then(r => r.json())
         .then(d => {
-          if (d.session?.status) {
-            setSessionStatus(d.session.status);
+          const currentStatus = d.session?.status || 'disconnected';
+          setSessionStatus(currentStatus);
+          if (currentStatus === 'connected') {
+            loadConversations(userIdToUse);
+          } else {
+            setConversations([]);
+            setActive(null);
           }
         })
         .catch(() => {});
@@ -352,17 +375,23 @@ export default function ConversationsPage() {
 
     socket.on('connected', (payload: any) => {
       const isConn = payload && (payload.status === 'connected' || payload === 'connected');
-      if (isConn) setSessionStatus('connected');
-      loadConversations(userIdToUse);
+      if (isConn) {
+        setSessionStatus('connected');
+        loadConversations(userIdToUse);
+      }
     });
 
     socket.on('session_ready', (payload: any) => {
-      if (payload?.status === 'connected' || !payload?.status) setSessionStatus('connected');
-      loadConversations(userIdToUse);
+      if (payload?.status === 'connected' || !payload?.status) {
+        setSessionStatus('connected');
+        loadConversations(userIdToUse);
+      }
     });
 
     socket.on('reconnecting', () => {
       setSessionStatus('reconnecting');
+      setActive(null);
+      setConversations([]);
     });
 
     socket.on('disconnected', (payload?: any) => {
@@ -371,6 +400,9 @@ export default function ConversationsPage() {
         return;
       }
       setSessionStatus('disconnected');
+      setActive(null);
+      setConversations([]);
+      setMessages([]);
     });
 
     socket.on('global_bot_updated', ({ bot_enabled }: { bot_enabled: boolean }) => {
@@ -571,6 +603,7 @@ export default function ConversationsPage() {
   };
 
   const filtered = useMemo(() => {
+    if (sessionStatus !== 'connected') return [];
     if (!Array.isArray(conversations)) return [];
     return conversations
       .filter(c => {
@@ -594,7 +627,7 @@ export default function ConversationsPage() {
         return true;
       })
       .sort((a, b) => new Date(b.last_message_at || 0).getTime() - new Date(a.last_message_at || 0).getTime());
-  }, [conversations, search, filterTab]);
+  }, [conversations, search, filterTab, sessionStatus]);
 
   return (
     <div className="conversations-container" style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 64px)', gap: 8, background: '#080E1F' }}>
@@ -954,14 +987,25 @@ export default function ConversationsPage() {
         </div>
 
         {/* Columna Derecha: Panel de Conversación Activa estilo WhatsApp Web */}
-        <div className={`conversations-chatview card ${!active ? 'hidden-mobile' : ''}`} style={{ flex: 1, padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', background: '#0b141a', borderColor: '#1e293b' }}>
-          {!active ? (
+        <div className={`conversations-chatview card ${!active || sessionStatus !== 'connected' ? 'hidden-mobile' : ''}`} style={{ flex: 1, padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', background: '#0b141a', borderColor: '#1e293b' }}>
+          {!active || sessionStatus !== 'connected' ? (
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#64748b', textAlign: 'center', padding: 20 }}>
-              <div style={{ fontSize: 72, marginBottom: 16, opacity: 0.8 }}>💬</div>
-              <h3 style={{ margin: '0 0 8px 0', color: '#f1f5f9', fontWeight: 600 }}>WhatsApp Web Dashboard</h3>
+              <div style={{ fontSize: 72, marginBottom: 16, opacity: 0.8 }}>
+                {sessionStatus === 'connected' ? '💬' : '🔌'}
+              </div>
+              <h3 style={{ margin: '0 0 8px 0', color: '#f1f5f9', fontWeight: 600 }}>
+                {sessionStatus === 'connected' ? 'WhatsApp Web Dashboard' : 'WhatsApp Desconectado'}
+              </h3>
               <p style={{ fontSize: 13, maxWidth: 360, lineHeight: 1.5, margin: 0 }}>
-                Selecciona una conversación de la izquierda o inicia un <strong>Nuevo Chat</strong> para enviar mensajes directamente por WhatsApp.
+                {sessionStatus === 'connected'
+                  ? 'Selecciona una conversación de la izquierda o inicia un Nuevo Chat para enviar mensajes directamente por WhatsApp.'
+                  : 'Tu cuenta de WhatsApp no está vinculada. Para ver o enviar chats, debes conectar tu WhatsApp escaneando el código QR.'}
               </p>
+              {sessionStatus !== 'connected' && (
+                <a href="/dashboard/connect" className="btn btn-primary" style={{ marginTop: 16, fontSize: 13, padding: '8px 20px', textDecoration: 'none' }}>
+                  🔌 Conectar WhatsApp
+                </a>
+              )}
             </div>
           ) : (
             <>
