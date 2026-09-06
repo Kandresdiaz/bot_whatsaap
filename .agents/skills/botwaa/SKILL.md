@@ -728,6 +728,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-06** | fix: corregir resolucion de sessionId y permitir carga de chats en estado conectado sin bloqueos (`f7e0e59`) | Auto-deploy |
 
+| **2026-09-06** | fix: resolver duplicacion de chats y mensajes con Baileys LIDs y debounce de frontend (`2687536`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
