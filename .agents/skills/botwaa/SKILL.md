@@ -724,6 +724,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-06** | fix: no mostrar chats si WhatsApp esta desconectado y limpiar datos huerfanos al desvincular (`37c91b1`) | Auto-deploy |
 
+| **2026-09-06** | fix: sincronizar chats reales con ultimo mensaje, eliminar inyeccion de contactos vacios y deduplicar conversaciones (`2644036`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
