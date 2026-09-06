@@ -94,7 +94,13 @@ router.get('/:sessionId', async (req, res) => {
       const cleanPhone = resolved.phone || rawPhone;
       if (phoneSet.has(cleanPhone)) continue;
       phoneSet.add(cleanPhone);
-      merged.push({ ...c, contact_phone: cleanPhone, contact_name: c.contact_name || cleanPhone });
+      merged.push({
+        ...c,
+        contact_phone: cleanPhone,
+        contact_name: c.contact_name || cleanPhone,
+        last_message: c.last_message || null,
+        last_message_at: c.last_message_at || c.created_at,
+      });
     }
 
     // 2. Fusionar chats de RAM de Baileys (chats que llegan pero aún no están en DB)
@@ -138,6 +144,41 @@ router.get('/:sessionId', async (req, res) => {
         }
       }
     } catch (e) { console.warn('[RAM Chats Merge Error]:', e.message); }
+
+    // 2.5. Enriquecer últimos mensajes faltantes desde la tabla messages en Supabase
+    try {
+      const needLastMsgIds = merged
+        .filter(c => !c.last_message && c.id && !c.id.startsWith('ram_'))
+        .map(c => c.id);
+
+      if (needLastMsgIds.length > 0) {
+        const { data: latestDbMsgs } = await supabase
+          .from('messages')
+          .select('conversation_id, content, timestamp')
+          .in('conversation_id', needLastMsgIds.slice(0, 100))
+          .order('timestamp', { ascending: false });
+
+        if (Array.isArray(latestDbMsgs)) {
+          const dbMsgMap = new Map();
+          for (const m of latestDbMsgs) {
+            if (!dbMsgMap.has(m.conversation_id)) {
+              dbMsgMap.set(m.conversation_id, m);
+            }
+          }
+          for (const conv of merged) {
+            if (!conv.last_message && dbMsgMap.has(conv.id)) {
+              const lm = dbMsgMap.get(conv.id);
+              conv.last_message = lm.content;
+              if (!conv.last_message_at || new Date(lm.timestamp) > new Date(conv.last_message_at)) {
+                conv.last_message_at = lm.timestamp;
+              }
+            }
+          }
+        }
+      }
+    } catch (dbMsgErr) {
+      console.warn('[Get Conversations] Error enriqueciendo desde messages DB:', dbMsgErr.message);
+    }
 
     // 3. Enriquecer previews de último mensaje desde RAM
     try {

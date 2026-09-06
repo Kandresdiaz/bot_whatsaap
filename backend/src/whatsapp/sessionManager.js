@@ -484,11 +484,42 @@ const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts =
       }
     }
 
+    // 1. Extraer y aplanar todos los mensajes disponibles (incluyendo chat.messages si vienen anidados)
+    const allMessagesList = [...(Array.isArray(messages) ? messages : [])];
+    if (Array.isArray(chats)) {
+      for (const ch of chats) {
+        if (Array.isArray(ch.messages)) {
+          for (const mItem of ch.messages) {
+            const rawMsg = mItem.message ? mItem : (mItem.msg || mItem);
+            if (rawMsg) allMessagesList.push(rawMsg);
+          }
+        }
+      }
+    }
+
+    // Mapa de último mensaje por número de teléfono
+    const latestMsgByPhone = new Map();
+    for (const msg of allMessagesList) {
+      if (!msg || !msg.key || msg.key.remoteJid === 'status@broadcast') continue;
+      const jid = msg.key.remoteJid;
+      const resolved = resolvePhoneAndJid(jid);
+      const phone = resolved.phone || cleanPhoneFromJid(jid);
+      if (!phone) continue;
+
+      const text = extractText(msg);
+      const ts = msg.messageTimestamp ? Number(msg.messageTimestamp) : 0;
+      const isoTs = safeToIsoString(msg.messageTimestamp);
+
+      if (!latestMsgByPhone.has(phone) || ts > latestMsgByPhone.get(phone).ts) {
+        latestMsgByPhone.set(phone, { text, ts, isoTs, msg });
+      }
+    }
+
     const newConvsToInsert = [];
     const convsToUpdate = [];
     const addedPhones = new Set();
 
-    // 1. Procesar chats de WhatsApp
+    // 1. Procesar chats reales de WhatsApp
     if (Array.isArray(chats) && chats.length > 0) {
       for (const chat of chats) {
         if (!chat || !chat.id || chat.id === 'status@broadcast') continue;
@@ -501,19 +532,32 @@ const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts =
         let contactName = chat.name || contactsMap.get(jid) || contactsMap.get(contactPhone) || (isGroup ? 'Grupo WA' : contactPhone);
 
         // Si no tenemos nombre, buscar si hay pushName en mensajes recibidos de este JID
-        if (contactName === contactPhone && Array.isArray(messages)) {
-          const msgPush = messages.find(m => m.key?.remoteJid === jid && m.pushName);
-          if (msgPush?.pushName) contactName = msgPush.pushName;
+        const latestInfo = latestMsgByPhone.get(contactPhone);
+        if (contactName === contactPhone && latestInfo?.msg?.pushName) {
+          contactName = latestInfo.msg.pushName;
         }
 
-        const ts = safeToIsoString(chat.conversationTimestamp);
+        // Timestamp del chat: usar el del último mensaje o conversationTimestamp del chat
+        let ts = null;
+        if (latestInfo?.isoTs) {
+          ts = latestInfo.isoTs;
+        } else if (chat.conversationTimestamp) {
+          ts = safeToIsoString(chat.conversationTimestamp);
+        } else {
+          ts = new Date().toISOString();
+        }
+
+        const lastMsgText = latestInfo?.text || null;
 
         if (convMap.has(contactPhone)) {
           const existing = convMap.get(contactPhone);
           if (existing) {
             const updateData = {};
-            if (new Date(ts) > new Date(existing.last_message_at || 0)) {
+            if (ts && (!existing.last_message_at || new Date(ts) > new Date(existing.last_message_at))) {
               updateData.last_message_at = ts;
+            }
+            if (lastMsgText && (!existing.last_message || new Date(ts) >= new Date(existing.last_message_at || 0))) {
+              updateData.last_message = lastMsgText;
             }
             if (contactName && contactName !== contactPhone && existing.contact_name !== contactName) {
               updateData.contact_name = contactName;
@@ -531,82 +575,50 @@ const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts =
             bot_active: !isGroup && !isContactBotDisabled(contactPhone, userId),
             is_blacklisted: false,
             unread_count: chat.unreadCount || 0,
+            last_message: lastMsgText,
             last_message_at: ts,
           });
         }
       }
     }
 
-    // 1.5. Procesar contactos de WhatsApp para crear conversaciones automáticas
-    if (Array.isArray(contacts) && contacts.length > 0) {
-      for (const c of contacts) {
-        if (!c || !c.id || c.id === 'status@broadcast') continue;
-        const jid = c.id;
-        const resolved = resolvePhoneAndJid(jid);
-        const contactPhone = resolved.phone || cleanPhoneFromJid(jid);
-        if (!contactPhone) continue;
+    // 2. Procesar mensajes del historial para asegurar que sus chats existan con su último mensaje
+    if (latestMsgByPhone.size > 0) {
+      for (const [phone, info] of latestMsgByPhone.entries()) {
+        if (!convMap.has(phone) && !addedPhones.has(phone)) {
+          addedPhones.add(phone);
+          const pushName = info.msg?.pushName || contactsMap.get(phone) || phone;
+          const isGroup = info.msg?.key?.remoteJid?.endsWith('@g.us');
 
-        const isGroup = resolved.isGroup || jid.endsWith('@g.us');
-        const contactName = c.name || c.notify || c.verifiedName || contactsMap.get(contactPhone) || (isGroup ? 'Grupo WA' : contactPhone);
-
-        if (!convMap.has(contactPhone) && !addedPhones.has(contactPhone)) {
-          addedPhones.add(contactPhone);
           newConvsToInsert.push({
             session_id: sessionUuid,
-            contact_phone: contactPhone,
-            contact_name: contactName || contactPhone,
-            bot_active: !isGroup && !isContactBotDisabled(contactPhone, userId),
-            is_blacklisted: false,
-            unread_count: 0,
-            last_message_at: new Date().toISOString(),
-          });
-        }
-      }
-    }
-
-    // 2. Procesar mensajes del historial para asegurar que sus chats existan
-    if (Array.isArray(messages) && messages.length > 0) {
-      for (const msg of messages) {
-        if (!msg || !msg.key || !msg.key.remoteJid || msg.key.remoteJid === 'status@broadcast') continue;
-        const jid = msg.key.remoteJid;
-        const resolved = resolvePhoneAndJid(jid);
-        const contactPhone = resolved.phone || cleanPhoneFromJid(jid);
-        if (!contactPhone) continue;
-
-        const isGroup = resolved.isGroup || jid.endsWith('@g.us');
-        const pushName = msg.pushName || contactsMap.get(jid) || contactsMap.get(contactPhone) || (isGroup ? 'Grupo WA' : contactPhone);
-        const msgTime = safeToIsoString(msg.messageTimestamp);
-
-        if (!convMap.has(contactPhone) && !addedPhones.has(contactPhone)) {
-          addedPhones.add(contactPhone);
-          newConvsToInsert.push({
-            session_id: sessionUuid,
-            contact_phone: contactPhone,
+            contact_phone: phone,
             contact_name: pushName,
-            bot_active: !isGroup && !isContactBotDisabled(contactPhone, userId),
+            bot_active: !isGroup && !isContactBotDisabled(phone, userId),
             is_blacklisted: false,
-            last_message_at: msgTime,
+            last_message: info.text || null,
+            last_message_at: info.isoTs,
           });
         }
       }
     }
 
-    // Guardar nuevas conversaciones en Supabase (lote + fallback individual indestructible)
+    // Guardar nuevas conversaciones en Supabase vía upsert con onConflict (session_id, contact_phone)
     if (newConvsToInsert.length > 0) {
       try {
         const { data: inserted, error: insErr } = await supabase
           .from('conversations')
-          .insert(newConvsToInsert)
-          .select('id, contact_phone, contact_name, last_message_at');
+          .upsert(newConvsToInsert, { onConflict: 'session_id,contact_phone' })
+          .select('id, contact_phone, contact_name, last_message, last_message_at');
 
         if (insErr) {
-          console.warn('[Sync] Aviso insertando lote de conversaciones, ejecutando inserción individual:', insErr.message);
+          console.warn('[Sync] Aviso en upsert lote de conversaciones, ejecutando individual:', insErr.message);
           for (const convItem of newConvsToInsert) {
             try {
               const { data: singleIns } = await supabase
                 .from('conversations')
-                .insert(convItem)
-                .select('id, contact_phone, contact_name, last_message_at')
+                .upsert(convItem, { onConflict: 'session_id,contact_phone' })
+                .select('id, contact_phone, contact_name, last_message, last_message_at')
                 .limit(1);
               const row = singleIns && singleIns[0];
               if (row) convMap.set(row.contact_phone, row);
@@ -618,18 +630,7 @@ const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts =
           }
         }
       } catch (err) {
-        console.warn('[Sync] Excepción insertando conversaciones, aplicando inserción uno a uno:', err.message);
-        for (const convItem of newConvsToInsert) {
-          try {
-            const { data: singleIns } = await supabase
-              .from('conversations')
-              .insert(convItem)
-              .select('id, contact_phone, contact_name, last_message_at')
-              .limit(1);
-            const row = singleIns && singleIns[0];
-            if (row) convMap.set(row.contact_phone, row);
-          } catch (_) {}
-        }
+        console.warn('[Sync] Excepción insertando conversaciones:', err.message);
       }
     }
 
@@ -637,7 +638,7 @@ const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts =
     try {
       const { data: refreshedConvs } = await supabase
         .from('conversations')
-        .select('id, contact_phone, contact_name, last_message_at')
+        .select('id, contact_phone, contact_name, last_message, last_message_at')
         .eq('session_id', sessionUuid);
 
       if (Array.isArray(refreshedConvs)) {
@@ -1335,19 +1336,21 @@ const createSession = async (userId, businessId, io, forceClean = false, isManua
 
           let conversationId = convRows && convRows[0]?.id;
           if (!conversationId) {
-            const { data: newConvRows } = await supabase.from('conversations').insert({
+            const { data: newConvRows } = await supabase.from('conversations').upsert({
               session_id: sessionUuid || null,
               contact_phone: contactPhone,
               contact_name: contactPhone,
               bot_active: true,
               is_blacklisted: false,
+              last_message: text,
               last_message_at: new Date().toISOString(),
-            }).select('id').limit(1);
+            }, { onConflict: 'session_id,contact_phone' }).select('id').limit(1);
             conversationId = newConvRows && newConvRows[0]?.id;
           }
 
           if (conversationId) {
             await supabase.from('conversations').update({
+              last_message: text,
               last_message_at: new Date().toISOString(),
             }).eq('id', conversationId);
 

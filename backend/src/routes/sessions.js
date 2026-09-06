@@ -317,16 +317,17 @@ router.post('/send', async (req, res) => {
         } else {
           const { data: newConv } = await supabase
             .from('conversations')
-            .insert({
+            .upsert({
               session_id: sessionUuid,
               contact_phone: resolvedPhone,
               contact_name: resolvedPhone,
               bot_active: true,
               is_blacklisted: false,
+              last_message: message,
               last_message_at: new Date().toISOString(),
               unread_count: 0,
               status: 'open',
-            })
+            }, { onConflict: 'session_id,contact_phone' })
             .select('id')
             .limit(1);
           const newRow = newConv && newConv[0];
@@ -336,6 +337,7 @@ router.post('/send', async (req, res) => {
 
       if (targetConvId) {
         await supabase.from('conversations').update({
+          last_message: message,
           last_message_at: new Date().toISOString(),
         }).eq('id', targetConvId);
 

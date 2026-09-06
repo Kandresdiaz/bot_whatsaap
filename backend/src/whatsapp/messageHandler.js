@@ -172,6 +172,7 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
       conversation = existingConvs[0];
       await supabase.from('conversations').update({
         contact_name: contactName,
+        last_message: text,
         last_message_at: new Date().toISOString(),
         unread_count: (conversation.unread_count || 0) + 1,
       }).eq('id', conversation.id);
@@ -179,14 +180,15 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
       // 2) Si no existe conversación previa para este teléfono, insertarla
       const { data: newConv, error: insErr } = await supabase
         .from('conversations')
-        .insert({
+        .upsert({
           session_id: sessionUuid || null,
           contact_phone: contactPhone,
           contact_name: contactName,
           bot_active: true,
           is_blacklisted: false,
+          last_message: text,
           last_message_at: new Date().toISOString(),
-        })
+        }, { onConflict: 'session_id,contact_phone' })
         .select()
         .limit(1);
 
