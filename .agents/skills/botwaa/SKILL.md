@@ -732,6 +732,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-06** | feat: optimizar conexion de nuevos usuarios en tiempo real estilo WhatsApp Web y aislamiento de sesiones (`1dfd3b9`) | Auto-deploy |
 
+| **2026-09-06** | fix: corregir desconexion instantanea, cierre de sesion con Supabase y actualizacion de mensajes en tiempo real (`bc6c000`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
