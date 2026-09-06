@@ -734,6 +734,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-06** | fix: corregir desconexion instantanea, cierre de sesion con Supabase y actualizacion de mensajes en tiempo real (`bc6c000`) | Auto-deploy |
 
+| **2026-09-06** | feat: aislar y purgar automaticamente conversaciones al conectar un numero de WhatsApp diferente (`f91c43c`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
