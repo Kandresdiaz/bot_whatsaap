@@ -58,6 +58,7 @@ export default function ConversationsPage() {
   const [sendErrorToast, setSendErrorToast] = useState<string | null>(null);
   const [sessionStatus, setSessionStatus] = useState<string>('connecting');
   const sessionStatusRef = useRef<string>('connecting');
+  const connectedPhoneRef = useRef<string | null>(null);
   useEffect(() => {
     sessionStatusRef.current = sessionStatus;
     if (sessionStatus === 'disconnected' || sessionStatus === 'qr_ready') {
@@ -303,12 +304,23 @@ export default function ConversationsPage() {
         .then(r => r.json())
         .then(d => {
           const currentStatus = d.session?.status || 'disconnected';
+          const newPhone = (d.session?.phone_number || '').replace(/[^0-9]/g, '');
           setSessionStatus(currentStatus);
+
+          if (newPhone && connectedPhoneRef.current && connectedPhoneRef.current !== newPhone) {
+            console.log('[Conversations] Cambio de número detectado:', connectedPhoneRef.current, '→', newPhone);
+            setActive(null);
+            setMessages([]);
+            setConversations([]);
+          }
+          if (newPhone) connectedPhoneRef.current = newPhone;
+
           if (currentStatus === 'connected') {
             loadConversations(userIdToUse);
           } else if (currentStatus === 'disconnected' || currentStatus === 'qr_ready') {
             setConversations([]);
             setActive(null);
+            setMessages([]);
           }
         })
         .catch(() => {});
@@ -385,6 +397,15 @@ export default function ConversationsPage() {
 
     socket.on('connected', (payload: any) => {
       const isConn = payload && (payload.status === 'connected' || payload === 'connected');
+      const incomingPhone = (payload?.phone || '').replace(/[^0-9]/g, '');
+      if (incomingPhone && connectedPhoneRef.current && connectedPhoneRef.current !== incomingPhone) {
+        console.log('[Socket] Cambio de número detectado:', connectedPhoneRef.current, '→', incomingPhone);
+        setActive(null);
+        setMessages([]);
+        setConversations([]);
+      }
+      if (incomingPhone) connectedPhoneRef.current = incomingPhone;
+
       if (isConn) {
         setSessionStatus('connected');
         loadConversations(userIdToUse);
@@ -392,6 +413,14 @@ export default function ConversationsPage() {
     });
 
     socket.on('session_ready', (payload: any) => {
+      const incomingPhone = (payload?.phone || '').replace(/[^0-9]/g, '');
+      if (incomingPhone && connectedPhoneRef.current && connectedPhoneRef.current !== incomingPhone) {
+        setActive(null);
+        setMessages([]);
+        setConversations([]);
+      }
+      if (incomingPhone) connectedPhoneRef.current = incomingPhone;
+
       if (payload?.status === 'connected' || !payload?.status) {
         setSessionStatus('connected');
         loadConversations(userIdToUse);

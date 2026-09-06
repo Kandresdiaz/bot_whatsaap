@@ -875,11 +875,20 @@ const createSession = async (userId, businessId, io, forceClean = false, isManua
       try { existingSession.sock.end(new Error('Reiniciando sesión')); } catch (_) {}
     }
     deleteSessionFolder(userId);
+    deleteSessionFolder(validUserId);
     sessions.delete(userId);
+    sessions.delete(validUserId);
+    userStores.delete(userId);
+    userStores.delete(validUserId);
+    userContacts.delete(userId);
+    userContacts.delete(validUserId);
+    clearUserConversationsFromDb(validUserId).catch(() => {});
+
     safeUpsert('whatsapp_sessions', {
       user_id: validUserId,
       session_data: null,
       qr_code: null,
+      phone_number: null,
       status: 'connecting',
     }).catch(() => {});
   } else if (existingSession?.sock) {
@@ -1149,11 +1158,37 @@ const createSession = async (userId, businessId, io, forceClean = false, isManua
 
     // ── Conexión establecida ──────────────────────────────────────────────
     if (connection === 'open') {
-      const phone = sock.user?.id?.split(':')[0] || '';
+      const phone = (sock.user?.id?.split(':')[0] || '').replace(/[^0-9]/g, '');
       console.log(`[Baileys] ✅ Conectado: ${phone} (usuario: ${userId})`);
 
-      // 1. Actualizar memoria RAM INMEDIATAMENTE para todas las claves de usuario
       const validId = getValidUserId(userId);
+
+      // Si el número de teléfono cambió respecto a la sesión guardada en DB,
+      // purgar de raíz todo el historial previo (RAM y DB) para NUNCA mezclar conversaciones
+      try {
+        if (supabase) {
+          const { data: currentDbSession } = await supabase
+            .from('whatsapp_sessions')
+            .select('phone_number')
+            .eq('user_id', validId)
+            .maybeSingle();
+
+          const prevPhone = (currentDbSession?.phone_number || '').replace(/[^0-9]/g, '');
+
+          if (prevPhone && phone && prevPhone !== phone) {
+            console.log(`[Baileys] 🔄 CAMBIO DE NÚMERO DETECTADO para ${validId}: Anterior (${prevPhone}) → Nuevo (${phone}). Limpiando historial previo.`);
+            userStores.delete(userId);
+            userStores.delete(validId);
+            userContacts.delete(userId);
+            userContacts.delete(validId);
+            await clearUserConversationsFromDb(validId);
+          }
+        }
+      } catch (checkErr) {
+        console.warn('[Baileys] Aviso al verificar cambio de número:', checkErr.message);
+      }
+
+      // 1. Actualizar memoria RAM INMEDIATAMENTE para todas las claves de usuario
       const prevS = sessions.get(userId) || sessions.get(validId) || {};
       const connectedState = { ...prevS, sock, businessId, status: 'connected', phone, qr: null };
 
