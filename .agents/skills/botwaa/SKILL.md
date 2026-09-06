@@ -716,6 +716,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-06** | fix: persistencia real de configuracion del bot en Supabase y tour guiado activable por seccion sin repeticion automatica (`fef2371`) | Auto-deploy |
 
+| **2026-09-06** | feat: tutoriales dedicados por seccion activables solo bajo demanda y eliminacion de bloqueo de cierre en configuracion de negocio (`1cefba9`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
