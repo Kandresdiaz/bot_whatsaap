@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import { io } from 'socket.io-client';
 import { useAuth } from '@/context/AuthContext';
 import OnboardingWizardModal from '@/components/OnboardingWizardModal';
 import TrialActivationModal from '@/components/TrialActivationModal';
@@ -90,10 +91,56 @@ export default function ConnectPage() {
     }
   }, [status, business]);
 
-  // ── Polling: pregunta al backend cada 3s el estado de la sesión ──────────
+  // ── Sincronización en tiempo real vía WebSockets + Polling fallback ──────────
   useEffect(() => {
     if (!effectiveUserId) return;
     let cancelled = false;
+
+    const socket = io(BACKEND, {
+      transports: ['websocket', 'polling'],
+      reconnectionAttempts: 10,
+      reconnectionDelay: 2000,
+    });
+
+    const joinRooms = () => {
+      socket.emit('join_session', effectiveUserId);
+      if (user?.id) socket.emit('join_session', user.id);
+      if (user?.is_admin) {
+        socket.emit('join_session', '00000000-0000-0000-0000-000000000001');
+        socket.emit('join_session', 'admin');
+      }
+    };
+
+    socket.on('connect', joinRooms);
+    joinRooms();
+
+    socket.on('qr', (data: { qr?: string }) => {
+      if (data?.qr) {
+        setQr(data.qr);
+        setStatus('qr_ready');
+        setError(null);
+      }
+    });
+
+    socket.on('connected', (payload: any) => {
+      setStatus('connected');
+      setPhone(payload?.phone || null);
+      setQr(null);
+      setError(null);
+    });
+
+    socket.on('session_ready', (payload: any) => {
+      setStatus('connected');
+      setPhone(payload?.phone || null);
+      setQr(null);
+      setError(null);
+    });
+
+    socket.on('disconnected', () => {
+      setStatus('disconnected');
+      setQr(null);
+      setPhone(null);
+    });
 
     const poll = async () => {
       try {
@@ -130,8 +177,12 @@ export default function ConnectPage() {
 
     poll();
     const interval = setInterval(poll, 3000);
-    return () => { cancelled = true; clearInterval(interval); };
-  }, [effectiveUserId, retryCount]);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+      socket.disconnect();
+    };
+  }, [effectiveUserId, user?.id, user?.is_admin, retryCount]);
 
   // ── Iniciar sesión / pedir QR ─────────────────────────────────────────────
   const startSession = useCallback(async (force = false, bypassConfigCheck = false) => {

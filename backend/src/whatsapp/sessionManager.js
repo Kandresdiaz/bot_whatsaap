@@ -686,11 +686,12 @@ const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts =
 
         let conv = convMap.get(contactPhone);
         if (!conv?.id) {
-          // Búsqueda directa por número de teléfono en Supabase
+          // Búsqueda directa por número de teléfono en Supabase aislado a este usuario
           try {
             const { data: directConv } = await supabase
               .from('conversations')
               .select('id, contact_phone')
+              .in('session_id', userSessionIds.length > 0 ? userSessionIds : [sessionUuid])
               .eq('contact_phone', contactPhone)
               .limit(1);
 

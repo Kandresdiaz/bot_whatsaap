@@ -863,9 +863,15 @@ export default function ConversationsPage() {
                     </a>
                   </div>
                 ) : (
-                  <p style={{ fontSize: 12, marginBottom: 12 }}>
-                    Si recién vinculaste tu WhatsApp o quieres actualizar tus chats recientes, haz clic en <strong>Sync</strong>.
-                  </p>
+                  <div style={{ background: 'rgba(0, 207, 255, 0.08)', border: '1px solid rgba(0, 207, 255, 0.25)', borderRadius: 10, padding: 14, marginTop: 12, textAlign: 'center' }}>
+                    <div className="spinner" style={{ width: 20, height: 20, margin: '0 auto 8px auto' }} />
+                    <strong style={{ display: 'block', color: '#00CFFF', fontSize: 13, marginBottom: 4 }}>
+                      Sincronizando chats de WhatsApp...
+                    </strong>
+                    <p style={{ fontSize: 12, color: '#cbd5e1', margin: 0 }}>
+                      Tus conversaciones se están descargando automáticamente como en WhatsApp Web.
+                    </p>
+                  </div>
                 )}
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
