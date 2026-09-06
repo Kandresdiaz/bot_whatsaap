@@ -1,6 +1,12 @@
 'use client';
 import { useState, useEffect } from 'react';
 
+export interface HowToStep {
+  step: number;
+  title: string;
+  desc: string;
+}
+
 export interface SectionGuide {
   id: string;
   path: string;
@@ -9,6 +15,7 @@ export interface SectionGuide {
   title: string;
   summary: string;
   tourStepIndex?: number;
+  howToConfigure: HowToStep[];
   keyPoints: {
     icon: string;
     title: string;
@@ -26,6 +33,23 @@ export const SECTION_GUIDES: Record<string, SectionGuide> = {
     title: 'Panel de Inicio y Métricas en Vivo',
     summary: 'Tu tablero principal para supervisar en tiempo real el rendimiento del bot, las ventas concretadas y el consumo de recursos.',
     tourStepIndex: 0,
+    howToConfigure: [
+      {
+        step: 1,
+        title: 'Revisa tus métricas en vivo',
+        desc: 'Monitorea las ventas cerradas, horas de trabajo ahorradas y el consumo de mensajes de IA del mes en curso.',
+      },
+      {
+        step: 2,
+        title: 'Controla el bot con el switch maestro',
+        desc: 'Usa el interruptor superior "Bot ON/OFF" para encender o pausar las respuestas automáticas de WhatsApp.',
+      },
+      {
+        step: 3,
+        title: 'Navega a los módulos de tu negocio',
+        desc: 'Usa el menú lateral para cargar productos, agendar citas en el calendario, subir FAQs o conectar WhatsApp.',
+      },
+    ],
     keyPoints: [
       {
         icon: '📊',
@@ -58,6 +82,23 @@ export const SECTION_GUIDES: Record<string, SectionGuide> = {
     title: 'Conectar WhatsApp con Código QR',
     summary: 'Vincula tu número de WhatsApp para que la IA atienda a tus clientes 24/7 sin necesidad de mantener una computadora encendida.',
     tourStepIndex: 1,
+    howToConfigure: [
+      {
+        step: 1,
+        title: 'Guarda los datos de tu empresa',
+        desc: 'Completa el nombre de tu negocio, qué vendes y cómo cobrar para que el bot sepa cómo presentarse y vender.',
+      },
+      {
+        step: 2,
+        title: 'Escanea el código QR en pantalla',
+        desc: 'Abre WhatsApp en tu teléfono → Ajustes → Dispositivos vinculados → Vincular un dispositivo y apunta la cámara al QR.',
+      },
+      {
+        step: 3,
+        title: 'Enciende el bot cuando estés listo',
+        desc: 'Por seguridad arranca apagado (OFF). Cuando quieras que atienda a tus clientes, actívalo con el switch superior.',
+      },
+    ],
     keyPoints: [
       {
         icon: '⚙️',
@@ -90,6 +131,23 @@ export const SECTION_GUIDES: Record<string, SectionGuide> = {
     title: 'Conversaciones y Supervisión Humana',
     summary: 'Bandeja estilo WhatsApp Web para monitorear lo que el bot responde a cada contacto y tomar el control cuando lo desees.',
     tourStepIndex: 3,
+    howToConfigure: [
+      {
+        step: 1,
+        title: 'Supervisa los chats en tiempo real',
+        desc: 'Haz clic en cualquier conversación de la lista izquierda para leer los mensajes del cliente y la IA al instante.',
+      },
+      {
+        step: 2,
+        title: 'Pausa la IA si quieres responder tú',
+        desc: 'Haz clic en el botón "Pausar IA" de la conversación para responder manualmente sin interferencia del bot.',
+      },
+      {
+        step: 3,
+        title: 'Reanuda la IA cuando termines',
+        desc: 'Haz clic en "Reanudar IA" para que el bot vuelva a encargarse de responder las futuras preguntas de ese cliente.',
+      },
+    ],
     keyPoints: [
       {
         icon: '👁️',
@@ -122,6 +180,23 @@ export const SECTION_GUIDES: Record<string, SectionGuide> = {
     title: 'Catálogo de Productos y Fotos Multimedia',
     summary: 'Gestiona los productos y servicios que tu bot promocionará y venderá a los prospectos que escriban por WhatsApp.',
     tourStepIndex: 4,
+    howToConfigure: [
+      {
+        step: 1,
+        title: 'Crea tu producto o servicio',
+        desc: 'Haz clic en "+ Nuevo Producto", asigna el nombre comercial y el precio exacto en pesos.',
+      },
+      {
+        step: 2,
+        title: 'Sube la foto del producto',
+        desc: 'Sube una imagen atractiva. El bot la enviará directamente al chat de WhatsApp cuando un cliente pregunte por él.',
+      },
+      {
+        step: 3,
+        title: 'Añade detalles y beneficios',
+        desc: 'Escribe características, tallas, medidas o beneficios para que el bot responda dudas y objeciones de inmediato.',
+      },
+    ],
     keyPoints: [
       {
         icon: '🖼️',
@@ -146,65 +221,6 @@ export const SECTION_GUIDES: Record<string, SectionGuide> = {
     ],
     quickTip: '💡 Los productos que crees aquí son 100% tuyos y ningún otro cliente de la plataforma los verá.',
   },
-  knowledge: {
-    id: 'knowledge',
-    path: '/dashboard/knowledge',
-    icon: '🧠',
-    badge: 'Base de Conocimiento',
-    title: 'Knowledge Base (FAQs, Políticas y PDFs)',
-    summary: 'El cerebro de tu bot. Entrena a la IA con información específica de tu negocio para que responda cualquier duda.',
-    tourStepIndex: 5,
-    keyPoints: [
-      {
-        icon: '❓',
-        title: 'Preguntas Frecuentes (FAQs)',
-        desc: 'Enseña respuestas exactas a: "¿Hacen envíos a domicilio?", "¿Dónde están ubicados?", "¿Qué garantía ofrecen?".',
-      },
-      {
-        icon: '📄',
-        title: 'Subir PDFs y Menús',
-        desc: 'Puedes cargar documentos en PDF (tarifarios, menús, catálogos extensos) y la IA extraerá el conocimiento automáticamente.',
-      },
-      {
-        icon: '🖼️',
-        title: 'Imágenes Informativas',
-        desc: 'Sube fotos de tu local, tablas de medidas o certificados para que el bot las envíe cuando el cliente las solicite.',
-      },
-    ],
-    quickTip: '💡 Mientras más preguntas frecuentes agregues, más inteligente y certero será tu bot al responder.',
-  },
-  'bot-config': {
-    id: 'bot-config',
-    path: '/dashboard/bot-config',
-    icon: '⚙️',
-    badge: 'Ajustes del Asistente',
-    title: 'Configuración del Bot, Tono y Cierre',
-    summary: 'Define cómo debe actuar tu asistente comercial, qué personalidad tendrá y cómo concretará el pago o reserva.',
-    tourStepIndex: 5,
-    keyPoints: [
-      {
-        icon: '🎯',
-        title: 'Objetivo Principal',
-        desc: 'Elige si la meta del bot es Vender Productos directamente o Agendar Citas en tu calendario.',
-      },
-      {
-        icon: '🎭',
-        title: 'Tono de Voz y Personalidad',
-        desc: 'Configura su estilo: Vendedor Persuasivo, Cálido y Amigable, Profesional y Corporativo, o Fresco y Casual.',
-      },
-      {
-        icon: '💳',
-        title: 'Canal de Cierre / Datos de Pago',
-        desc: 'Coloca tu enlace de Nequi, Wompi, WhatsApp comercial o la instrucción exacta que el bot dará para cobrar.',
-      },
-      {
-        icon: '⏰',
-        title: 'Horarios de Atención',
-        desc: 'Define las horas de oficina para que fuera de horario el bot envíe un mensaje amable avisando que responderán pronto.',
-      },
-    ],
-    quickTip: '💡 Puedes probar y cambiar la personalidad de tu bot tantas veces como desees sin costo adicional.',
-  },
   orders: {
     id: 'orders',
     path: '/dashboard/orders',
@@ -212,6 +228,24 @@ export const SECTION_GUIDES: Record<string, SectionGuide> = {
     badge: 'Ventas y Pedidos',
     title: 'Registro de Pedidos y Ventas Concretadas',
     summary: 'Consulta todos los pedidos generados por el bot en WhatsApp con datos del cliente y monto total.',
+    tourStepIndex: 5,
+    howToConfigure: [
+      {
+        step: 1,
+        title: 'Revisa las órdenes recibidas',
+        desc: 'Cada vez que el bot cierra una venta en WhatsApp, la orden aparece registrada aquí con fecha y hora.',
+      },
+      {
+        step: 2,
+        title: 'Consulta los datos del comprador',
+        desc: 'Verifica el nombre, teléfono de contacto y dirección de entrega que el bot solicitó al cliente.',
+      },
+      {
+        step: 3,
+        title: 'Actualiza el estado de despacho',
+        desc: 'Cambia el estado entre Pendiente, Confirmado, Enviado o Entregado para llevar el control de tus despachos.',
+      },
+    ],
     keyPoints: [
       {
         icon: '📋',
@@ -238,6 +272,24 @@ export const SECTION_GUIDES: Record<string, SectionGuide> = {
     badge: 'Agenda Comercial',
     title: 'Calendario y Citas Agendadas',
     summary: 'Visualiza las citas o reuniones agendadas automáticamente por el bot para servicios, consultorios o barberías.',
+    tourStepIndex: 6,
+    howToConfigure: [
+      {
+        step: 1,
+        title: 'Activa "Agendar Citas" como objetivo',
+        desc: 'Ve a la sección "Configurar Bot" y selecciona "Agendar Citas" como objetivo comercial principal de tu asistente.',
+      },
+      {
+        step: 2,
+        title: 'Gestiona tu calendario en vivo',
+        desc: 'Consulta en vista de calendario interactivo o tabla las reservas que la IA ha coordinado con tus clientes en WhatsApp.',
+      },
+      {
+        step: 3,
+        title: 'Añade o edita citas manuales',
+        desc: 'Usa el botón "+ Nueva Cita" para agendar citas directas o haz clic en cualquier turno para ver o editar sus datos.',
+      },
+    ],
     keyPoints: [
       {
         icon: '⏱️',
@@ -255,19 +307,114 @@ export const SECTION_GUIDES: Record<string, SectionGuide> = {
         desc: 'El bot envía la confirmación de fecha y hora inmediatamente al cliente.',
       },
     ],
-    quickTip: '💡 Si tu modelo es por turnos, asegúrate de activar "Agendar Citas" como objetivo comercial.',
+    quickTip: '💡 Si tu modelo es por turnos, asegúrate de activar "Agendar Citas" como objetivo comercial en Configurar Bot.',
+  },
+  knowledge: {
+    id: 'knowledge',
+    path: '/dashboard/knowledge',
+    icon: '🧠',
+    badge: 'Base de Conocimiento',
+    title: 'Knowledge Base (FAQs, Políticas y PDFs)',
+    summary: 'El cerebro de tu bot. Entrena a la IA con información específica de tu negocio para que responda cualquier duda.',
+    tourStepIndex: 7,
+    howToConfigure: [
+      {
+        step: 1,
+        title: 'Agrega preguntas frecuentes (FAQs)',
+        desc: 'Haz clic en "+ Nueva Pregunta" y escribe preguntas típicas: ubicación, métodos de pago, garantías y horarios.',
+      },
+      {
+        step: 2,
+        title: 'Sube documentos o cartas en PDF',
+        desc: 'Carga archivos PDF con tu carta, tarifario o políticas; la inteligencia artificial extraerá y memorizará su contenido.',
+      },
+      {
+        step: 3,
+        title: 'El bot responde al instante',
+        desc: 'Cualquier conocimiento que agregues aquí estará disponible de inmediato en WhatsApp sin necesidad de reiniciar el bot.',
+      },
+    ],
+    keyPoints: [
+      {
+        icon: '❓',
+        title: 'Preguntas Frecuentes (FAQs)',
+        desc: 'Enseña respuestas exactas a: "¿Hacen envíos a domicilio?", "¿Dónde están ubicados?", "¿Qué garantía ofrecen?".',
+      },
+      {
+        icon: '📄',
+        title: 'Subir PDFs y Menús',
+        desc: 'Puedes cargar documentos en PDF (tarifarios, menús, catálogos extensos) y la IA extraerá el conocimiento automáticamente.',
+      },
+      {
+        icon: '🖼️',
+        title: 'Imágenes Informativas',
+        desc: 'Sube fotos de tu local, tablas de medidas o certificados para que el bot las envíe cuando el cliente las solicite.',
+      },
+    ],
+    quickTip: '💡 Mientras más preguntas frecuentes agregues, más inteligente y certero será tu bot al responder.',
+  },
+  'bot-config': {
+    id: 'bot-config',
+    path: '/dashboard/bot-config',
+    icon: '⚙️',
+    badge: 'Ajustes del Asistente',
+    title: 'Configuración del Bot, Tono y Cierre',
+    summary: 'Define cómo debe actuar tu asistente comercial, qué personalidad tendrá y cómo concretará el pago o reserva.',
+    tourStepIndex: 8,
+    howToConfigure: [
+      {
+        step: 1,
+        title: 'Selecciona tu objetivo comercial',
+        desc: 'Elige si la meta principal del bot es Vender Productos/Servicios o Agendar Citas en tu calendario.',
+      },
+      {
+        step: 2,
+        title: 'Elige el tono de voz',
+        desc: 'Selecciona la personalidad: Vendedor Persuasivo, Cálido y Amigable, Profesional o Casual según tu público.',
+      },
+      {
+        step: 3,
+        title: 'Configura tus datos de cierre o pago',
+        desc: 'Ingresa tu enlace de pago (Nequi, Daviplata, Wompi, etc.) o la instrucción exacta que el bot dará para cobrar.',
+      },
+    ],
+    keyPoints: [
+      {
+        icon: '🎯',
+        title: 'Objetivo Principal',
+        desc: 'Elige si la meta del bot es Vender Productos directamente o Agendar Citas en tu calendario.',
+      },
+      {
+        icon: '🎭',
+        title: 'Tono de Voz y Personalidad',
+        desc: 'Configura su estilo: Vendedor Persuasivo, Cálido y Amigable, Profesional y Corporativo, o Fresco y Casual.',
+      },
+      {
+        icon: '💳',
+        title: 'Canal de Cierre / Datos de Pago',
+        desc: 'Coloca tu enlace de Nequi, Wompi, WhatsApp comercial o la instrucción exacta que el bot dará para cobrar.',
+      },
+      {
+        icon: '⏰',
+        title: 'Horarios de Atención',
+        desc: 'Define las horas de oficina para que fuera de horario el bot envíe un mensaje amable avisando que responderán pronto.',
+      },
+    ],
+    quickTip: '💡 Puedes probar y cambiar la personalidad de tu bot tantas veces como desees sin costo adicional.',
   },
 };
 
 interface Props {
   isOpen: boolean;
   sectionKey: string;
-  onClose: () => void;
+  isFirstVisit?: boolean;
+  onClose: (viewedKey?: string) => void;
   onLaunchSpotlight?: (stepIndex: number) => void;
 }
 
-export default function SectionGuideModal({ isOpen, sectionKey, onClose, onLaunchSpotlight }: Props) {
+export default function SectionGuideModal({ isOpen, sectionKey, isFirstVisit = false, onClose, onLaunchSpotlight }: Props) {
   const [activeKey, setActiveKey] = useState<string>(sectionKey || 'inicio');
+  const [activeTab, setActiveTab] = useState<'config' | 'features'>('config');
 
   useEffect(() => {
     if (sectionKey && SECTION_GUIDES[sectionKey]) {
@@ -315,11 +462,11 @@ export default function SectionGuideModal({ isOpen, sectionKey, onClose, onLaunc
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ fontSize: 20 }}>🧭</span>
               <strong style={{ fontSize: 14, color: '#00CFFF', textTransform: 'uppercase', letterSpacing: '0.6px' }}>
-                Guía y Tutorial por Sección
+                Tutorial de la Sección
               </strong>
             </div>
             <button
-              onClick={onClose}
+              onClick={() => onClose(activeKey)}
               style={{
                 background: 'rgba(255, 255, 255, 0.06)',
                 border: '1px solid rgba(255, 255, 255, 0.1)',
@@ -333,11 +480,30 @@ export default function SectionGuideModal({ isOpen, sectionKey, onClose, onLaunc
                 cursor: 'pointer',
                 fontSize: 14,
               }}
-              title="Cerrar guía"
+              title="Cerrar u omitir"
             >
               ✕
             </button>
           </div>
+
+          {/* Aviso especial de Primera Visita */}
+          {isFirstVisit && (
+            <div style={{
+              background: 'rgba(0, 207, 255, 0.12)',
+              border: '1px solid rgba(0, 207, 255, 0.3)',
+              borderRadius: 8,
+              padding: '7px 12px',
+              marginBottom: 12,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              fontSize: 12,
+              color: '#00CFFF',
+            }}>
+              <span>✨ <strong>Primera visita a este apartado:</strong> Este tutorial solo se abre automáticamente la primera vez.</span>
+              <span style={{ opacity: 0.8, fontSize: 11, background: 'rgba(0,207,255,0.2)', padding: '2px 6px', borderRadius: 4 }}>No se repetirá</span>
+            </div>
+          )}
 
           {/* Botones de navegación directa entre secciones */}
           <div style={{
@@ -350,7 +516,10 @@ export default function SectionGuideModal({ isOpen, sectionKey, onClose, onLaunc
             {Object.values(SECTION_GUIDES).map(g => (
               <button
                 key={g.id}
-                onClick={() => setActiveKey(g.id)}
+                onClick={() => {
+                  setActiveKey(g.id);
+                  setActiveTab('config');
+                }}
                 style={{
                   background: activeKey === g.id ? 'rgba(0, 207, 255, 0.22)' : 'rgba(255, 255, 255, 0.04)',
                   border: activeKey === g.id ? '1px solid #00CFFF' : '1px solid rgba(255, 255, 255, 0.08)',
@@ -375,7 +544,7 @@ export default function SectionGuideModal({ isOpen, sectionKey, onClose, onLaunc
         </div>
 
         {/* Contenido de la sección seleccionada */}
-        <div style={{ padding: '22px 24px', overflowY: 'auto', flex: 1 }}>
+        <div style={{ padding: '20px 24px', overflowY: 'auto', flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
             <div style={{
               width: 44, height: 44, borderRadius: 12,
@@ -395,37 +564,130 @@ export default function SectionGuideModal({ isOpen, sectionKey, onClose, onLaunc
             </div>
           </div>
 
-          <p style={{ fontSize: 13, color: '#94A3B8', lineHeight: 1.5, margin: '0 0 20px 0' }}>
+          <p style={{ fontSize: 13, color: '#94A3B8', lineHeight: 1.5, margin: '0 0 16px 0' }}>
             {currentGuide.summary}
           </p>
 
-          {/* Puntos clave */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
-            {currentGuide.keyPoints.map((pt, idx) => (
-              <div
-                key={idx}
-                style={{
-                  background: 'rgba(255, 255, 255, 0.03)',
-                  border: '1px solid rgba(255, 255, 255, 0.07)',
-                  borderRadius: 10,
-                  padding: '10px 14px',
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: 12,
-                }}
-              >
-                <span style={{ fontSize: 18, marginTop: 1 }}>{pt.icon}</span>
-                <div>
-                  <strong style={{ fontSize: 13, color: '#F8FAFC', display: 'block', marginBottom: 2 }}>
-                    {pt.title}
-                  </strong>
-                  <div style={{ fontSize: 12, color: '#94A3B8', lineHeight: 1.45 }}>
-                    {pt.desc}
+          {/* Selector de Pestañas: Cómo configurarlo vs Qué hace este apartado */}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+            <button
+              onClick={() => setActiveTab('config')}
+              style={{
+                flex: 1,
+                padding: '8px 12px',
+                borderRadius: 8,
+                border: activeTab === 'config' ? '1px solid #00CFFF' : '1px solid rgba(255, 255, 255, 0.1)',
+                background: activeTab === 'config' ? 'rgba(0, 207, 255, 0.15)' : 'rgba(255, 255, 255, 0.03)',
+                color: activeTab === 'config' ? '#00CFFF' : '#94A3B8',
+                fontSize: 12,
+                fontWeight: 700,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <span>⚙️</span> ¿Cómo configurarlo?
+            </button>
+            <button
+              onClick={() => setActiveTab('features')}
+              style={{
+                flex: 1,
+                padding: '8px 12px',
+                borderRadius: 8,
+                border: activeTab === 'features' ? '1px solid #00CFFF' : '1px solid rgba(255, 255, 255, 0.1)',
+                background: activeTab === 'features' ? 'rgba(0, 207, 255, 0.15)' : 'rgba(255, 255, 255, 0.03)',
+                color: activeTab === 'features' ? '#00CFFF' : '#94A3B8',
+                fontSize: 12,
+                fontWeight: 700,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <span>💡</span> ¿Qué hace este apartado?
+            </button>
+          </div>
+
+          {/* Pestaña: Pasos de Configuración */}
+          {activeTab === 'config' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
+              {currentGuide.howToConfigure.map((item) => (
+                <div
+                  key={item.step}
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.03)',
+                    border: '1px solid rgba(0, 207, 255, 0.18)',
+                    borderRadius: 10,
+                    padding: '12px 14px',
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: 12,
+                  }}
+                >
+                  <div style={{
+                    width: 24,
+                    height: 24,
+                    borderRadius: '50%',
+                    background: 'linear-gradient(135deg, #1A6BFF, #00CFFF)',
+                    color: '#050A18',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: 12,
+                    fontWeight: 800,
+                    flexShrink: 0,
+                    marginTop: 1,
+                  }}>
+                    {item.step}
+                  </div>
+                  <div>
+                    <strong style={{ fontSize: 13, color: '#F8FAFC', display: 'block', marginBottom: 3 }}>
+                      {item.title}
+                    </strong>
+                    <div style={{ fontSize: 12, color: '#94A3B8', lineHeight: 1.45 }}>
+                      {item.desc}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
+
+          {/* Pestaña: Puntos Clave y Funciones */}
+          {activeTab === 'features' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
+              {currentGuide.keyPoints.map((pt, idx) => (
+                <div
+                  key={idx}
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.03)',
+                    border: '1px solid rgba(255, 255, 255, 0.07)',
+                    borderRadius: 10,
+                    padding: '10px 14px',
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: 12,
+                  }}
+                >
+                  <span style={{ fontSize: 18, marginTop: 1 }}>{pt.icon}</span>
+                  <div>
+                    <strong style={{ fontSize: 13, color: '#F8FAFC', display: 'block', marginBottom: 2 }}>
+                      {pt.title}
+                    </strong>
+                    <div style={{ fontSize: 12, color: '#94A3B8', lineHeight: 1.45 }}>
+                      {pt.desc}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
 
           {currentGuide.quickTip && (
             <div style={{
@@ -451,41 +713,59 @@ export default function SectionGuideModal({ isOpen, sectionKey, onClose, onLaunc
           alignItems: 'center',
           justifyContent: 'space-between',
           gap: 10,
+          flexWrap: 'wrap',
         }}>
-          {currentGuide.tourStepIndex !== undefined && onLaunchSpotlight ? (
-            <button
-              onClick={() => {
-                onClose();
-                onLaunchSpotlight(currentGuide.tourStepIndex!);
-              }}
-              style={{
-                background: 'rgba(0, 207, 255, 0.12)',
-                border: '1px solid rgba(0, 207, 255, 0.35)',
-                color: '#00CFFF',
-                borderRadius: 8,
-                padding: '8px 14px',
-                fontSize: 12,
-                fontWeight: 700,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-              }}
-              title="Resaltar con foco visual en la pantalla real"
-            >
-              <span>🔦</span> Resaltar en pantalla
-            </button>
-          ) : (
-            <div />
-          )}
-
           <button
-            onClick={onClose}
-            className="btn btn-primary"
-            style={{ padding: '8px 20px', fontSize: 12, fontWeight: 700 }}
+            onClick={() => onClose(activeKey)}
+            style={{
+              background: 'transparent',
+              border: '1px solid rgba(255, 255, 255, 0.14)',
+              color: '#94A3B8',
+              borderRadius: 8,
+              padding: '8px 14px',
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
+            }}
           >
-            ✓ Entendido
+            ✕ Omitir tutorial
           </button>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {currentGuide.tourStepIndex !== undefined && onLaunchSpotlight && (
+              <button
+                onClick={() => {
+                  onClose(activeKey);
+                  onLaunchSpotlight(currentGuide.tourStepIndex!);
+                }}
+                style={{
+                  background: 'rgba(0, 207, 255, 0.12)',
+                  border: '1px solid rgba(0, 207, 255, 0.35)',
+                  color: '#00CFFF',
+                  borderRadius: 8,
+                  padding: '8px 14px',
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                }}
+                title="Resaltar con foco visual en la pantalla real"
+              >
+                <span>🔦</span> Resaltar en pantalla
+              </button>
+            )}
+
+            <button
+              onClick={() => onClose(activeKey)}
+              className="btn btn-primary"
+              style={{ padding: '8px 20px', fontSize: 12, fontWeight: 700 }}
+            >
+              ✓ Entendido
+            </button>
+          </div>
         </div>
       </div>
     </div>

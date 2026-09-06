@@ -100,6 +100,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const [isGuideOpen, setIsGuideOpen] = useState(false);
   const [activeGuideKey, setActiveGuideKey] = useState('inicio');
+  const [isFirstVisitForSection, setIsFirstVisitForSection] = useState(false);
   const [isTourOpen, setIsTourOpen] = useState(false);
   const [tourStep, setTourStep] = useState<number>(0);
   const [business, setBusiness] = useState<any>(null);
@@ -116,11 +117,59 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     return 'inicio';
   }, []);
 
-  // Abrir la guía/tutorial de la sección actual (SOLO AL DAR CLIC)
+  // ── Auto-activación del tutorial guiado SOLO la primera vez que entra a cada sección ──
+  useEffect(() => {
+    if (!effectiveUserId || loading) return;
+
+    const sectionKey = getSectionKeyFromPath(pathname);
+    const storageKey = `botwa_guide_seen_${effectiveUserId}_${sectionKey}`;
+
+    // Si ya lo vio u omitió en esta sección, no hacer nada
+    try {
+      if (typeof window !== 'undefined' && localStorage.getItem(storageKey) === 'true') {
+        return;
+      }
+    } catch (_) {
+      return;
+    }
+
+    // En /connect, si el negocio aún no está configurado, el wizard de configuración comercial tiene prioridad
+    if (sectionKey === 'connect' && business && !business.is_configured) {
+      return;
+    }
+
+    // Dar tiempo a que cargue la vista antes de abrir el modal guiado
+    const timer = setTimeout(() => {
+      try {
+        if (typeof window !== 'undefined' && localStorage.getItem(storageKey) !== 'true') {
+          setActiveGuideKey(sectionKey);
+          setIsFirstVisitForSection(true);
+          setIsGuideOpen(true);
+        }
+      } catch (_) {}
+    }, 600);
+
+    return () => clearTimeout(timer);
+  }, [pathname, effectiveUserId, loading, getSectionKeyFromPath, business]);
+
+  // Abrir la guía/tutorial de la sección actual (Manual al dar clic)
   const openSectionGuide = (sectionKey?: string) => {
     const key = sectionKey || getSectionKeyFromPath(pathname);
     setActiveGuideKey(key);
+    setIsFirstVisitForSection(false);
     setIsGuideOpen(true);
+  };
+
+  // Cerrar u omitir guía, marcando la sección como vista de forma permanente
+  const handleCloseGuide = (viewedKey?: string) => {
+    const key = viewedKey || activeGuideKey;
+    if (effectiveUserId && key) {
+      try {
+        localStorage.setItem(`botwa_guide_seen_${effectiveUserId}_${key}`, 'true');
+      } catch (_) {}
+    }
+    setIsGuideOpen(false);
+    setIsFirstVisitForSection(false);
   };
 
   // Abrir recorrido interactivo con Spotlight si el usuario lo solicita
@@ -681,11 +730,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <div style={{ flex: 1 }}>{children}</div>
       </main>
 
-      {/* Modal Guía y Tutorial por Sección (Se activa únicamente al dar clic) */}
+      {/* Modal Guía y Tutorial por Sección (Auto en primera visita o al dar clic) */}
       <SectionGuideModal
         isOpen={isGuideOpen}
         sectionKey={activeGuideKey}
-        onClose={() => setIsGuideOpen(false)}
+        isFirstVisit={isFirstVisitForSection}
+        onClose={handleCloseGuide}
         onLaunchSpotlight={launchSpotlight}
       />
 
