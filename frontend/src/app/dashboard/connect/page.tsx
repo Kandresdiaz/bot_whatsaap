@@ -247,13 +247,7 @@ export default function ConnectPage() {
       {/* Modal Flotante de Configuración del Negocio (Obligatorio para usuarios no configurados) */}
       <OnboardingWizardModal
         isOpen={isWizardOpen}
-        onClose={() => {
-          if (!business?.is_configured) {
-            alert('⚠️ La configuración inicial es obligatoria para poder conectar y activar tu bot.');
-            return;
-          }
-          setIsWizardOpen(false);
-        }}
+        onClose={() => setIsWizardOpen(false)}
         onSave={handleSaveBusiness}
         initialConfig={business || {}}
         isMandatory={!business?.is_configured}

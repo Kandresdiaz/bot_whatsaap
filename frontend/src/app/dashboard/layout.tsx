@@ -5,6 +5,7 @@ import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { BACKEND_URL } from '@/lib/config';
 import GuidedTour from '@/components/GuidedTour';
+import SectionGuideModal from '@/components/SectionGuideModal';
 
 type ClientItem = {
   id: string;
@@ -97,22 +98,34 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       .catch(() => {});
   }, [effectiveUserId, BACKEND]);
 
+  const [isGuideOpen, setIsGuideOpen] = useState(false);
+  const [activeGuideKey, setActiveGuideKey] = useState('inicio');
   const [isTourOpen, setIsTourOpen] = useState(false);
   const [tourStep, setTourStep] = useState<number>(0);
   const [business, setBusiness] = useState<any>(null);
 
-  // Determinar paso del tour según la ruta activa
-  const getStepForPath = useCallback((path: string) => {
-    if (path.includes('/connect')) return 1;
-    if (path.includes('/conversations')) return 3;
-    if (path.includes('/products')) return 4;
-    if (path.includes('/bot-config')) return 5;
-    return 0; // Inicio por defecto
+  // Mapear ruta activa a sección
+  const getSectionKeyFromPath = useCallback((path: string) => {
+    if (path.includes('/connect')) return 'connect';
+    if (path.includes('/conversations')) return 'conversations';
+    if (path.includes('/products')) return 'products';
+    if (path.includes('/bot-config')) return 'bot-config';
+    if (path.includes('/knowledge')) return 'knowledge';
+    if (path.includes('/orders')) return 'orders';
+    if (path.includes('/appointments')) return 'appointments';
+    return 'inicio';
   }, []);
 
-  const openTour = (step?: number) => {
-    const targetStep = step !== undefined ? step : getStepForPath(pathname);
-    setTourStep(targetStep);
+  // Abrir la guía/tutorial de la sección actual (SOLO AL DAR CLIC)
+  const openSectionGuide = (sectionKey?: string) => {
+    const key = sectionKey || getSectionKeyFromPath(pathname);
+    setActiveGuideKey(key);
+    setIsGuideOpen(true);
+  };
+
+  // Abrir recorrido interactivo con Spotlight si el usuario lo solicita
+  const launchSpotlight = (stepIndex: number) => {
+    setTourStep(stepIndex);
     setIsTourOpen(true);
   };
 
@@ -140,29 +153,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     return () => window.removeEventListener('botwa_business_updated', handleBusUpdated);
   }, [loadBusiness]);
 
-  // Verificar si debe lanzarse el tour guiado por PRIMERA Y ÚNICA VEZ
-  useEffect(() => {
-    if (loading || !user) return; // NUNCA ejecutar mientras auth esté cargando
-    if (user.is_admin) return; // NUNCA forzar al administrador
-
-    const tourSeen = localStorage.getItem(`botwa_tour_completed_${user.id}`) || localStorage.getItem('botwa_tour_seen');
-    if (!tourSeen) {
-      // Registrar que ya se abrió para que no vuelva a salir automáticamente al recargar
-      localStorage.setItem(`botwa_tour_completed_${user.id}`, 'true');
-      localStorage.setItem('botwa_tour_seen', 'true');
-      setTourStep(-1);
-      setIsTourOpen(true);
-    }
-  }, [loading, user]);
-
   const handleTourComplete = () => {
     setIsTourOpen(false);
-    if (user?.id) localStorage.setItem(`botwa_tour_completed_${user.id}`, 'true');
-    localStorage.setItem('botwa_tour_seen', 'true');
-    const configured = Boolean(business?.is_configured);
-    if (!configured && !user?.is_admin) {
-      router.push('/dashboard/connect');
-    }
   };
 
   const handleCancelSubscription = async () => {
@@ -314,10 +306,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
 
         <div style={{ padding: '16px 12px', borderTop: '1px solid var(--border)' }}>
-          {/* Botón para iniciar / revivir el Recorrido por la App */}
+          {/* Botón para iniciar la Guía / Tutorial de cada sección */}
           <button
             className="nav-link"
-            onClick={() => openTour()}
+            onClick={() => openSectionGuide()}
             style={{
               color: '#00CFFF',
               marginBottom: 10,
@@ -333,9 +325,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               fontSize: 12,
               fontWeight: 700,
             }}
-            title="Hacer un recorrido interactivo por cada sección de la aplicación"
+            title="Ver tutorial de cómo funciona esta sección"
           >
-            <span>🧭</span> Recorrido por la App
+            <span>🧭</span> Tutorial de esta sección
           </button>
 
           <div style={{ padding: '6px 10px', marginBottom: 8 }}>
@@ -457,15 +449,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               )}
             </div>
 
-            {/* Botón para ver explicación / tour de la sección actual */}
+            {/* Botón para ver explicación / tutorial de la sección actual */}
             <button
-              onClick={() => openTour()}
+              onClick={() => openSectionGuide()}
               style={{
                 background: 'rgba(0, 207, 255, 0.12)',
                 border: '1px solid rgba(0, 207, 255, 0.35)',
                 color: '#00CFFF',
                 borderRadius: 8,
-                padding: '5px 12px',
+                padding: '6px 14px',
                 fontSize: 12,
                 fontWeight: 700,
                 cursor: 'pointer',
@@ -474,9 +466,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 gap: 6,
                 transition: 'all 0.2s',
               }}
-              title="Ver explicación y recorrido interactivo de esta sección"
+              title="Ver qué hace y cómo funciona esta sección"
             >
-              <span>🧭</span> Guía de esta sección
+              <span>🧭</span> Tutorial de esta sección
             </button>
           </div>
 
@@ -689,16 +681,20 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <div style={{ flex: 1 }}>{children}</div>
       </main>
 
+      {/* Modal Guía y Tutorial por Sección (Se activa únicamente al dar clic) */}
+      <SectionGuideModal
+        isOpen={isGuideOpen}
+        sectionKey={activeGuideKey}
+        onClose={() => setIsGuideOpen(false)}
+        onLaunchSpotlight={launchSpotlight}
+      />
+
       {/* Recorrido Guiado Interactivo sobre la Misma Vista del Usuario */}
       <GuidedTour
         userId={user?.id || effectiveUserId}
         isOpen={isTourOpen}
         initialStep={tourStep}
-        onClose={() => {
-          setIsTourOpen(false);
-          if (user?.id) localStorage.setItem(`botwa_tour_completed_${user.id}`, 'true');
-          localStorage.setItem('botwa_tour_seen', 'true');
-        }}
+        onClose={() => setIsTourOpen(false)}
         onCompleteTour={handleTourComplete}
       />
     </div>
