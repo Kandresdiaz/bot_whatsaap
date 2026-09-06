@@ -722,6 +722,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-06** | fix: aislamiento de desconexion desde telefono sin bucles QR y conexion permanente resiliente (`dd5d8a6`) | Auto-deploy |
 
+| **2026-09-06** | fix: no mostrar chats si WhatsApp esta desconectado y limpiar datos huerfanos al desvincular (`37c91b1`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
