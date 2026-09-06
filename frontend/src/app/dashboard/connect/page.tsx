@@ -250,6 +250,10 @@ export default function ConnectPage() {
   // ── Desconectar ───────────────────────────────────────────────────────────
   const stopSession = async () => {
     if (!effectiveUserId) return;
+    setStatus('disconnected');
+    setQr(null);
+    setPhone(null);
+    setError(null);
     try {
       await fetch(`${BACKEND}/api/sessions/stop`, {
         method: 'POST',
@@ -257,10 +261,6 @@ export default function ConnectPage() {
         body: JSON.stringify({ userId: effectiveUserId }),
       });
     } catch (_) {}
-    setStatus('disconnected');
-    setQr(null);
-    setPhone(null);
-    setError(null);
   };
 
   // Guardar configuración del negocio desde el modal

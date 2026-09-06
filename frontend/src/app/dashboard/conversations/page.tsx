@@ -244,10 +244,7 @@ export default function ConversationsPage() {
       );
 
       if (isCurrentStillActive && data.messages && Array.isArray(data.messages)) {
-        setMessages(prev => {
-          if (isInitial || prev.length === 0) return dedupeMessageList(data.messages);
-          return dedupeMessageList([...prev, ...data.messages]);
-        });
+        setMessages(dedupeMessageList(data.messages));
       }
     } catch (_) {}
   };
@@ -442,6 +439,7 @@ export default function ConversationsPage() {
 
         if (isMatch) {
           setMessages(prevMsgs => dedupeMessageList([...prevMsgs, message]));
+          fetchActiveMessages(currentActive, false);
         }
       }
 

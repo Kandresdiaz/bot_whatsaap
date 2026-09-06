@@ -160,13 +160,13 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
     const { getSessionUuid } = require('./sessionManager');
     const sessionUuid = await getSessionUuid(userId);
 
-    // 1) Buscar conversación existente por número de teléfono
-    const { data: existingConvs } = await supabase
+    // 1) Buscar conversación existente por número de teléfono (aislada a esta sesión)
+    let convQuery = supabase
       .from('conversations')
       .select('*')
-      .eq('contact_phone', contactPhone)
-      .order('last_message_at', { ascending: false })
-      .limit(1);
+      .eq('contact_phone', contactPhone);
+    if (sessionUuid) convQuery = convQuery.eq('session_id', sessionUuid);
+    const { data: existingConvs } = await convQuery.order('last_message_at', { ascending: false }).limit(1);
 
     if (existingConvs && existingConvs.length > 0) {
       conversation = existingConvs[0];
@@ -213,19 +213,20 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
     if (global.io) {
       try {
         const { emitToUserRooms } = require('./sessionManager');
+        const sessionUuid = await require('./sessionManager').getSessionUuid(userId);
         const msgObj = { id: Date.now().toString(), content: text, direction: 'inbound', sent_by: 'human', timestamp: new Date().toISOString() };
         emitToUserRooms(global.io, userId, 'new_message', {
           conversationId: conversation?.id || `conv_${contactPhone}`,
           contactPhone,
           message: msgObj,
-        });
+        }, sessionUuid);
         emitToUserRooms(global.io, userId, 'conversation_updated', {
           conversationId: conversation?.id || `conv_${contactPhone}`,
           contactPhone,
           contactName,
           lastMessage: text,
           timestamp: msgObj.timestamp,
-        });
+        }, sessionUuid);
       } catch (errIo) {
         console.warn('[MSG Handler] Aviso emitiendo socket inbound:', errIo.message);
       }
@@ -695,19 +696,20 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
 
     if (global.io) {
       try {
-        const { emitToUserRooms } = require('./sessionManager');
+        const { emitToUserRooms, getSessionUuid } = require('./sessionManager');
+        const sessionUuid = await getSessionUuid(userId);
         const msgObj = { id: Date.now().toString(), content: reply, direction: 'outbound', sent_by: 'bot', timestamp: new Date().toISOString() };
         emitToUserRooms(global.io, userId, 'new_message', {
           conversationId: conversation?.id || `conv_${contactPhone}`,
           contactPhone,
           message: msgObj,
-        });
+        }, sessionUuid);
         emitToUserRooms(global.io, userId, 'conversation_updated', {
           conversationId: conversation?.id || `conv_${contactPhone}`,
           contactPhone,
           lastMessage: reply,
           timestamp: msgObj.timestamp,
-        });
+        }, sessionUuid);
       } catch (errIo) {
         console.warn('[MSG Handler] Aviso emitiendo socket outbound:', errIo.message);
       }

@@ -102,15 +102,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return data;
   };
 
-  const logout = () => {
-    localStorage.removeItem('wbot_user');
-    localStorage.removeItem('wbot_token');
-    localStorage.removeItem('wbot_selected_client_id');
-    localStorage.removeItem('wbot_selected_client_name');
+  const logout = async () => {
+    try {
+      const { supabase } = await import('@/lib/supabase');
+      await supabase.auth.signOut();
+    } catch (_) {}
+    localStorage.clear();
+    sessionStorage.clear();
     setUser(null);
     setSelectedClientId(null);
     setSelectedClientName(null);
-    router.push('/login');
+    window.location.href = '/login';
   };
 
   const effectiveUserId = (user?.is_admin && selectedClientId) ? selectedClientId : (user?.id || 'admin');

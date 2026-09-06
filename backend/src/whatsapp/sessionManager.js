@@ -1408,8 +1408,9 @@ const createSession = async (userId, businessId, io, forceClean = false, isManua
         continue;
       }
 
-      // Si es mensaje entrante en tiempo real del cliente (solo 'notify', ignorar historial 'append')
-      if (type === 'notify' && handleIncomingMessage && !msg.key.fromMe) {
+      // Si es mensaje entrante en tiempo real del cliente (notify o append reciente, ignorar historial antiguo y fromMe)
+      const isRecent = msg.messageTimestamp ? (Date.now() / 1000 - Number(msg.messageTimestamp) < 300) : true;
+      if ((type === 'notify' || (type === 'append' && isRecent)) && handleIncomingMessage && !msg.key.fromMe) {
         try {
           await handleIncomingMessage(sock, msg, userId, businessId);
         } catch (err) {
@@ -1433,17 +1434,7 @@ const disconnectSession = async (userId) => {
   const isAdmin = (userId === 'admin' || userId === ADMIN_UUID || validId === PRIMARY_ADMIN_ID);
   const session = sessions.get(userId) || sessions.get(validId) || (isAdmin ? sessions.get('admin') : null);
 
-  if (session?.sock) {
-    try {
-      await session.sock.logout();
-    } catch (e) {
-      try { session.sock.end(new Error('Desconexión manual')); } catch (_) {}
-    }
-    try { session.sock.ev.removeAllListeners(); } catch (_) {}
-  }
-
-  deleteSessionFolder(userId);
-  deleteSessionFolder(validId);
+  // 1. Limpiar estado en memoria RAM INMEDIATAMENTE
   sessions.delete(userId);
   sessions.delete(validId);
   if (isAdmin) {
@@ -1452,15 +1443,12 @@ const disconnectSession = async (userId) => {
     sessions.delete(PRIMARY_ADMIN_ID);
   }
 
-  // Limpiar memoria RAM de chats y contactos de este usuario para que no sigan mostrándose
   userStores.delete(userId);
   userStores.delete(validId);
   userContacts.delete(userId);
   userContacts.delete(validId);
 
-  // Limpiar conversaciones y mensajes en base de datos para no dejar chats huérfanos
-  clearUserConversationsFromDb(validId).catch(() => {});
-
+  // 2. Persistir desconexión en DB de inmediato
   await safeUpsert('whatsapp_sessions', {
     user_id: validId,
     status: 'disconnected',
@@ -1470,11 +1458,29 @@ const disconnectSession = async (userId) => {
     connected_at: null,
   });
 
+  // 3. Emitir evento de desconexión a todas las salas del usuario de inmediato
   if (global.io) {
     const payload = { shouldReconnect: false, isLoggedOut: true, status: 'disconnected' };
     emitToUserRooms(global.io, userId, 'disconnected', payload);
     emitToUserRooms(global.io, validId, 'disconnected', payload);
   }
+
+  // 4. Terminar socket en segundo plano con timeout estricto sin bloquear la respuesta
+  if (session?.sock) {
+    try { session.sock.ev.removeAllListeners(); } catch (_) {}
+    try {
+      await Promise.race([
+        session.sock.logout().catch(() => {}),
+        new Promise(r => setTimeout(r, 1500))
+      ]);
+    } catch (_) {}
+    try { session.sock.end(new Error('Desconexión manual')); } catch (_) {}
+  }
+
+  // 5. Limpiar carpetas físicas y conversaciones de DB en segundo plano
+  deleteSessionFolder(userId);
+  deleteSessionFolder(validId);
+  clearUserConversationsFromDb(validId).catch(() => {});
 };
 
 const getSession = (userId) => {
