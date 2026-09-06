@@ -720,6 +720,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-06** | fix: resolver bloqueo al finalizar configuracion del bot y blindar modal contra re-aperturas (`b983eef`) | Auto-deploy |
 
+| **2026-09-06** | fix: aislamiento de desconexion desde telefono sin bucles QR y conexion permanente resiliente (`dd5d8a6`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
