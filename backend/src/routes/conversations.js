@@ -13,59 +13,47 @@ router.get('/:sessionId', async (req, res) => {
     const { getValidUserId, getUserStore, resolvePhoneAndJid, safeToIsoString, getSession } = require('../whatsapp/sessionManager');
     const validUserId = getValidUserId(sessionId);
 
-    // 0. VERIFICAR ESTADO DE CONEXIÓN: Si no hay WhatsApp conectado, no mostrar chats
-    const active = getSession(sessionId) || getSession(validUserId);
-    const isConnInRam = active && active.status === 'connected';
-
-    let isConnInDb = false;
-    if (supabase) {
-      const { data: ws } = await supabase
-        .from('whatsapp_sessions')
-        .select('status')
-        .eq('user_id', validUserId)
-        .maybeSingle();
-      isConnInDb = ws?.status === 'connected';
-    }
-
-    if (!isConnInRam && !isConnInDb) {
-      return res.json({ success: true, conversations: [] });
-    }
-
-    // Recopilar todos los session_ids asociados al usuario (para recuperar todas sus conversaciones)
+    // 0. VERIFICAR ESTADO DE CONEXIÓN Y RESOLVER IDENTIFICADORES DE SESIÓN
     const sessionIdsSet = new Set();
     if (isUuid(sessionId)) sessionIdsSet.add(sessionId);
     if (isUuid(validUserId)) sessionIdsSet.add(validUserId);
 
-    try {
-      // Buscar todas las sesiones de whatsapp_sessions asociadas al user_id
-      const { data: userSessions } = await supabase
-        .from('whatsapp_sessions')
-        .select('id')
-        .eq('user_id', validUserId);
+    let isConnInDb = false;
+    let ownerUserId = validUserId;
 
-      if (Array.isArray(userSessions)) {
-        userSessions.forEach(s => { if (isUuid(s?.id)) sessionIdsSet.add(s.id); });
-      }
-      // También buscar si el sessionId es el id de una sesión de whatsapp
-      if (isUuid(sessionId)) {
-        const { data: byId } = await supabase
+    if (supabase) {
+      try {
+        const orFilter = isUuid(sessionId)
+          ? `user_id.eq.${validUserId},id.eq.${sessionId},id.eq.${validUserId}`
+          : `user_id.eq.${validUserId}`;
+
+        const { data: userSessions } = await supabase
           .from('whatsapp_sessions')
-          .select('id, user_id')
-          .eq('id', sessionId)
-          .limit(1);
-        if (byId && byId[0]) {
-          sessionIdsSet.add(byId[0].id);
-          // Añadir sesiones del usuario propietario de esa sesión
-          const { data: ownerSessions } = await supabase
-            .from('whatsapp_sessions')
-            .select('id')
-            .eq('user_id', byId[0].user_id);
-          if (Array.isArray(ownerSessions)) {
-            ownerSessions.forEach(s => { if (isUuid(s?.id)) sessionIdsSet.add(s.id); });
+          .select('id, user_id, status')
+          .or(orFilter)
+          .order('created_at', { ascending: false });
+
+        if (Array.isArray(userSessions) && userSessions.length > 0) {
+          isConnInDb = userSessions.some(s => s.status === 'connected');
+          for (const s of userSessions) {
+            if (isUuid(s.id)) sessionIdsSet.add(s.id);
+            if (isUuid(s.user_id)) {
+              sessionIdsSet.add(s.user_id);
+              ownerUserId = s.user_id;
+            }
           }
         }
+      } catch (errDbSess) {
+        console.warn('[Conversations] Error verificando sesiones en DB:', errDbSess.message);
       }
-    } catch (_) {}
+    }
+
+    const active = getSession(sessionId) || getSession(validUserId) || getSession(ownerUserId);
+    const isConnInRam = active && active.status === 'connected';
+
+    if (!isConnInRam && !isConnInDb) {
+      return res.json({ success: true, conversations: [] });
+    }
 
     const sessionList = Array.from(sessionIdsSet);
 

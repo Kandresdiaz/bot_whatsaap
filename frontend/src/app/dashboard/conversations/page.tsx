@@ -60,7 +60,7 @@ export default function ConversationsPage() {
   const sessionStatusRef = useRef<string>('connecting');
   useEffect(() => {
     sessionStatusRef.current = sessionStatus;
-    if (sessionStatus !== 'connected') {
+    if (sessionStatus === 'disconnected' || sessionStatus === 'qr_ready') {
       setActive(null);
       setConversations([]);
       setMessages([]);
@@ -240,7 +240,7 @@ export default function ConversationsPage() {
   };
 
   const loadConversations = async (targetId: string) => {
-    if (sessionStatusRef.current !== 'connected') {
+    if (sessionStatusRef.current === 'disconnected' || sessionStatusRef.current === 'qr_ready') {
       setConversations([]);
       setActive(null);
       return;
@@ -251,7 +251,7 @@ export default function ConversationsPage() {
       const res = await fetch(`${BACKEND}/api/conversations/${idToFetch}`);
       if (!res.ok) return;
       const data = await res.json();
-      if (sessionStatusRef.current !== 'connected') {
+      if (sessionStatusRef.current === 'disconnected' || sessionStatusRef.current === 'qr_ready') {
         setConversations([]);
         setActive(null);
         return;
@@ -296,7 +296,7 @@ export default function ConversationsPage() {
           setSessionStatus(currentStatus);
           if (currentStatus === 'connected') {
             loadConversations(userIdToUse);
-          } else {
+          } else if (currentStatus === 'disconnected' || currentStatus === 'qr_ready') {
             setConversations([]);
             setActive(null);
           }
@@ -603,7 +603,7 @@ export default function ConversationsPage() {
   };
 
   const filtered = useMemo(() => {
-    if (sessionStatus !== 'connected') return [];
+    if (sessionStatus === 'disconnected' || sessionStatus === 'qr_ready') return [];
     if (!Array.isArray(conversations)) return [];
     return conversations
       .filter(c => {
@@ -987,21 +987,21 @@ export default function ConversationsPage() {
         </div>
 
         {/* Columna Derecha: Panel de Conversación Activa estilo WhatsApp Web */}
-        <div className={`conversations-chatview card ${!active || sessionStatus !== 'connected' ? 'hidden-mobile' : ''}`} style={{ flex: 1, padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', background: '#0b141a', borderColor: '#1e293b' }}>
-          {!active || sessionStatus !== 'connected' ? (
+        <div className={`conversations-chatview card ${!active || sessionStatus === 'disconnected' || sessionStatus === 'qr_ready' ? 'hidden-mobile' : ''}`} style={{ flex: 1, padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', background: '#0b141a', borderColor: '#1e293b' }}>
+          {!active || sessionStatus === 'disconnected' || sessionStatus === 'qr_ready' ? (
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#64748b', textAlign: 'center', padding: 20 }}>
               <div style={{ fontSize: 72, marginBottom: 16, opacity: 0.8 }}>
-                {sessionStatus === 'connected' ? '💬' : '🔌'}
+                {sessionStatus === 'disconnected' || sessionStatus === 'qr_ready' ? '🔌' : '💬'}
               </div>
               <h3 style={{ margin: '0 0 8px 0', color: '#f1f5f9', fontWeight: 600 }}>
-                {sessionStatus === 'connected' ? 'WhatsApp Web Dashboard' : 'WhatsApp Desconectado'}
+                {sessionStatus === 'disconnected' || sessionStatus === 'qr_ready' ? 'WhatsApp Desconectado' : 'WhatsApp Web Dashboard'}
               </h3>
               <p style={{ fontSize: 13, maxWidth: 360, lineHeight: 1.5, margin: 0 }}>
-                {sessionStatus === 'connected'
-                  ? 'Selecciona una conversación de la izquierda o inicia un Nuevo Chat para enviar mensajes directamente por WhatsApp.'
-                  : 'Tu cuenta de WhatsApp no está vinculada. Para ver o enviar chats, debes conectar tu WhatsApp escaneando el código QR.'}
+                {sessionStatus === 'disconnected' || sessionStatus === 'qr_ready'
+                  ? 'Tu cuenta de WhatsApp no está vinculada. Para ver o enviar chats, debes conectar tu WhatsApp escaneando el código QR.'
+                  : 'Selecciona una conversación de la izquierda o inicia un Nuevo Chat para enviar mensajes directamente por WhatsApp.'}
               </p>
-              {sessionStatus !== 'connected' && (
+              {(sessionStatus === 'disconnected' || sessionStatus === 'qr_ready') && (
                 <a href="/dashboard/connect" className="btn btn-primary" style={{ marginTop: 16, fontSize: 13, padding: '8px 20px', textDecoration: 'none' }}>
                   🔌 Conectar WhatsApp
                 </a>

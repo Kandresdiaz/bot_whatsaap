@@ -1151,6 +1151,14 @@ const createSession = async (userId, businessId, io, forceClean = false, isManua
       const isAdmin = (userId === 'admin' || userId === ADMIN_UUID || validId === PRIMARY_ADMIN_ID);
       if (isAdmin) sessions.set('admin', connectedState);
 
+      getSessionUuid(userId).then(sessUuid => {
+        if (sessUuid) {
+          sessions.set(sessUuid, connectedState);
+          userStores.set(sessUuid, getUserStore(userId));
+          userContacts.set(sessUuid, userContacts.get(userId) || new Map());
+        }
+      }).catch(() => {});
+
       // 2. Emitir por Socket.io INMEDIATAMENTE a todas las salas del usuario
       if (io) {
         const payload = { phone, userId, status: 'connected' };
