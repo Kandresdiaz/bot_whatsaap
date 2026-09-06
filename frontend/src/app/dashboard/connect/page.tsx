@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import OnboardingWizardModal from '@/components/OnboardingWizardModal';
@@ -20,6 +20,10 @@ export default function ConnectPage() {
 
   // Estado de configuración del negocio & Modal
   const [business, setBusiness] = useState<any>(null);
+  const businessRef = useRef<any>(null);
+  useEffect(() => {
+    businessRef.current = business;
+  }, [business]);
   const [isWizardOpen, setIsWizardOpen] = useState(false);
 
   // Estado de suscripción / prueba de 7 días & Modal flotante
@@ -125,11 +129,12 @@ export default function ConnectPage() {
   }, [effectiveUserId, retryCount]);
 
   // ── Iniciar sesión / pedir QR ─────────────────────────────────────────────
-  const startSession = useCallback(async (force = false) => {
+  const startSession = useCallback(async (force = false, bypassConfigCheck = false) => {
     if (!effectiveUserId) return;
 
     // Si el negocio no está configurado aún, obligar primero al Wizard de configuración
-    if (business && !business.is_configured) {
+    const currentBus = businessRef.current || business;
+    if (!bypassConfigCheck && currentBus && !currentBus.is_configured) {
       setIsWizardOpen(true);
       return;
     }
@@ -212,6 +217,7 @@ export default function ConnectPage() {
     });
     const data = await r.json();
     if (data.success && data.business) {
+      businessRef.current = data.business;
       setBusiness(data.business);
       setIsWizardOpen(false);
       if (typeof window !== 'undefined') {
@@ -219,7 +225,7 @@ export default function ConnectPage() {
       }
       // Iniciar sesión para obtener QR automáticamente tras configurar
       setTimeout(() => {
-        startSession(true);
+        startSession(true, true);
       }, 300);
     } else {
       throw new Error(data.error || 'No se pudo guardar en la base de datos');
@@ -249,7 +255,7 @@ export default function ConnectPage() {
         isOpen={isWizardOpen}
         onClose={() => setIsWizardOpen(false)}
         onSave={handleSaveBusiness}
-        initialConfig={business || {}}
+        initialConfig={business || undefined}
         isMandatory={!business?.is_configured}
       />
 

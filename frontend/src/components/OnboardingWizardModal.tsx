@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 interface BusinessConfig {
   name: string;
@@ -67,12 +67,25 @@ export default function OnboardingWizardModal({ isOpen, onClose, onSave, initial
   };
 
   const [config, setConfig] = useState<BusinessConfig>(getCleanInitial(initialConfig));
+  const wasOpenRef = useRef(false);
 
   useEffect(() => {
-    if (initialConfig) {
-      setConfig(getCleanInitial(initialConfig));
+    if (isOpen) {
+      if (!wasOpenRef.current) {
+        // Al abrir por primera vez, sincronizar con la config inicial si existe
+        if (initialConfig) {
+          setConfig(getCleanInitial(initialConfig));
+        }
+      } else if (initialConfig && initialConfig.name) {
+        // Si ya está abierto pero llega config del backend y el usuario aún no ha escrito nada
+        setConfig(prev => {
+          if (prev.name?.trim() || prev.description?.trim()) return prev;
+          return getCleanInitial(initialConfig);
+        });
+      }
     }
-  }, [initialConfig]);
+    wasOpenRef.current = isOpen;
+  }, [isOpen, initialConfig?.is_configured, initialConfig?.name]);
 
   if (!isOpen) return null;
 
@@ -81,17 +94,22 @@ export default function OnboardingWizardModal({ isOpen, onClose, onSave, initial
   };
 
   const handleFinish = async () => {
-    if (!config.name.trim()) {
+    const name = (config.name || '').trim();
+    const description = (config.description || '').trim();
+    const payment = (config.payment_or_booking_link || '').trim();
+    const closing = (config.closing_objective || '').trim();
+
+    if (!name) {
       alert('⚠️ Por favor ingresa el nombre de tu negocio para que el bot sepa presentarse.');
       setStep(1);
       return;
     }
-    if (!config.description.trim() || config.description.trim().length < 6) {
+    if (!description || description.length < 6) {
       alert('⚠️ Por favor escribe qué ofrece tu negocio para que el bot pueda responder a las dudas de tus clientes.');
       setStep(1);
       return;
     }
-    if (!config.payment_or_booking_link.trim() && !config.closing_objective.trim()) {
+    if (!payment && !closing) {
       alert('⚠️ Por favor ingresa la instrucción de cierre, precios o enlace de pago para que el bot sepa concretar ventas.');
       setStep(3);
       return;
@@ -102,7 +120,8 @@ export default function OnboardingWizardModal({ isOpen, onClose, onSave, initial
       await onSave({ ...config, is_configured: true } as any);
       onClose();
     } catch (e: any) {
-      alert('Error guardando la configuración: ' + e.message);
+      console.error('Error guardando configuración del bot:', e);
+      alert('Error guardando la configuración: ' + (e?.message || 'Error desconocido'));
     } finally {
       setSaving(false);
     }
@@ -429,17 +448,21 @@ export default function OnboardingWizardModal({ isOpen, onClose, onSave, initial
               className="btn btn-primary"
               onClick={() => {
                 if (step === 1) {
-                  if (!config.name.trim()) {
+                  const name = (config.name || '').trim();
+                  const desc = (config.description || '').trim();
+                  if (!name) {
                     alert('⚠️ Ingresa el nombre oficial de tu negocio para continuar.');
                     return;
                   }
-                  if (!config.description.trim() || config.description.trim().length < 6) {
+                  if (!desc || desc.length < 6) {
                     alert('⚠️ Por favor escribe qué ofrece tu negocio. Esta información es obligatoria para que el bot pueda atender y vender a tus clientes.');
                     return;
                   }
                 }
                 if (step === 3) {
-                  if (!config.payment_or_booking_link.trim() && !config.closing_objective.trim()) {
+                  const payment = (config.payment_or_booking_link || '').trim();
+                  const closing = (config.closing_objective || '').trim();
+                  if (!payment && !closing) {
                     alert('⚠️ Por favor ingresa el enlace de pago/agenda o los precios/instrucción de cierre para que tu bot sepa concretar ventas.');
                     return;
                   }
