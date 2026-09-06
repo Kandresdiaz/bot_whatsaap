@@ -102,10 +102,10 @@ router.post('/start', async (req, res) => {
       }
     }
 
-    // 3. Iniciar sesión de Baileys (solo forzar borrado si force es explícito)
+    // 3. Iniciar sesión de Baileys con isManualStart = true (el usuario solicitó explícitamente vincular)
     const forceClean = Boolean(force);
 
-    createSession(validUserId, businessId, global.io, forceClean).catch(err => {
+    createSession(validUserId, businessId, global.io, forceClean, true).catch(err => {
       console.error('Error en Baileys createSession:', err);
     });
 
@@ -138,7 +138,7 @@ router.post('/start', async (req, res) => {
     });
   } catch (err) {
     console.error('Error iniciando sesión:', err);
-    createSession(userId, businessId, global.io, Boolean(force)).catch(e => console.error('Baileys fallback err:', e));
+    createSession(validUserId, businessId, global.io, Boolean(force), true).catch(e => console.error('Baileys fallback err:', e));
     return res.json({ success: true, sessionId: userId, status: 'connecting', qr: null });
   }
 });
@@ -197,18 +197,30 @@ router.get('/status/:userId', async (req, res) => {
 
     // Si no está en RAM pero sí en DB
     if (dbSession) {
-      const isConn = dbSession.status === 'connected';
+      const isConn = dbSession.status === 'connected' && Boolean(dbSession.session_data);
       if (isConn && !active && !isExplicitlyDisconnected(validUserId)) {
         // Auto-restaurar sesión Baileys en segundo plano si estaba conectada en DB y no fue desconectada manualmente
-        createSession(validUserId, dbSession.business_id, global.io).catch(() => {});
+        createSession(validUserId, dbSession.business_id, global.io, false, false).catch(() => {});
+        return res.json({
+          success: true,
+          session: {
+            ...dbSession,
+            status: 'connecting',
+            phone_number: dbSession.phone_number || null,
+            qr_code: null,
+            bot_enabled: dbSession.bot_enabled ?? false,
+          }
+        });
       }
+
+      // Si no está en RAM y no tiene sesión conectada válida, está DESCONECTADO (sin QR residuales)
       return res.json({
         success: true,
         session: {
           ...dbSession,
-          status: dbSession.status || 'disconnected',
-          phone_number: dbSession.phone_number || null,
-          qr_code: dbSession.status === 'qr_ready' ? dbSession.qr_code : null,
+          status: 'disconnected',
+          phone_number: null,
+          qr_code: null,
           bot_enabled: dbSession.bot_enabled ?? false,
         }
       });

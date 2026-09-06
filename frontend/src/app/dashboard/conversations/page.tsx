@@ -271,7 +271,15 @@ export default function ConversationsPage() {
 
     const interval = setInterval(() => {
       loadConversations(userIdToUse);
-    }, 3000);
+      fetch(`${BACKEND}/api/sessions/status/${userIdToUse}`)
+        .then(r => r.json())
+        .then(d => {
+          if (d.session?.status) {
+            setSessionStatus(d.session.status);
+          }
+        })
+        .catch(() => {});
+    }, 4000);
 
     const socket = io(BACKEND, {
       transports: ['websocket', 'polling'],
@@ -353,10 +361,16 @@ export default function ConversationsPage() {
       loadConversations(userIdToUse);
     });
 
-    socket.on('disconnected', () => {
+    socket.on('reconnecting', () => {
+      setSessionStatus('reconnecting');
+    });
+
+    socket.on('disconnected', (payload?: any) => {
+      if (payload?.shouldReconnect || payload?.status === 'reconnecting') {
+        setSessionStatus('reconnecting');
+        return;
+      }
       setSessionStatus('disconnected');
-      setConversations([]);
-      setActive(null);
     });
 
     socket.on('global_bot_updated', ({ bot_enabled }: { bot_enabled: boolean }) => {
@@ -584,8 +598,8 @@ export default function ConversationsPage() {
 
   return (
     <div className="conversations-container" style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 64px)', gap: 8, background: '#080E1F' }}>
-      {/* Alerta de WhatsApp Desconectado / Pendiente */}
-      {sessionStatus !== 'connected' && (
+      {/* Alerta de Reconexión temporal */}
+      {(sessionStatus === 'reconnecting' || sessionStatus === 'connecting') && (
         <div className="alert-banner-responsive" style={{
           background: 'rgba(234,179,8,0.12)',
           border: '1px solid rgba(234,179,8,0.3)',
@@ -600,8 +614,30 @@ export default function ConversationsPage() {
           gap: 8,
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: 18 }}>🔄</span>
+            <span><strong>Reconectando con WhatsApp:</strong> Se detectó una interrupción temporal de red. Restableciendo conexión automáticamente...</span>
+          </div>
+        </div>
+      )}
+
+      {/* Alerta de WhatsApp Desconectado / Sin vincular */}
+      {(sessionStatus === 'disconnected' || sessionStatus === 'qr_ready') && (
+        <div className="alert-banner-responsive" style={{
+          background: 'rgba(239,68,68,0.12)',
+          border: '1px solid rgba(239,68,68,0.3)',
+          borderRadius: 10,
+          padding: '8px 16px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          fontSize: 13,
+          color: '#f87171',
+          flexWrap: 'wrap',
+          gap: 8,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <span style={{ fontSize: 18 }}>📱</span>
-            <span><strong>WhatsApp no vinculado:</strong> Para ver tus chats y permitir que el bot responda, debes vincular tu WhatsApp escaneando el QR.</span>
+            <span><strong>WhatsApp no vinculado:</strong> Tu cuenta no está conectada. Para que el bot responda automáticamente y sincronizar tus chats, debes vincular tu WhatsApp escaneando el QR.</span>
           </div>
           <a href="/dashboard/connect" className="btn btn-primary" style={{ fontSize: 12, padding: '5px 12px', textDecoration: 'none' }}>
             🔌 Escanear QR
@@ -650,26 +686,32 @@ export default function ConversationsPage() {
                   fontWeight: 600,
                   background: sessionStatus === 'connected'
                     ? 'rgba(34,197,94,0.15)'
-                    : sessionStatus === 'connecting' || sessionStatus === 'qr_ready'
+                    : sessionStatus === 'connecting' || sessionStatus === 'reconnecting'
+                    ? 'rgba(234,179,8,0.15)'
+                    : sessionStatus === 'qr_ready'
                     ? 'rgba(234,179,8,0.15)'
                     : 'rgba(239,68,68,0.15)',
                   color: sessionStatus === 'connected'
                     ? '#4ade80'
-                    : sessionStatus === 'connecting' || sessionStatus === 'qr_ready'
+                    : sessionStatus === 'connecting' || sessionStatus === 'reconnecting'
+                    ? '#eab308'
+                    : sessionStatus === 'qr_ready'
                     ? '#eab308'
                     : '#f87171',
                   border: `1px solid ${
                     sessionStatus === 'connected'
                       ? 'rgba(34,197,94,0.3)'
-                      : sessionStatus === 'connecting' || sessionStatus === 'qr_ready'
+                      : sessionStatus === 'connecting' || sessionStatus === 'reconnecting'
+                      ? 'rgba(234,179,8,0.3)'
+                      : sessionStatus === 'qr_ready'
                       ? 'rgba(234,179,8,0.3)'
                       : 'rgba(239,68,68,0.3)'
                   }`
                 }}>
                   {sessionStatus === 'connected'
                     ? '🟢 Conectado'
-                    : sessionStatus === 'connecting'
-                    ? '🟡 Conectando...'
+                    : sessionStatus === 'connecting' || sessionStatus === 'reconnecting'
+                    ? '🟡 Reconectando...'
                     : sessionStatus === 'qr_ready'
                     ? '🟡 Esperando QR'
                     : '🔴 Desconectado'}

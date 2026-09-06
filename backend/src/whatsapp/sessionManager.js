@@ -717,22 +717,52 @@ const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts =
 };
 
 // Persistencia y restauración indestructible de la carpeta completa de credenciales y claves de Baileys
+const saveSessionTimeouts = new Map();
+const debouncedSaveFullSessionToDb = (userId, sessionDir, delay = 2500) => {
+  const validUserId = getValidUserId(userId);
+  if (saveSessionTimeouts.has(validUserId)) {
+    clearTimeout(saveSessionTimeouts.get(validUserId));
+  }
+  const timer = setTimeout(async () => {
+    saveSessionTimeouts.delete(validUserId);
+    await saveFullSessionToDb(validUserId, sessionDir);
+  }, delay);
+  saveSessionTimeouts.set(validUserId, timer);
+};
+
 const saveFullSessionToDb = async (userId, sessionDir) => {
   if (!supabase || !fs.existsSync(sessionDir)) return;
   try {
     const validUserId = getValidUserId(userId);
+    const credsFile = path.join(sessionDir, 'creds.json');
+    if (!fs.existsSync(credsFile)) return;
+
     const files = fs.readdirSync(sessionDir);
     const sessionObj = {};
+
+    // 1. creds.json es obligatorio
+    sessionObj['creds.json'] = fs.readFileSync(credsFile, 'utf8');
+
+    // 2. Guardar claves de estado de sync y sesiones (con límite de tamaño para Supabase)
+    let totalBytes = sessionObj['creds.json'].length;
+    const MAX_BYTES = 3 * 1024 * 1024; // 3MB de margen seguro para Supabase PostgREST
+
     for (const file of files) {
-      if (file.endsWith('.json')) {
-        sessionObj[file] = fs.readFileSync(path.join(sessionDir, file), 'utf8');
+      if (file === 'creds.json' || !file.endsWith('.json')) continue;
+      const filePath = path.join(sessionDir, file);
+      const content = fs.readFileSync(filePath, 'utf8');
+      if (totalBytes + content.length < MAX_BYTES) {
+        sessionObj[file] = content;
+        totalBytes += content.length;
       }
     }
+
     const jsonStr = JSON.stringify(sessionObj);
     await safeUpsert('whatsapp_sessions', {
       user_id: validUserId,
       session_data: jsonStr,
     });
+    console.log(`[Baileys Auth] 💾 Sesión guardada en Supabase para ${validUserId} (${Object.keys(sessionObj).length} archivos, ${(totalBytes / 1024).toFixed(1)} KB)`);
   } catch (e) {
     console.warn('[Baileys Auth] Error guardando sesión completa:', e.message);
   }
@@ -776,7 +806,7 @@ const restoreFullSessionFromDb = async (userId, sessionDir) => {
   return false;
 };
 
-const createSession = async (userId, businessId, io, forceClean = false) => {
+const createSession = async (userId, businessId, io, forceClean = false, isManualStart = false) => {
   const validUserId = getValidUserId(userId);
   userDisconnectedMap.delete(userId);
   userDisconnectedMap.delete(validUserId);
@@ -903,20 +933,22 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
       } catch (_) {}
       return undefined;
     },
-    connectTimeoutMs: 30000,
-    keepAliveIntervalMs: 15000,
-    retryRequestDelayMs: 3000,
+    connectTimeoutMs: 60000,
+    keepAliveIntervalMs: 25000,
+    defaultQueryTimeoutMs: 60000,
+    retryRequestDelayMs: 2000,
+    maxMsgRetryCount: 5,
   });
 
   // Guardar instancia de socket activa
   const currentS = sessions.get(userId) || {};
   sessions.set(userId, { ...currentS, sock, status: 'connecting' });
 
-  // Guardar credenciales al cambiar (en disco y en Supabase)
+  // Guardar credenciales al cambiar (en disco y debounced en Supabase para evitar saturación)
   sock.ev.on('creds.update', async () => {
     try {
       await saveCreds();
-      await saveFullSessionToDb(userId, sessionDir);
+      debouncedSaveFullSessionToDb(userId, sessionDir, 2500);
     } catch (_) {}
   });
 
@@ -985,6 +1017,55 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
     // ── QR generado ──────────────────────────────────────────────────────
     if (qr) {
       const validId = getValidUserId(userId);
+
+      // Si la sesión fue iniciada en segundo plano (auto-reconexión, restauración de servidor, etc.)
+      // y NO fue solicitada manualmente por el usuario en la pantalla de conectar:
+      // Significa que las credenciales fueron revocadas / el usuario cerró sesión en su teléfono.
+      if (!isManualStart) {
+        console.log(`[Baileys] 🛑 QR no solicitado durante reconexión de fondo para ${userId}. Dispositivo desvinculado desde el teléfono.`);
+        userDisconnectedMap.add(userId);
+        userDisconnectedMap.add(validId);
+
+        try { sock.ev.removeAllListeners(); } catch (_) {}
+        try { sock.end(new Error('Dispositivo desvinculado desde el teléfono')); } catch (_) {}
+
+        // Eliminar de RAM
+        sessions.delete(userId);
+        sessions.delete(validId);
+        const isAdmin = (userId === 'admin' || userId === ADMIN_UUID || validId === PRIMARY_ADMIN_ID);
+        if (isAdmin) {
+          sessions.delete('admin');
+          sessions.delete(ADMIN_UUID);
+          sessions.delete(PRIMARY_ADMIN_ID);
+        }
+
+        // Limpiar memoria RAM de chats y contactos
+        userStores.delete(userId);
+        userStores.delete(validId);
+        userContacts.delete(userId);
+        userContacts.delete(validId);
+
+        // Limpiar carpetas físicas de credenciales invalidadas
+        deleteSessionFolder(userId);
+        deleteSessionFolder(validId);
+
+        safeUpsert('whatsapp_sessions', {
+          user_id: validId,
+          status: 'disconnected',
+          phone_number: null,
+          qr_code: null,
+          session_data: null,
+          connected_at: null,
+        }).catch(e => console.warn('[DB] Error guardando desconexión:', e.message));
+
+        if (io) {
+          const payload = { shouldReconnect: false, isLoggedOut: true, status: 'disconnected' };
+          emitToUserRooms(io, userId, 'disconnected', payload);
+          emitToUserRooms(io, validId, 'disconnected', payload);
+        }
+        return;
+      }
+
       const sData = sessions.get(userId) || sessions.get(validId) || {};
       
       // Si es exactamente el mismo código QR que ya tenemos en memoria, no regenerar ni re-emitir
@@ -1052,7 +1133,7 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
         connected_at: new Date().toISOString(),
       }).catch(e => console.warn('[DB] Error guardando sesión en DB:', e.message));
 
-      saveFullSessionToDb(userId, sessionDir).catch(() => {});
+      debouncedSaveFullSessionToDb(userId, sessionDir, 1000);
 
       // 4. Disparar sincronizaciones secuenciales iniciales de chats y grupos
       const triggerInitialSync = async () => {
@@ -1094,15 +1175,12 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
       const isLoggedOut =
         code === DisconnectReason.loggedOut ||
         code === DisconnectReason.badSession ||
-        code === DisconnectReason.connectionReplaced ||
         code === 401 ||
         code === 403 ||
         errMsg.includes('logged out') ||
         errMsg.includes('unauthorized') ||
         errMsg.includes('forbidden') ||
-        errMsg.includes('bad session') ||
         errMsg.includes('device_removed') ||
-        errMsg.includes('conflict') ||
         errData.includes('logged out');
 
       const validId = getValidUserId(userId);
@@ -1154,7 +1232,7 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
           emitToUserRooms(io, validId, 'disconnected', payload);
         }
       } else {
-        // Si va a reconectar, mantener la estructura en RAM para que las lecturas no fallen
+        // Si va a reconectar por fallo temporal de red o servidor
         const prevS = sessions.get(userId) || sessions.get(validId) || {};
         const sData = { ...prevS, sock: null, status: 'connecting' };
         sessions.set(userId, sData);
@@ -1170,12 +1248,16 @@ const createSession = async (userId, businessId, io, forceClean = false) => {
 
         if (io) {
           const payload = { shouldReconnect: true, isLoggedOut: false, status: 'reconnecting' };
-          emitToUserRooms(io, userId, 'disconnected', payload);
-          emitToUserRooms(io, validId, 'disconnected', payload);
+          emitToUserRooms(io, userId, 'reconnecting', payload);
+          emitToUserRooms(io, validId, 'reconnecting', payload);
         }
 
-        console.log(`[Baileys] Reconectando ${userId} en 5s...`);
-        setTimeout(() => createSession(userId, businessId, io).catch(console.error), 5000);
+        console.log(`[Baileys] Reconectando ${userId} en 3s... (código: ${code}, motivo: ${errMsg})`);
+        setTimeout(() => {
+          if (!userDisconnectedMap.has(userId) && !userDisconnectedMap.has(validId)) {
+            createSession(userId, businessId, io, false, false).catch(console.error);
+          }
+        }, 3000);
       }
     }
   });
@@ -1362,24 +1444,29 @@ const getSession = (userId) => {
 const restoreSessions = async (io) => {
   if (!supabase) return;
   try {
+    // 1. Limpiar sesiones obsoletas atascadas en 'connecting' o 'qr_ready'
+    await supabase
+      .from('whatsapp_sessions')
+      .update({ status: 'disconnected', qr_code: null })
+      .in('status', ['connecting', 'qr_ready']);
+
+    // 2. Solo restaurar sesiones que estaban efectivamente conectadas y con credenciales guardadas
     const { data: activeSessions } = await supabase
       .from('whatsapp_sessions')
-      .select('user_id, status')
-      .neq('status', 'disconnected');
+      .select('user_id, status, session_data')
+      .eq('status', 'connected')
+      .not('session_data', 'is', null);
 
-    const hasSessions = Array.isArray(activeSessions) && activeSessions.length > 0;
-
-    if (!hasSessions) {
-      console.log('[Restore] No se encontraron sesiones en DB, intentando restauración default ADMIN...');
-      createSession(ADMIN_UUID, null, io).catch(() => {});
+    if (!activeSessions || activeSessions.length === 0) {
+      console.log('[Restore] No hay sesiones conectadas previamente para restaurar.');
       return;
     }
 
     for (const session of activeSessions) {
       if (!session || !session.user_id) continue;
       try {
-        console.log(`[Restore] Restaurando sesión activa para ${session.user_id} (status: ${session.status})...`);
-        await createSession(session.user_id, null, io);
+        console.log(`[Restore] Restaurando sesión activa para ${session.user_id}...`);
+        await createSession(session.user_id, null, io, false, false);
         await new Promise(r => setTimeout(r, 1500));
       } catch (e) {
         console.error(`[Restore] Error restaurando ${session.user_id}:`, e.message);
@@ -1394,20 +1481,28 @@ const sendMessage = async (userId, to, text) => {
   const validUserId = getValidUserId(userId);
   let session = getSession(userId) || getSession(validUserId);
 
-  // Auto-restaurar sesión si el servidor acaba de despertar o no hay socket activo
+  // Auto-restaurar sesión SOLO si en DB la sesión figuraba conectada con session_data
   if (!session || !session.sock) {
-    console.log(`[SendMessage] No hay socket activo para ${userId}. Intentando auto-restauración...`);
-    try {
-      createSession(validUserId, null, global.io).catch(() => {});
-    } catch (_) {}
+    if (supabase) {
+      try {
+        const { data: dbSess } = await supabase
+          .from('whatsapp_sessions')
+          .select('status, session_data')
+          .eq('user_id', validUserId)
+          .maybeSingle();
 
-    // Esperar hasta 10 segundos a que se inicialice el socket de Baileys
-    for (let i = 0; i < 20; i++) {
-      await new Promise(r => setTimeout(r, 500));
-      session = getSession(userId) || getSession(validUserId);
-      if (session?.sock) {
-        break;
-      }
+        if (dbSess?.status === 'connected' && dbSess?.session_data) {
+          console.log(`[SendMessage] Restaurando socket activo para ${userId}...`);
+          createSession(validUserId, null, global.io, false, false).catch(() => {});
+
+          // Esperar hasta 10 segundos a que se inicialice el socket de Baileys
+          for (let i = 0; i < 20; i++) {
+            await new Promise(r => setTimeout(r, 500));
+            session = getSession(userId) || getSession(validUserId);
+            if (session?.sock) break;
+          }
+        }
+      } catch (_) {}
     }
   }
 

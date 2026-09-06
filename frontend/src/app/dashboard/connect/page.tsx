@@ -110,11 +110,16 @@ export default function ConnectPage() {
           setPhone(s.phone_number || null);
           setQr(null);
           setError(null);
+        } else if (s.status === 'disconnected') {
+          setStatus('disconnected');
+          setQr(null);
+          setPhone(null);
+          setError(null);
         } else if (s.qr_code && s.status !== 'connected') {
           setQr(s.qr_code);
           setStatus('qr_ready');
           setError(null);
-        } else if (s.status === 'connecting') {
+        } else if (s.status === 'connecting' || s.status === 'reconnecting') {
           setStatus('connecting');
           if (s.qr_code) setQr(s.qr_code);
         }
