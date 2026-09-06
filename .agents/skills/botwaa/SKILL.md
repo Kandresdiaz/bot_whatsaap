@@ -718,6 +718,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-06** | feat: tutoriales dedicados por seccion activables solo bajo demanda y eliminacion de bloqueo de cierre en configuracion de negocio (`1cefba9`) | Auto-deploy |
 
+| **2026-09-06** | fix: resolver bloqueo al finalizar configuracion del bot y blindar modal contra re-aperturas (`b983eef`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
