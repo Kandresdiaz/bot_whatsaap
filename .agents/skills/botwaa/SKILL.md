@@ -738,6 +738,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-06** | feat: tutorial guiado automatico solo la primera vez por seccion con pasos de configuracion y boton omitir (`3f6d245`) | Auto-deploy |
 
+| **2026-09-07** | fix: incoming messages capture and duplicate phone connection validation (`0f98edb`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
