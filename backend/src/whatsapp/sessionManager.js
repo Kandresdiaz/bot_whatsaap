@@ -113,6 +113,8 @@ const storeChats = (userId, chats = []) => {
     if (c && c.id && c.id !== 'status@broadcast') {
       if (c.lid) registerLidPnMapping(c.id, c.lid);
       if (c.pn || c.phone) registerLidPnMapping(c.id, c.pn || c.phone);
+      if (c.lidJid) registerLidPnMapping(c.id, c.lidJid);
+      if (c.pnJid) registerLidPnMapping(c.id, c.pnJid);
 
       const resolved = resolvePhoneAndJid(c.id);
       const existing = store.chats.get(c.id) || store.chats.get(resolved.phone) || {};
@@ -130,6 +132,8 @@ const storeContacts = (userId, contacts = []) => {
     if (c && c.id) {
       if (c.lid) registerLidPnMapping(c.id, c.lid);
       if (c.pn || c.phone) registerLidPnMapping(c.id, c.pn || c.phone);
+      if (c.lidJid) registerLidPnMapping(c.id, c.lidJid);
+      if (c.pnJid) registerLidPnMapping(c.id, c.pnJid);
 
       const resolved = resolvePhoneAndJid(c.id);
       const existing = store.contacts.get(c.id) || store.contacts.get(resolved.phone) || {};
@@ -414,6 +418,32 @@ const safeToIsoString = (ts) => {
   return new Date().toISOString();
 };
 
+// Convertidor seguro de timestamps Baileys/Protobuf a segundos epoch (entero)
+const safeToEpochSeconds = (ts) => {
+  if (!ts) return Math.floor(Date.now() / 1000);
+  try {
+    let num = 0;
+    if (typeof ts === 'object' && ts !== null) {
+      if (typeof ts.toNumber === 'function') {
+        num = ts.toNumber();
+      } else if ('low' in ts && 'high' in ts) {
+        num = (ts.high * 4294967296) + (ts.low >>> 0);
+      } else if ('low' in ts) {
+        num = ts.low >>> 0;
+      }
+    } else if (typeof ts === 'bigint') {
+      num = Number(ts);
+    } else {
+      num = Number(ts);
+    }
+
+    if (!isNaN(num) && num > 0) {
+      return num > 100000000000 ? Math.floor(num / 1000) : Math.floor(num);
+    }
+  } catch (_) {}
+  return Math.floor(Date.now() / 1000);
+};
+
 // Sincronizador optimizado en lote de chats, contactos e historial a Supabase
 const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts = [], inputMessages = [], io = null) => {
   if (!supabase) return;
@@ -511,10 +541,9 @@ const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts =
 
       const isGroup = resolved.isGroup || jid.endsWith('@g.us');
       if (userOwnPhone && phone === userOwnPhone) continue;
-      if (phone.length >= 14 && !isGroup) continue;
 
       const text = extractText(msg);
-      const ts = msg.messageTimestamp ? Number(msg.messageTimestamp) : 0;
+      const ts = safeToEpochSeconds(msg.messageTimestamp);
       const isoTs = safeToIsoString(msg.messageTimestamp);
 
       if (!latestMsgByPhone.has(phone) || ts > latestMsgByPhone.get(phone).ts) {
@@ -537,7 +566,6 @@ const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts =
 
         const isGroup = resolved.isGroup || jid.endsWith('@g.us');
         if (userOwnPhone && contactPhone === userOwnPhone) continue;
-        if (contactPhone.length >= 14 && !isGroup) continue;
 
         let contactName = chat.name || contactsMap.get(jid) || contactsMap.get(contactPhone) || (isGroup ? 'Grupo WA' : contactPhone);
 
@@ -700,6 +728,33 @@ const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts =
               convMap.set(contactPhone, conv);
             }
           } catch (_) {}
+        }
+
+        // Si aún no existe conversación para este contacto, crearla para no descartar el mensaje
+        if (!conv?.id) {
+          try {
+            const contactName = contactsMap.get(jid) || contactsMap.get(contactPhone) || msg.pushName || (resolved.isGroup ? 'Grupo WA' : contactPhone);
+            const { data: newConvRows } = await supabase
+              .from('conversations')
+              .upsert({
+                session_id: sessionUuid || null,
+                contact_phone: contactPhone,
+                contact_name: contactName,
+                bot_active: !resolved.isGroup,
+                is_blacklisted: false,
+                last_message: text,
+                last_message_at: msgTime,
+              }, { onConflict: 'session_id,contact_phone' })
+              .select('id, contact_phone, contact_name')
+              .limit(1);
+
+            if (newConvRows && newConvRows[0]?.id) {
+              conv = newConvRows[0];
+              convMap.set(contactPhone, conv);
+            }
+          } catch (createErr) {
+            console.warn('[Sync] Error creando conversación automática:', createErr.message);
+          }
         }
 
         if (conv?.id) {
@@ -1163,6 +1218,77 @@ const createSession = async (userId, businessId, io, forceClean = false, isManua
 
       const validId = getValidUserId(userId);
 
+      // ── VALIDACIÓN DE NÚMERO DUPLICADO: Impedir que un mismo número esté en múltiples cuentas ──
+      try {
+        let duplicateUser = null;
+
+        // 1. Revisar en Supabase (whatsapp_sessions) si otro usuario ya tiene este teléfono conectado
+        if (supabase && phone) {
+          const { data: existingSessions } = await supabase
+            .from('whatsapp_sessions')
+            .select('id, user_id, phone_number, status')
+            .eq('phone_number', phone)
+            .eq('status', 'connected');
+
+          if (Array.isArray(existingSessions)) {
+            const conflict = existingSessions.find(s => getValidUserId(s.user_id) !== validId);
+            if (conflict) {
+              duplicateUser = conflict.user_id;
+            }
+          }
+        }
+
+        // 2. Revisar en memoria RAM activa si alguna sesión tiene el mismo número en otra cuenta
+        if (!duplicateUser && phone) {
+          for (const [key, s] of sessions.entries()) {
+            if (s?.phone === phone && s?.status === 'connected' && getValidUserId(key) !== validId) {
+              duplicateUser = key;
+              break;
+            }
+          }
+        }
+
+        if (duplicateUser) {
+          console.warn(`[Baileys Security] 🛑 El número +${phone} ya está conectado en otra cuenta (${duplicateUser}). Rechazando vinculación para ${userId}.`);
+
+          userDisconnectedMap.add(userId);
+          userDisconnectedMap.add(validId);
+
+          try { sock.ev.removeAllListeners(); } catch (_) {}
+          try { sock.end(new Error('Número ya vinculado en otra cuenta')); } catch (_) {}
+
+          // Limpiar de RAM y disco para esta cuenta que intentó duplicar
+          sessions.delete(userId);
+          sessions.delete(validId);
+          userStores.delete(userId);
+          userStores.delete(validId);
+          deleteSessionFolder(userId);
+          deleteSessionFolder(validId);
+
+          // Actualizar estado en DB a error
+          await safeUpsert('whatsapp_sessions', {
+            user_id: validId,
+            status: 'error',
+            phone_number: null,
+            qr_code: null,
+            session_data: null,
+            connected_at: null,
+          });
+
+          const errorMsg = `⚠️ El número +${phone} ya está conectado en otra cuenta de la plataforma. Para evitar errores y cruce de datos, debes desconectarlo de la otra cuenta antes de vincularlo aquí.`;
+
+          if (io) {
+            emitToUserRooms(io, userId, 'connection_error', { error: errorMsg, phone });
+            emitToUserRooms(io, validId, 'connection_error', { error: errorMsg, phone });
+            emitToUserRooms(io, userId, 'disconnected', { shouldReconnect: false, error: errorMsg, isDuplicate: true });
+            emitToUserRooms(io, validId, 'disconnected', { shouldReconnect: false, error: errorMsg, isDuplicate: true });
+          }
+          return;
+        }
+      } catch (dupErr) {
+        console.error('[Baileys Security] Error verificando número duplicado:', dupErr.message);
+      }
+
       // Si el número de teléfono cambió respecto a la sesión guardada en DB,
       // purgar de raíz todo el historial previo (RAM y DB) para NUNCA mezclar conversaciones
       try {
@@ -1367,8 +1493,7 @@ const createSession = async (userId, businessId, io, forceClean = false, isManua
     for (const msg of messages) {
       if (!msg.message) continue;
 
-      const sessionData = sessions.get(userId);
-      if (!sessionData) continue;
+      const sessionData = sessions.get(userId) || sessions.get(validId);
 
       // Si el mensaje fue enviado por el propio usuario desde su teléfono
       if (msg.key.fromMe) {
@@ -1444,8 +1569,9 @@ const createSession = async (userId, businessId, io, forceClean = false, isManua
       }
 
       // Si es mensaje entrante en tiempo real del cliente (notify o append reciente, ignorar historial antiguo y fromMe)
-      const isRecent = msg.messageTimestamp ? (Date.now() / 1000 - Number(msg.messageTimestamp) < 300) : true;
-      if ((type === 'notify' || (type === 'append' && isRecent)) && handleIncomingMessage && !msg.key.fromMe) {
+      const epochSec = safeToEpochSeconds(msg.messageTimestamp);
+      const isRecent = (Math.floor(Date.now() / 1000) - epochSec) < 300;
+      if ((type === 'notify' || isRecent) && handleIncomingMessage && !msg.key.fromMe) {
         try {
           await handleIncomingMessage(sock, msg, userId, businessId);
         } catch (err) {
@@ -1767,6 +1893,7 @@ module.exports = {
   setGlobalBotStatus,
   getUserStore,
   safeToIsoString,
+  safeToEpochSeconds,
   storeChats,
   extractText,
   isExplicitlyDisconnected,

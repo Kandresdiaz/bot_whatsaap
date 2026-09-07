@@ -85,7 +85,6 @@ router.get('/:sessionId', async (req, res) => {
       const cleanPhone = resolved.phone || rawPhone;
       if (!cleanPhone) continue;
       if (selfPhone && cleanPhone === selfPhone) continue;
-      if (cleanPhone.length >= 14 && !resolved.isGroup && !cleanPhone.startsWith('120363')) continue;
 
       if (phoneSet.has(cleanPhone)) continue;
       phoneSet.add(cleanPhone);
@@ -111,7 +110,6 @@ router.get('/:sessionId', async (req, res) => {
           const phone = resolved.phone || (chat.id || '').split('@')[0].replace(/[^0-9]/g, '');
           if (!phone || phone.length < 5) continue;
           if (selfPhone && phone === selfPhone) continue;
-          if (phone.length >= 14 && !resolved.isGroup && !phone.startsWith('120363')) continue;
           if (phoneSet.has(phone)) continue;
           phoneSet.add(phone);
 

@@ -491,10 +491,6 @@ export default function ConversationsPage() {
           const rest = prevConvs.filter((_, i) => i !== index);
           return [updatedConv, ...rest];
         } else {
-          // If incoming phone is an internal LID (length >= 14 and not a group), ignore creating ghost conversation
-          if (cleanIncomingPhone.length >= 14 && !contactPhone?.includes('@g.us')) {
-            return prevConvs;
-          }
           const newConvItem: Conversation = {
             id: conversationId || `conv_${cleanIncomingPhone}`,
             contact_phone: cleanIncomingPhone,
@@ -510,6 +506,9 @@ export default function ConversationsPage() {
           return [newConvItem, ...prevConvs];
         }
       });
+
+      // Sincronizar en segundo plano lista completa de conversaciones
+      loadConversations(userIdToUse);
     });
 
     return () => {

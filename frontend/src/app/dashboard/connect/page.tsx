@@ -136,8 +136,20 @@ export default function ConnectPage() {
       setError(null);
     });
 
-    socket.on('disconnected', () => {
-      setStatus('disconnected');
+    socket.on('connection_error', (payload: any) => {
+      setStatus('error');
+      setQr(null);
+      setPhone(null);
+      setError(payload?.error || 'Error de conexión');
+    });
+
+    socket.on('disconnected', (payload?: any) => {
+      if (payload?.isDuplicate || payload?.error) {
+        setStatus('error');
+        setError(payload?.error || 'Número ya conectado en otra cuenta');
+      } else {
+        setStatus('disconnected');
+      }
       setQr(null);
       setPhone(null);
     });
@@ -162,6 +174,10 @@ export default function ConnectPage() {
           setQr(null);
           setPhone(null);
           setError(null);
+        } else if (s.status === 'error') {
+          setStatus('error');
+          setQr(null);
+          setPhone(null);
         } else if (s.qr_code && s.status !== 'connected') {
           setQr(s.qr_code);
           setStatus('qr_ready');
