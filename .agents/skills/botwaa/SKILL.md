@@ -740,6 +740,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-07** | fix: incoming messages capture and duplicate phone connection validation (`0f98edb`) | Auto-deploy |
 
+| **2026-09-08** | fix: activar bot_enabled por defecto en todos los usuarios, vincular activacion de admin al bot y habilitar atencion IA 24/7 sin cortes de horario (`aece548`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
