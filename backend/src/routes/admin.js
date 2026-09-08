@@ -139,8 +139,8 @@ router.post('/clients', isAdmin, async (req, res) => {
           city: '',
           timezone: 'America/Bogota',
           is_configured: false,
-          bot_enabled: false,
-          active_days: [1, 2, 3, 4, 5],
+          bot_enabled: true,
+          active_days: [1, 2, 3, 4, 5, 6],
         })
         .select()
         .single();
@@ -198,6 +198,14 @@ router.patch('/clients/:id/activate', isAdmin, async (req, res) => {
       return res.status(400).json({ success: false, error: error.message });
     }
 
+    // Activar también el bot global en businesses y sesiones de WhatsApp
+    await supabase.from('businesses').update({ bot_enabled: true }).eq('user_id', id);
+    await supabase.from('whatsapp_sessions').update({ bot_enabled: true }).eq('user_id', id);
+    try {
+      const { setGlobalBotStatus } = require('../whatsapp/sessionManager');
+      await setGlobalBotStatus(id, true, global.io);
+    } catch (_) {}
+
     res.json({ success: true, paid_until: paidUntil, client: data });
   } catch (err) {
     console.error('[ADMIN ACTIVATE CLIENT] Exception:', err.message);
@@ -220,8 +228,17 @@ router.patch('/clients/:id/pause', isAdmin, async (req, res) => {
       return res.status(400).json({ success: false, error: error.message });
     }
 
+    // Pausar también el bot en businesses y sesiones de WhatsApp
+    await supabase.from('businesses').update({ bot_enabled: false }).eq('user_id', id);
+    await supabase.from('whatsapp_sessions').update({ bot_enabled: false }).eq('user_id', id);
+    try {
+      const { setGlobalBotStatus } = require('../whatsapp/sessionManager');
+      await setGlobalBotStatus(id, false, global.io);
+    } catch (_) {}
+
     res.json({ success: true, client: data });
   } catch (err) {
+    console.error('[ADMIN PAUSE CLIENT] Error:', err.message);
     res.status(500).json({ success: false, error: err.message });
   }
 });

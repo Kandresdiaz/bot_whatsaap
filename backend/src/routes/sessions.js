@@ -97,15 +97,15 @@ router.post('/start', async (req, res) => {
           sessionId,
           status: 'connected',
           qr: null,
-          phone: active.phone || null
+          phone: active.phone || null,
         });
       }
     }
 
-    // 3. Iniciar sesión de Baileys con isManualStart = true (el usuario solicitó explícitamente vincular)
-    const forceClean = Boolean(force);
+    // 3. Iniciar sesión de Baileys (forzando limpieza si no estaba conectada)
+    const forceClean = !!force || !active || active.status !== 'connected';
 
-    createSession(validUserId, businessId, global.io, forceClean, true).catch(err => {
+    createSession(validUserId, businessId, global.io, forceClean).catch(err => {
       console.error('Error en Baileys createSession:', err);
     });
 
@@ -124,7 +124,7 @@ router.post('/start', async (req, res) => {
       }
       if (currentActive?.status === 'connected') {
         currentStatus = 'connected';
-        phoneNum = currentActive.phone;
+        phoneNum = currentActive.phone || null;
         break;
       }
     }
@@ -132,35 +132,41 @@ router.post('/start', async (req, res) => {
     return res.json({
       success: true,
       sessionId,
-      status: currentStatus,
       qr: qrReady,
-      phone: phoneNum
+      status: currentStatus,
+      phone: phoneNum,
     });
-  } catch (err) {
-    console.error('Error iniciando sesión:', err);
-    createSession(validUserId, businessId, global.io, Boolean(force), true).catch(e => console.error('Baileys fallback err:', e));
-    return res.json({ success: true, sessionId: userId, status: 'connecting', qr: null });
+  } catch (error) {
+    console.error('Error iniciando sesión Baileys:', error);
+    return res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// Estado de la sesión
+// Obtener estado de la sesión
 router.get('/status/:userId', async (req, res) => {
   const { userId } = req.params;
-  const { getSession, getSessionUuid, isExplicitlyDisconnected, getValidUserId } = require('../whatsapp/sessionManager');
+  const validUserId = getValidUserId(userId);
 
   try {
-    const validUserId = getValidUserId(userId);
     const active = getSession(userId) || getSession(validUserId);
 
-    const { data: dbSession } = await supabase
-      .from('whatsapp_sessions')
-      .select('*')
-      .eq('user_id', validUserId)
-      .maybeSingle();
+    // Consultar DB Supabase para complementar
+    let dbSession = null;
+    if (supabase) {
+      try {
+        const { data } = await supabase
+          .from('whatsapp_sessions')
+          .select('*')
+          .eq('user_id', validUserId)
+          .order('created_at', { ascending: false })
+          .limit(1);
+        if (data && data.length > 0) dbSession = data[0];
+      } catch (_) {}
+    }
 
-    // Si el usuario fue desconectado manualmente y no hay sesión activa en RAM
-    if (isExplicitlyDisconnected(validUserId) && (!active || active.status === 'disconnected')) {
-      const sessionUuid = await getSessionUuid(validUserId);
+    // Si fue desconectado explícitamente por el usuario
+    if (isExplicitlyDisconnected(validUserId)) {
+      const sessionUuid = dbSession?.id || (await getSessionUuid(validUserId));
       return res.json({
         success: true,
         session: {
@@ -169,7 +175,7 @@ router.get('/status/:userId', async (req, res) => {
           status: 'disconnected',
           phone_number: null,
           qr_code: null,
-          bot_enabled: dbSession?.bot_enabled ?? false,
+          bot_enabled: dbSession?.bot_enabled ?? true,
         }
       });
     }
@@ -190,7 +196,7 @@ router.get('/status/:userId', async (req, res) => {
           status: finalStatus,
           qr_code: finalQr,
           phone_number: finalPhone,
-          bot_enabled: active.bot_enabled !== undefined ? active.bot_enabled : (dbSession?.bot_enabled ?? false),
+          bot_enabled: active.bot_enabled !== undefined ? active.bot_enabled : (dbSession?.bot_enabled ?? true),
         }
       });
     }
@@ -208,7 +214,7 @@ router.get('/status/:userId', async (req, res) => {
             status: 'connecting',
             phone_number: dbSession.phone_number || null,
             qr_code: null,
-            bot_enabled: dbSession.bot_enabled ?? false,
+            bot_enabled: dbSession.bot_enabled ?? true,
           }
         });
       }
@@ -221,13 +227,13 @@ router.get('/status/:userId', async (req, res) => {
           status: 'disconnected',
           phone_number: null,
           qr_code: null,
-          bot_enabled: dbSession.bot_enabled ?? false,
+          bot_enabled: dbSession.bot_enabled ?? true,
         }
       });
     }
 
     const sessionUuid = await getSessionUuid(validUserId);
-    res.json({ success: true, session: { id: sessionUuid, status: 'disconnected', user_id: validUserId, phone_number: null, qr_code: null } });
+    res.json({ success: true, session: { id: sessionUuid, status: 'disconnected', user_id: validUserId, phone_number: null, qr_code: null, bot_enabled: true } });
   } catch (err) {
     res.json({ success: true, session: { status: 'disconnected', user_id: userId, phone_number: null, qr_code: null } });
   }

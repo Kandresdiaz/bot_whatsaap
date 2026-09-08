@@ -82,7 +82,7 @@ router.get('/:userId', async (req, res) => {
         active_hours_end: '18:00:00',
         active_days: [1, 2, 3, 4, 5],
         main_goal: 'vender',
-        bot_enabled: isPrimaryAdmin ? true : false,
+        bot_enabled: true,
         is_configured: isPrimaryAdmin ? true : false,
       }).select().single();
 
@@ -110,7 +110,7 @@ router.get('/:userId', async (req, res) => {
           active_hours_end: '18:00:00',
           active_days: [1, 2, 3, 4, 5],
           main_goal: 'vender',
-          bot_enabled: false,
+          bot_enabled: true,
           is_configured: false,
         };
       }
@@ -133,7 +133,7 @@ router.get('/:userId', async (req, res) => {
     });
   } catch (e) {
     console.error('[BUSINESS GET] Exception:', e.message);
-    return res.json({ success: true, business: { ...DEFAULT_BOTWA_BUSINESS, user_id: targetUserId, is_configured: false, bot_enabled: false } });
+    return res.json({ success: true, business: { ...DEFAULT_BOTWA_BUSINESS, user_id: targetUserId, is_configured: false, bot_enabled: true } });
   }
 });
 

@@ -234,10 +234,11 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
   }
 
   // ── 3. Bot desactivado (Global o por Conversación) o Blacklist ──────────────
-  let isGlobalBotEnabled = false;
+  let isGlobalBotEnabled = true;
   try {
     const { getGlobalBotStatus, isContactBotDisabled } = require('./sessionManager');
-    isGlobalBotEnabled = await getGlobalBotStatus(userId);
+    const status = await getGlobalBotStatus(userId);
+    if (typeof status === 'boolean') isGlobalBotEnabled = status;
 
     if (isContactBotDisabled(contactPhone)) {
       console.log(`[MSG Filter] 🛑 Bot desactivado en RAM para contacto: ${contactPhone}`);
@@ -406,7 +407,7 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
     };
   }
 
-  // ── 6. Verificar horario de atención ──────────────────────────────────────
+  // ── 6. Horario de atención (Modo Asistente Virtual 24/7) ─────────────────
   try {
     const now = new Date();
     const local = new Date(now.toLocaleString('en-US', { timeZone: business.timezone || 'America/Bogota' }));
@@ -420,9 +421,8 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
     const end = parseInt(business.active_hours_end?.toString().split(':')[0] || '24');
 
     if (Array.isArray(activeDays) && (!activeDays.includes(day) || hour < start || hour >= end)) {
-      await randomDelay();
-      await sendText(sock, jid, business.away_msg || 'Gracias por escribirnos 🙏 Te respondemos en nuestro horario de atención.');
-      return;
+      business.isOutsideHours = true;
+      console.log(`[MSG] 🌙 Negocio fuera de horario físico (${hour}:00, rango: ${start}:00-${end}:00). El bot IA responde en modo 24/7.`);
     }
   } catch (e) {
     console.error('[MSG] Error verificando horario:', e.message);

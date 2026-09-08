@@ -368,6 +368,7 @@ Categoría / Giro: ${busCategory}
 Ubicación / Ciudad: ${busCity}
 ${business?.description ? `Descripción / Servicios: ${business.description}` : `Servicios y atención comercial oficial de ${busName}.`}
 Horario de Atención: ${business?.active_hours_start || '08:00'} - ${business?.active_hours_end || '20:00'}
+${business?.isOutsideHours ? `Estado de Atención: El local físico está fuera de su horario regular, pero tú atiendes amablemente 24/7 en WhatsApp, resuelves dudas sobre el catálogo y puedes agendar citas o tomar pedidos para el horario laboral.` : ''}
 ${business?.phone ? `Teléfono de Contacto: ${business.phone}` : ''}
 ${business?.address ? `Dirección Física: ${business.address}` : ''}
 ${business?.payment_or_booking_link ? `Enlace o Método de Pago / Agenda: ${business.payment_or_booking_link}` : ''}
