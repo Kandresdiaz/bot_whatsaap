@@ -766,6 +766,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-09** | fix: handle message edits, revokes and chat deletions in real time (`4e18697`) | Auto-deploy |
 
+| **2026-09-09** | feat: optimizar 3 planes persuasivos, blindaje cuota IA, notificaciones email y campanita in-app (`1d8598e`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
