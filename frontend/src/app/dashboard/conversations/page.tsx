@@ -239,10 +239,10 @@ export default function ConversationsPage() {
       const currentClean = current?.contact_phone?.replace(/[^0-9]/g, '') || '';
       const convClean = cleanP;
 
-      const isCurrentStillActive = current && (
+      const isCurrentStillActive = Boolean(current && (
         current.id === conv.id ||
-        (currentClean && convClean && (currentClean === convClean || currentClean.endsWith(convClean) || convClean.endsWith(currentClean)))
-      );
+        (currentClean && convClean && currentClean === convClean)
+      ));
 
       if (isCurrentStillActive && data.messages && Array.isArray(data.messages)) {
         setMessages(dedupeMessageList(data.messages));
@@ -277,7 +277,7 @@ export default function ConversationsPage() {
           const updated = data.conversations.find((c: Conversation) => {
             const cleanCPhone = (c.contact_phone || '').replace(/[^0-9]/g, '');
             return (currentId && c.id === currentId) || 
-              (currentPhone && cleanCPhone && (currentPhone === cleanCPhone || currentPhone.endsWith(cleanCPhone) || cleanCPhone.endsWith(currentPhone)));
+              (currentPhone && cleanCPhone && currentPhone === cleanCPhone);
           });
 
           if (updated) {
@@ -379,7 +379,7 @@ export default function ConversationsPage() {
         const cleanActivePhone = activeRef.current.contact_phone ? activeRef.current.contact_phone.replace(/[^0-9]/g, '') : '';
         const isCurrentMatch = Boolean(
           (conversationId && activeRef.current.id === conversationId) ||
-          (cleanActivePhone && cleanIncomingPhone && (cleanActivePhone === cleanIncomingPhone || cleanActivePhone.endsWith(cleanIncomingPhone) || cleanIncomingPhone.endsWith(cleanActivePhone)))
+          (cleanActivePhone && cleanIncomingPhone && cleanActivePhone === cleanIncomingPhone)
         );
 
         if (isCurrentMatch) {
@@ -462,8 +462,7 @@ export default function ConversationsPage() {
         const cleanActivePhone = currentActive.contact_phone ? currentActive.contact_phone.replace(/[^0-9]/g, '') : '';
         const isMatch = Boolean(
           (conversationId && currentActive.id === conversationId) ||
-          (cleanActivePhone && cleanIncomingPhone && cleanActivePhone === cleanIncomingPhone) ||
-          (cleanActivePhone && cleanIncomingPhone && (cleanActivePhone.endsWith(cleanIncomingPhone) || cleanIncomingPhone.endsWith(cleanActivePhone) || cleanActivePhone.includes(cleanIncomingPhone) || cleanIncomingPhone.includes(cleanActivePhone)))
+          (cleanActivePhone && cleanIncomingPhone && cleanActivePhone === cleanIncomingPhone)
         );
 
         if (isMatch) {
@@ -474,11 +473,10 @@ export default function ConversationsPage() {
 
       setConversations(prevConvs => {
         const index = prevConvs.findIndex(c => {
-          if (c.id === conversationId) return true;
+          if (conversationId && c.id === conversationId) return true;
           const cp = c.contact_phone ? c.contact_phone.replace(/[^0-9]/g, '') : '';
           if (!cleanIncomingPhone || !cp) return false;
-          return cp === cleanIncomingPhone ||
-            (cp.length >= 7 && cleanIncomingPhone.length >= 7 && (cp.endsWith(cleanIncomingPhone) || cleanIncomingPhone.endsWith(cp)));
+          return cp === cleanIncomingPhone;
         });
         const nowTs = message.timestamp || new Date().toISOString();
 

@@ -133,6 +133,9 @@ setTimeout(async () => {
     const { restoreSessions } = require('./whatsapp/sessionManager');
     await restoreSessions(io);
     console.log('[STARTUP] Sesiones restauradas');
+
+    const { mergeLidConversations } = require('./scripts/mergeLidConversations');
+    mergeLidConversations().catch(e => console.warn('[STARTUP] Error en mergeLidConversations:', e.message));
   } catch (e) {
     console.error('[STARTUP] Error restaurando sesiones (no crítico):', e.message);
   }

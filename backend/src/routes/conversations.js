@@ -302,11 +302,11 @@ router.get('/:conversationId/messages', async (req, res) => {
         const { data: relatedConvs } = await supabase.from('conversations').select('id').eq('contact_phone', cleanPhone);
         if (relatedConvs && relatedConvs.length > 0) {
           relatedConvs.forEach(c => convIdsToQuery.add(c.id));
-        } else if (cleanPhone.length >= 7) {
-          const suffix = cleanPhone.slice(-10);
-          const { data: suffixConvs } = await supabase.from('conversations').select('id, contact_phone').like('contact_phone', `%${suffix}`);
-          if (suffixConvs && suffixConvs.length > 0) {
-            suffixConvs.forEach(c => convIdsToQuery.add(c.id));
+        }
+        if (resolvedTarget?.lid && resolvedTarget.lid !== cleanPhone) {
+          const { data: lidConvs } = await supabase.from('conversations').select('id').eq('contact_phone', resolvedTarget.lid);
+          if (lidConvs && lidConvs.length > 0) {
+            lidConvs.forEach(c => convIdsToQuery.add(c.id));
           }
         }
       } catch (_) {}
@@ -344,7 +344,10 @@ router.get('/:conversationId/messages', async (req, res) => {
             const jid = m.key.remoteJid;
             const resJid = resolvePhoneAndJid(jid);
             const msgPhone = resJid.phone || cleanPhoneFromJid(jid);
-            if (msgPhone === cleanPhone || (msgPhone && cleanPhone && (msgPhone.includes(cleanPhone) || cleanPhone.includes(msgPhone)))) {
+            const isMatch = (msgPhone && cleanPhone && msgPhone === cleanPhone) ||
+                            (resJid.lid && cleanPhone && resJid.lid === cleanPhone) ||
+                            (resolvedTarget?.lid && msgPhone && resolvedTarget.lid === msgPhone);
+            if (isMatch) {
               const text = extractText ? extractText(m) : '';
               if (text) {
                 ramMsgs.push({

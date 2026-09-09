@@ -45,9 +45,58 @@ const getUserStore = (userId) => {
   return userStores.get(validId);
 };
 
+const SESSIONS_DIR = path.join(__dirname, '../../sessions');
+if (!fs.existsSync(SESSIONS_DIR)) {
+  try { fs.mkdirSync(SESSIONS_DIR, { recursive: true }); } catch (_) {}
+}
+
 // Mapeo en memoria de LIDs a números de teléfono reales (PN)
 const lidToPnMap = new Map(); // lidDigits -> pnDigits
 const pnToLidMap = new Map(); // pnDigits -> lidDigits
+
+const loadLidMappingsFromFolder = (folderPath) => {
+  if (!folderPath || !fs.existsSync(folderPath)) return;
+  try {
+    const files = fs.readdirSync(folderPath);
+    for (const file of files) {
+      if (file.startsWith('lid-mapping-') && file.endsWith('_reverse.json')) {
+        const lid = file.slice('lid-mapping-'.length, -'_reverse.json'.length);
+        try {
+          const raw = fs.readFileSync(path.join(folderPath, file), 'utf8');
+          const pn = JSON.parse(raw);
+          const cleanPn = String(pn).replace(/[^0-9]/g, '');
+          if (lid && cleanPn) {
+            lidToPnMap.set(lid, cleanPn);
+            pnToLidMap.set(cleanPn, lid);
+          }
+        } catch (_) {}
+      }
+    }
+  } catch (_) {}
+};
+
+const loadAllLidMappings = () => {
+  try {
+    if (!fs.existsSync(SESSIONS_DIR)) return;
+    const sessionFolders = fs.readdirSync(SESSIONS_DIR);
+    for (const folder of sessionFolders) {
+      const folderPath = path.join(SESSIONS_DIR, folder);
+      try {
+        if (fs.statSync(folderPath).isDirectory()) {
+          loadLidMappingsFromFolder(folderPath);
+        }
+      } catch (_) {}
+    }
+    if (lidToPnMap.size > 0) {
+      console.log(`[Baileys LID] 🧭 ${lidToPnMap.size} mapeos LID ↔ Teléfono cargados en memoria.`);
+    }
+  } catch (err) {
+    console.warn('[Baileys LID] Aviso al precargar mapeos LID:', err.message);
+  }
+};
+
+// Precargar mapeos en el arranque
+loadAllLidMappings();
 
 const cleanPhoneFromJid = (jid) => {
   if (!jid || typeof jid !== 'string') return '';
@@ -60,7 +109,7 @@ const isLidJidOrDigits = (str) => {
   if (!str || typeof str !== 'string') return false;
   if (str.endsWith('@lid')) return true;
   const digits = str.replace(/[^0-9]/g, '');
-  return lidToPnMap.has(digits);
+  return lidToPnMap.has(digits) || (digits.length >= 14 && !str.endsWith('@s.whatsapp.net'));
 };
 
 const resolvePhoneAndJid = (input) => {
@@ -75,8 +124,34 @@ const resolvePhoneAndJid = (input) => {
   const isLid = isLidJidOrDigits(raw);
 
   if (isLid) {
-    if (lidToPnMap.has(cleanDigits)) {
-      const realPn = lidToPnMap.get(cleanDigits);
+    let realPn = lidToPnMap.get(cleanDigits);
+
+    // Si aún no está en memoria, buscar en disco en las carpetas de sesiones
+    if (!realPn) {
+      try {
+        if (fs.existsSync(SESSIONS_DIR)) {
+          const sessionFolders = fs.readdirSync(SESSIONS_DIR);
+          for (const folder of sessionFolders) {
+            const filePath = path.join(SESSIONS_DIR, folder, `lid-mapping-${cleanDigits}_reverse.json`);
+            if (fs.existsSync(filePath)) {
+              try {
+                const rawData = fs.readFileSync(filePath, 'utf8');
+                const parsed = JSON.parse(rawData);
+                const foundPn = String(parsed).replace(/[^0-9]/g, '');
+                if (foundPn) {
+                  realPn = foundPn;
+                  lidToPnMap.set(cleanDigits, realPn);
+                  pnToLidMap.set(realPn, cleanDigits);
+                  break;
+                }
+              } catch (_) {}
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
+    if (realPn) {
       return { phone: realPn, jid: `${realPn}@s.whatsapp.net`, lid: cleanDigits, isGroup: false };
     }
     return { phone: cleanDigits, jid: `${cleanDigits}@lid`, lid: cleanDigits, isGroup: false };
@@ -201,9 +276,6 @@ const storeMessages = (userId, messages = []) => {
     for (const k of keys) store.messages.delete(k);
   }
 };
-
-const SESSIONS_DIR = path.join(__dirname, '../../sessions');
-if (!fs.existsSync(SESSIONS_DIR)) fs.mkdirSync(SESSIONS_DIR, { recursive: true });
 
 const logger = pino({ level: 'silent' });
 
@@ -830,12 +902,24 @@ const saveFullSessionToDb = async (userId, sessionDir) => {
     // 1. creds.json es obligatorio
     sessionObj['creds.json'] = fs.readFileSync(credsFile, 'utf8');
 
-    // 2. Guardar claves de estado de sync y sesiones (con límite de tamaño para Supabase)
+    // 2. Priorizar archivos lid-mapping-*.json para garantizar persistencia y resolución de contactos
     let totalBytes = sessionObj['creds.json'].length;
     const MAX_BYTES = 3 * 1024 * 1024; // 3MB de margen seguro para Supabase PostgREST
 
     for (const file of files) {
-      if (file === 'creds.json' || !file.endsWith('.json')) continue;
+      if (file.startsWith('lid-mapping-') && file.endsWith('.json')) {
+        const filePath = path.join(sessionDir, file);
+        const content = fs.readFileSync(filePath, 'utf8');
+        if (totalBytes + content.length < MAX_BYTES) {
+          sessionObj[file] = content;
+          totalBytes += content.length;
+        }
+      }
+    }
+
+    // 3. Guardar el resto de archivos de sincronización
+    for (const file of files) {
+      if (file === 'creds.json' || file.startsWith('lid-mapping-') || !file.endsWith('.json')) continue;
       const filePath = path.join(sessionDir, file);
       const content = fs.readFileSync(filePath, 'utf8');
       if (totalBytes + content.length < MAX_BYTES) {
@@ -879,6 +963,7 @@ const restoreFullSessionFromDb = async (userId, sessionDir) => {
             fs.writeFileSync(path.join(sessionDir, filename), content, 'utf8');
           }
         }
+        loadLidMappingsFromFolder(sessionDir);
         console.log(`[Baileys Auth] 🔄 Restaurada sesión completa de Baileys desde Supabase para ${validUserId}`);
         return true;
       } else if (typeof dbSess.session_data === 'string') {
@@ -989,6 +1074,7 @@ const createSession = async (userId, businessId, io, forceClean = false, isManua
     const authResult = await useMultiFileAuthState(sessionDir);
     state = authResult.state;
     saveCreds = authResult.saveCreds;
+    loadLidMappingsFromFolder(sessionDir);
   } catch (authErr) {
     console.error(`[Baileys] Error cargando credenciales de ${userId}:`, authErr);
     deleteSessionFolder(userId);
