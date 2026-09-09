@@ -772,6 +772,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-09** | merge: arreglos de sincronización de mensajes, aislamiento por sesión y seguridad de Supabase (`986c3d7`) | Auto-deploy |
 
+| **2026-09-09** | fix: cerrar la ruta POST /:userId en business.js (build roto desde 1d8598e) (`6ed9a33`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
