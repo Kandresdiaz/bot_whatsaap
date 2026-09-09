@@ -764,6 +764,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-09** | fix: resolve QR disconnect on scan, enable history message sync, and allow transparent phone connection (`8c4926a`) | Auto-deploy |
 
+| **2026-09-09** | fix: handle message edits, revokes and chat deletions in real time (`4e18697`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
