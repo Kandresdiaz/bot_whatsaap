@@ -744,6 +744,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-09** | fix: resolver conexion y generacion de codigo QR en frontend y backend con Baileys (`480bcb6`) | Auto-deploy |
 
+| **2026-09-09** | fix: asegurar que clearExplicitDisconnect limpie el mapa de desconexion al iniciar sesion (`dd5bd17`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
