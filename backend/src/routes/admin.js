@@ -49,7 +49,7 @@ router.get('/clients', isAdmin, async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('users')
-      .select('*, businesses(name, category), whatsapp_sessions(id, status, phone_number, qr_code, last_connected_at, updated_at)')
+      .select('*, businesses(name, category), whatsapp_sessions(id, status, phone_number, qr_code, connected_at, last_seen)')
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -73,7 +73,7 @@ router.get('/clients', isAdmin, async (req, res) => {
       const liveStatus = (memSession && memSession.status) || (dbSession && dbSession.status) || 'disconnected';
       const livePhone = (memSession && memSession.phone) || (dbSession && dbSession.phone_number) || null;
       const hasQr = Boolean((memSession && memSession.qr) || (dbSession && dbSession.qr_code));
-      const lastConnected = (dbSession && dbSession.last_connected_at) || (dbSession && dbSession.updated_at) || null;
+      const lastConnected = (dbSession && (dbSession.connected_at || dbSession.last_seen)) || null;
 
       return {
         ...client,
