@@ -704,7 +704,17 @@ const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts =
               convsToUpdate.push({ id: existing.id, ...updateData });
             }
           }
-        } else if (!addedPhones.has(contactPhone)) {
+        } else if (!addedPhones.has(contactPhone) && lastMsgText) {
+          // Solo se crea la conversación si conocemos al menos un mensaje suyo.
+          //
+          // store.chats acumula TODOS los JID que WhatsApp manda al sincronizar: la agenda
+          // entera del teléfono, grupos, números de servicio, contactos con los que nunca se
+          // habló. Sin esta condición se creaba una fila por cada uno, con last_message null
+          // y sin ningún mensaje asociado, y el panel se llenaba de chats que al abrirlos
+          // aparecen vacíos. El 2026-09-09 eran 1.132 de 1.535 conversaciones (73,7%).
+          //
+          // No se pierde nada: en cuanto llegue un mensaje real de ese contacto, lo crea
+          // handleIncomingMessage (con el texto) o el bloque de mensajes de más abajo.
           addedPhones.add(contactPhone);
           newConvsToInsert.push({
             session_id: sessionUuid,
@@ -723,7 +733,9 @@ const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts =
     // 2. Procesar mensajes del historial para asegurar que sus chats existan con su último mensaje
     if (latestMsgByPhone.size > 0) {
       for (const [phone, info] of latestMsgByPhone.entries()) {
-        if (!convMap.has(phone) && !addedPhones.has(phone)) {
+        // Igual que arriba: sin texto no hay conversación que mostrar. extractText devuelve
+        // cadena vacía para mensajes que no sabe representar (protocolo, reacciones, etc.).
+        if (!convMap.has(phone) && !addedPhones.has(phone) && info.text) {
           addedPhones.add(phone);
           const pushName = info.msg?.pushName || contactsMap.get(phone) || phone;
           const isGroup = info.msg?.key?.remoteJid?.endsWith('@g.us');
