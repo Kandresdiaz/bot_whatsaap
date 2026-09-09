@@ -748,6 +748,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-09** | fix: purgar de raiz tags think incompletos, excluir modelos de razonamiento y manejar stickers y audios con calidez humana (`a4c5c50`) | Auto-deploy |
 
+| **2026-09-09** | fix: evitar desconexion automatica de WhatsApp, preservar credenciales en Supabase y optimizar reconexion en Render (`9fd2c05`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
