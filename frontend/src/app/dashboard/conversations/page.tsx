@@ -440,6 +440,51 @@ export default function ConversationsPage() {
       }
     });
 
+    socket.on('message_updated', (payload: { conversationId?: string; contactPhone?: string; oldContent?: string; newContent?: string; isDeleted?: boolean; isEdited?: boolean }) => {
+      const { conversationId, contactPhone, oldContent, newContent } = payload || {};
+      if (!newContent) return;
+
+      const cleanIncomingPhone = contactPhone ? contactPhone.replace(/[^0-9]/g, '') : '';
+
+      // Actualizar mensajes en el chat activo si coincide
+      if (activeRef.current) {
+        const cleanActivePhone = activeRef.current.contact_phone ? activeRef.current.contact_phone.replace(/[^0-9]/g, '') : '';
+        const isMatch = (conversationId && activeRef.current.id === conversationId) ||
+          (cleanActivePhone && cleanIncomingPhone && cleanActivePhone === cleanIncomingPhone);
+
+        if (isMatch) {
+          setMessages(prev => prev.map(m => {
+            if (oldContent && m.content === oldContent) {
+              return { ...m, content: newContent };
+            }
+            return m;
+          }));
+          fetchActiveMessages(activeRef.current, false);
+        }
+      }
+
+      // Actualizar el preview del último mensaje en la barra lateral
+      setConversations(prevConvs => prevConvs.map(c => {
+        const cp = c.contact_phone ? c.contact_phone.replace(/[^0-9]/g, '') : '';
+        if (c.id === conversationId || (cleanIncomingPhone && cp === cleanIncomingPhone)) {
+          if (!oldContent || c.last_message === oldContent) {
+            return { ...c, last_message: newContent };
+          }
+        }
+        return c;
+      }));
+    });
+
+    socket.on('chat_deleted', ({ contactPhone }: { contactPhone?: string }) => {
+      const cleanIncomingPhone = (contactPhone || '').replace(/[^0-9]/g, '');
+      if (!cleanIncomingPhone) return;
+      if (activeRef.current && activeRef.current.contact_phone?.replace(/[^0-9]/g, '') === cleanIncomingPhone) {
+        setActive(null);
+        setMessages([]);
+      }
+      setConversations(prev => prev.filter(c => c.contact_phone?.replace(/[^0-9]/g, '') !== cleanIncomingPhone));
+    });
+
     socket.on('new_message', (payload: { conversationId?: string; contactPhone?: string; message?: Message }) => {
       setSessionStatus(prev => prev === 'connected' ? prev : 'connected');
       const { conversationId, contactPhone, message } = payload || {};

@@ -1195,6 +1195,92 @@ const createSession = async (userId, businessId, io, forceClean = false, isManua
     await syncChatsAndMessagesToDb(userId, [], list, [], io);
   });
 
+  // ─── Sincronización de Chats y Mensajes Eliminados en WhatsApp ─────────────
+  sock.ev.on('chats.delete', async (deletedChatJids) => {
+    const list = Array.isArray(deletedChatJids) ? deletedChatJids : [deletedChatJids];
+    console.log(`[Baileys Sync] 🗑 chats.delete recibido para ${userId}: ${list.length} chats`);
+    for (const jid of list) {
+      if (!jid) continue;
+      const resolved = resolvePhoneAndJid(jid);
+      const contactPhone = resolved.phone || cleanPhoneFromJid(jid);
+      if (!contactPhone) continue;
+
+      const store = getUserStore(userId);
+      store.chats.delete(jid);
+      store.chats.delete(contactPhone);
+
+      try {
+        if (supabase) {
+          const sessionUuid = await getSessionUuid(userId);
+          let q = supabase.from('conversations').delete().eq('contact_phone', contactPhone);
+          if (sessionUuid) q = q.eq('session_id', sessionUuid);
+          await q;
+        }
+      } catch (_) {}
+
+      if (io) {
+        emitToUserRooms(io, userId, 'chat_deleted', { contactPhone });
+      }
+    }
+  });
+
+  sock.ev.on('messages.delete', async (item) => {
+    try {
+      const keys = Array.isArray(item?.keys) ? item.keys : (item?.all ? [] : [item?.key].filter(Boolean));
+      const deletedNotice = '🚫 Este mensaje fue eliminado';
+      for (const key of keys) {
+        if (!key || !key.remoteJid) continue;
+        const jid = key.remoteJid;
+        const resolved = resolvePhoneAndJid(jid);
+        const contactPhone = resolved.phone || cleanPhoneFromJid(jid);
+        const store = getUserStore(userId);
+        const oldMsg = store.messages.get(key.id);
+        const oldText = oldMsg ? extractText(oldMsg) : null;
+
+        if (oldMsg) store.messages.delete(key.id);
+
+        if (supabase && contactPhone) {
+          const sessionUuid = await getSessionUuid(userId);
+          const { data: convRows } = await supabase
+            .from('conversations')
+            .select('id, last_message')
+            .eq('contact_phone', contactPhone)
+            .order('last_message_at', { ascending: false })
+            .limit(1);
+
+          const convId = convRows && convRows[0]?.id;
+          if (convId) {
+            if (oldText) {
+              await supabase.from('messages')
+                .update({ content: deletedNotice })
+                .eq('conversation_id', convId)
+                .eq('content', oldText);
+            }
+            if (convRows[0]?.last_message === oldText || !oldText) {
+              await supabase.from('conversations').update({ last_message: deletedNotice }).eq('id', convId);
+            }
+            if (io) {
+              emitToUserRooms(io, userId, 'message_updated', {
+                conversationId: convId,
+                contactPhone,
+                oldContent: oldText,
+                newContent: deletedNotice,
+                isDeleted: true
+              }, sessionUuid);
+              emitToUserRooms(io, userId, 'conversation_updated', {
+                conversationId: convId,
+                contactPhone,
+                lastMessage: deletedNotice
+              }, sessionUuid);
+            }
+          }
+        }
+      }
+    } catch (delErr) {
+      console.warn('[Baileys Msg Delete] Error:', delErr.message);
+    }
+  });
+
   // ─── Eventos de conexión ─────────────────────────────────────────────────
   sock.ev.on('connection.update', async (update) => {
     const { connection, lastDisconnect, qr } = update;
@@ -1481,6 +1567,146 @@ const createSession = async (userId, businessId, io, forceClean = false, isManua
 
     for (const msg of messages) {
       if (!msg.message) continue;
+
+      // ── Detección de EDICIÓN o ELIMINACIÓN de mensaje de WhatsApp ───────────
+      const rawM = msg.message;
+      const proto = rawM?.protocolMessage || rawM?.editedMessage?.message?.protocolMessage;
+      if (proto) {
+        const pType = proto.type;
+        const targetKey = proto.key;
+        const jid = targetKey?.remoteJid || msg.key.remoteJid;
+        const resolved = resolvePhoneAndJid(jid);
+        const contactPhone = resolved.phone || cleanPhoneFromJid(jid);
+
+        if (contactPhone && targetKey) {
+          const store = getUserStore(userId);
+          const oldM = store.messages.get(targetKey.id);
+          const oldText = oldM ? extractText(oldM) : null;
+
+          // 1. Mensaje eliminado para todos (REVOKE, tipo 0)
+          if (pType === 0) {
+            const deletedNotice = '🚫 Este mensaje fue eliminado';
+            console.log(`[Baileys Revoke] 🗑 Mensaje eliminado en chat ${contactPhone} (id: ${targetKey.id})`);
+
+            if (oldM) store.messages.delete(targetKey.id);
+
+            try {
+              const sessionUuid = await getSessionUuid(userId);
+              const { data: convRows } = await supabase
+                .from('conversations')
+                .select('id, last_message')
+                .eq('contact_phone', contactPhone)
+                .order('last_message_at', { ascending: false })
+                .limit(1);
+
+              const conversationId = convRows && convRows[0]?.id;
+              if (conversationId) {
+                if (oldText) {
+                  await supabase.from('messages')
+                    .update({ content: deletedNotice })
+                    .eq('conversation_id', conversationId)
+                    .eq('content', oldText);
+                } else {
+                  const { data: lastM } = await supabase
+                    .from('messages')
+                    .select('id')
+                    .eq('conversation_id', conversationId)
+                    .order('timestamp', { ascending: false })
+                    .limit(1);
+                  if (lastM && lastM[0]) {
+                    await supabase.from('messages').update({ content: deletedNotice }).eq('id', lastM[0].id);
+                  }
+                }
+
+                if (convRows[0]?.last_message === oldText || !oldText) {
+                  await supabase.from('conversations').update({ last_message: deletedNotice }).eq('id', conversationId);
+                }
+
+                if (io) {
+                  emitToUserRooms(io, userId, 'message_updated', {
+                    conversationId,
+                    contactPhone,
+                    oldContent: oldText,
+                    newContent: deletedNotice,
+                    isDeleted: true,
+                  }, sessionUuid);
+                  emitToUserRooms(io, userId, 'conversation_updated', {
+                    conversationId,
+                    contactPhone,
+                    lastMessage: deletedNotice,
+                  }, sessionUuid);
+                }
+              }
+            } catch (e) {
+              console.warn('[Baileys Revoke] Error en DB:', e.message);
+            }
+            continue;
+          }
+
+          // 2. Mensaje editado (MESSAGE_EDIT, tipo 14)
+          if (pType === 14 || rawM?.editedMessage) {
+            const editedMsgObj = proto.editedMessage || rawM?.editedMessage;
+            const newContent = extractText(editedMsgObj ? { message: editedMsgObj } : msg);
+            console.log(`[Baileys Edit] ✏ Mensaje editado en chat ${contactPhone}: "${oldText}" → "${newContent}"`);
+
+            if (oldM && editedMsgObj) {
+              oldM.message = editedMsgObj;
+            }
+
+            try {
+              const sessionUuid = await getSessionUuid(userId);
+              const { data: convRows } = await supabase
+                .from('conversations')
+                .select('id, last_message')
+                .eq('contact_phone', contactPhone)
+                .order('last_message_at', { ascending: false })
+                .limit(1);
+
+              const conversationId = convRows && convRows[0]?.id;
+              if (conversationId && newContent) {
+                if (oldText) {
+                  await supabase.from('messages')
+                    .update({ content: newContent })
+                    .eq('conversation_id', conversationId)
+                    .eq('content', oldText);
+                } else {
+                  const { data: lastM } = await supabase
+                    .from('messages')
+                    .select('id')
+                    .eq('conversation_id', conversationId)
+                    .order('timestamp', { ascending: false })
+                    .limit(1);
+                  if (lastM && lastM[0]) {
+                    await supabase.from('messages').update({ content: newContent }).eq('id', lastM[0].id);
+                  }
+                }
+
+                if (convRows[0]?.last_message === oldText || !oldText) {
+                  await supabase.from('conversations').update({ last_message: newContent }).eq('id', conversationId);
+                }
+
+                if (io) {
+                  emitToUserRooms(io, userId, 'message_updated', {
+                    conversationId,
+                    contactPhone,
+                    oldContent: oldText,
+                    newContent,
+                    isEdited: true,
+                  }, sessionUuid);
+                  emitToUserRooms(io, userId, 'conversation_updated', {
+                    conversationId,
+                    contactPhone,
+                    lastMessage: newContent,
+                  }, sessionUuid);
+                }
+              }
+            } catch (e) {
+              console.warn('[Baileys Edit] Error en DB:', e.message);
+            }
+            continue;
+          }
+        }
+      }
 
       const sessionData = sessions.get(userId) || sessions.get(validId);
 
