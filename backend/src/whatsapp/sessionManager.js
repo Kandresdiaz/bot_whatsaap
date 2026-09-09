@@ -25,6 +25,7 @@ try {
 // Mapa de sesiones activas: userId → { sock, businessId, status, qr, phone }
 const sessions = new Map();
 const userDisconnectedMap = new Set();
+const reconnectTimers = new Map();
 
 // Caché en memoria de contactos por usuario: userId → Map(jid → name)
 const userContacts = new Map();
@@ -192,6 +193,13 @@ const storeMessages = (userId, messages = []) => {
       }
     }
   }
+
+  // Prevenir fugas de memoria RAM en Render (máx 200 mensajes en caché reciente)
+  if (store.messages.size > 200) {
+    const excess = store.messages.size - 200;
+    const keys = Array.from(store.messages.keys()).slice(0, excess);
+    for (const k of keys) store.messages.delete(k);
+  }
 };
 
 const SESSIONS_DIR = path.join(__dirname, '../../sessions');
@@ -217,36 +225,11 @@ const deleteSessionFolder = (userId) => {
   }
 };
 
-// Helper para limpiar conversaciones y mensajes de una sesión desvinculada/cerrada
+// Helper para preservar conversaciones y mensajes de una sesión (NUNCA borrar datos de clientes)
 const clearUserConversationsFromDb = async (userId) => {
-  if (!supabase || !userId) return;
-  try {
-    const validUserId = getValidUserId(userId);
-    const { data: userSessions } = await supabase
-      .from('whatsapp_sessions')
-      .select('id')
-      .eq('user_id', validUserId);
-
-    const sessionIds = [];
-    if (Array.isArray(userSessions)) {
-      userSessions.forEach(s => { if (s?.id) sessionIds.push(s.id); });
-    }
-    if (sessionIds.length === 0) return;
-
-    const { data: convs } = await supabase
-      .from('conversations')
-      .select('id')
-      .in('session_id', sessionIds);
-
-    if (convs && convs.length > 0) {
-      const convIds = convs.map(c => c.id);
-      await supabase.from('messages').delete().in('conversation_id', convIds);
-      await supabase.from('conversations').delete().in('session_id', sessionIds);
-      console.log(`[Baileys Auth] 🧹 Eliminadas ${convs.length} conversaciones de sesión desvinculada para ${validUserId}`);
-    }
-  } catch (e) {
-    console.warn('[Baileys Auth] Aviso limpiando conversaciones en DB:', e.message);
-  }
+  // Las conversaciones, citas, pedidos y datos del CRM nunca deben eliminarse
+  // automáticamente ante reconexiones o desconexiones de WhatsApp.
+  console.log(`[Baileys Auth] Preservando conversaciones y datos de CRM en DB para ${userId}`);
 };
 
 const PRIMARY_ADMIN_ID = '0b8c0710-b97a-4e2d-acf8-b7f33dcd5b3d';
@@ -341,7 +324,6 @@ const getSessionUuid = async (userId) => {
   }
 };
 
-// Helper seguro para upsert a Supabase sin lanzar excepción
 const safeUpsert = async (table, data, conflict = 'user_id') => {
   if (!supabase) return;
   try {
@@ -349,9 +331,15 @@ const safeUpsert = async (table, data, conflict = 'user_id') => {
     if (dataWithValidId.user_id) {
       dataWithValidId.user_id = getValidUserId(dataWithValidId.user_id);
     }
-    const { data: existing } = await supabase.from(table).select('id').eq('user_id', dataWithValidId.user_id).maybeSingle();
-    if (existing?.id) {
-      await supabase.from(table).update(dataWithValidId).eq('id', existing.id);
+    const { data: existing } = await supabase
+      .from(table)
+      .select('id')
+      .eq('user_id', dataWithValidId.user_id)
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    if (existing && existing.length > 0 && existing[0]?.id) {
+      await supabase.from(table).update(dataWithValidId).eq('id', existing[0].id);
     } else {
       await supabase.from(table).insert(dataWithValidId);
     }
@@ -1029,10 +1017,10 @@ const createSession = async (userId, businessId, io, forceClean = false, isManua
     printQRInTerminal: false,
     browser: Browsers.ubuntu('Chrome'),
     generateHighQualityLinkPreview: false,
-    syncFullHistory: true,
-    downloadHistory: true,
+    syncFullHistory: false,
+    downloadHistory: false,
     markOnlineOnConnect: false,
-    shouldSyncHistoryMessage: () => true,
+    shouldSyncHistoryMessage: () => false,
     getMessage: async (key) => {
       try {
         const store = getUserStore(userId);
@@ -1042,16 +1030,19 @@ const createSession = async (userId, businessId, io, forceClean = false, isManua
       } catch (_) {}
       return undefined;
     },
-    connectTimeoutMs: 60000,
-    keepAliveIntervalMs: 25000,
-    defaultQueryTimeoutMs: 60000,
-    retryRequestDelayMs: 2000,
+    connectTimeoutMs: 30000,
+    keepAliveIntervalMs: 15000,
+    defaultQueryTimeoutMs: 30000,
+    retryRequestDelayMs: 2500,
     maxMsgRetryCount: 5,
   });
 
-  // Guardar instancia de socket activa
-  const currentS = sessions.get(userId) || {};
-  sessions.set(userId, { ...currentS, sock, status: 'connecting' });
+  // Guardar instancia de socket activa en todas las referencias de usuario
+  const currentS = sessions.get(userId) || sessions.get(validId) || {};
+  const updatedConnectingSession = { ...currentS, sock, status: 'connecting' };
+  sessions.set(userId, updatedConnectingSession);
+  sessions.set(validId, updatedConnectingSession);
+  if (validId === ADMIN_UUID || userId === 'admin') sessions.set('admin', updatedConnectingSession);
 
   // Guardar credenciales al cambiar (en disco y debounced en Supabase para evitar saturación)
   sock.ev.on('creds.update', async () => {
@@ -1126,66 +1117,14 @@ const createSession = async (userId, businessId, io, forceClean = false, isManua
     // ── QR generado ──────────────────────────────────────────────────────
     if (qr) {
       const validId = getValidUserId(userId);
-
-      // Si la sesión fue iniciada en segundo plano (auto-reconexión, restauración de servidor, etc.)
-      // y NO fue solicitada manualmente por el usuario en la pantalla de conectar:
-      // Significa que las credenciales fueron revocadas / el usuario cerró sesión en su teléfono.
-      if (!isManualStart) {
-        console.log(`[Baileys] 🛑 QR no solicitado durante reconexión de fondo para ${userId}. Dispositivo desvinculado desde el teléfono.`);
-        userDisconnectedMap.add(userId);
-        userDisconnectedMap.add(validId);
-
-        try { sock.ev.removeAllListeners(); } catch (_) {}
-        try { sock.end(new Error('Dispositivo desvinculado desde el teléfono')); } catch (_) {}
-
-        // Eliminar de RAM
-        sessions.delete(userId);
-        sessions.delete(validId);
-        const isAdmin = (userId === 'admin' || userId === ADMIN_UUID || validId === PRIMARY_ADMIN_ID);
-        if (isAdmin) {
-          sessions.delete('admin');
-          sessions.delete(ADMIN_UUID);
-          sessions.delete(PRIMARY_ADMIN_ID);
-        }
-
-        // Limpiar memoria RAM de chats y contactos
-        userStores.delete(userId);
-        userStores.delete(validId);
-        userContacts.delete(userId);
-        userContacts.delete(validId);
-
-        // Limpiar carpetas físicas de credenciales invalidadas
-        deleteSessionFolder(userId);
-        deleteSessionFolder(validId);
-
-        // Limpiar conversaciones y mensajes en base de datos para no dejar chats huérfanos
-        clearUserConversationsFromDb(validId).catch(() => {});
-
-        safeUpsert('whatsapp_sessions', {
-          user_id: validId,
-          status: 'disconnected',
-          phone_number: null,
-          qr_code: null,
-          session_data: null,
-          connected_at: null,
-        }).catch(e => console.warn('[DB] Error guardando desconexión:', e.message));
-
-        if (io) {
-          const payload = { shouldReconnect: false, isLoggedOut: true, status: 'disconnected' };
-          emitToUserRooms(io, userId, 'disconnected', payload);
-          emitToUserRooms(io, validId, 'disconnected', payload);
-        }
-        return;
-      }
-
       const sData = sessions.get(userId) || sessions.get(validId) || {};
-      
+
       // Si es exactamente el mismo código QR que ya tenemos en memoria, no regenerar ni re-emitir
       if (sData.rawQr === qr && sData.qr) {
         return;
       }
 
-      console.log(`[QR] Generado correctamente para ${userId}`);
+      console.log(`[QR] Generado correctamente para ${userId} (manual: ${isManualStart})`);
       try {
         const QRCode = require('qrcode');
         const qrDataUrl = await QRCode.toDataURL(qr, { width: 300, margin: 2 });
@@ -1210,6 +1149,7 @@ const createSession = async (userId, businessId, io, forceClean = false, isManua
       } catch (errQr) {
         console.error('[QR] Error generando DataURL:', errQr.message);
       }
+      return;
     }
 
     // ── Conexión establecida ──────────────────────────────────────────────
@@ -1391,12 +1331,8 @@ const createSession = async (userId, businessId, io, forceClean = false, isManua
 
       const isLoggedOut =
         code === DisconnectReason.loggedOut ||
-        code === DisconnectReason.badSession ||
         code === 401 ||
-        code === 403 ||
         errMsg.includes('logged out') ||
-        errMsg.includes('unauthorized') ||
-        errMsg.includes('forbidden') ||
         errMsg.includes('device_removed') ||
         errData.includes('logged out');
 
@@ -1411,6 +1347,11 @@ const createSession = async (userId, businessId, io, forceClean = false, isManua
         userDisconnectedMap.add(userId);
         userDisconnectedMap.add(validId);
 
+        if (reconnectTimers.has(validId)) {
+          clearTimeout(reconnectTimers.get(validId));
+          reconnectTimers.delete(validId);
+        }
+
         try { sock.ev.removeAllListeners(); } catch (_) {}
         try { sock.end(new Error('Sesión cerrada')); } catch (_) {}
 
@@ -1424,7 +1365,7 @@ const createSession = async (userId, businessId, io, forceClean = false, isManua
           sessions.delete(PRIMARY_ADMIN_ID);
         }
 
-        // Limpiar memoria RAM de chats y contactos para que no persistan chats viejos
+        // Limpiar memoria RAM de chats y contactos
         userStores.delete(userId);
         userStores.delete(validId);
         userContacts.delete(userId);
@@ -1433,9 +1374,6 @@ const createSession = async (userId, businessId, io, forceClean = false, isManua
         // Limpiar carpetas físicas de credenciales invalidadas
         deleteSessionFolder(userId);
         deleteSessionFolder(validId);
-
-        // Limpiar conversaciones y mensajes en base de datos para no dejar chats huérfanos
-        clearUserConversationsFromDb(validId).catch(() => {});
 
         safeUpsert('whatsapp_sessions', {
           user_id: validId,
@@ -1452,9 +1390,9 @@ const createSession = async (userId, businessId, io, forceClean = false, isManua
           emitToUserRooms(io, validId, 'disconnected', payload);
         }
       } else {
-        // Si va a reconectar por fallo temporal de red o servidor
+        // Reconexión automática por fallo temporal de red o solicitud de reinicio de Baileys
         const prevS = sessions.get(userId) || sessions.get(validId) || {};
-        const sData = { ...prevS, sock: null, status: 'connecting' };
+        const sData = { ...prevS, sock: null, status: 'reconnecting' };
         sessions.set(userId, sData);
         sessions.set(validId, sData);
         const isAdmin = (userId === 'admin' || userId === ADMIN_UUID || validId === PRIMARY_ADMIN_ID);
@@ -1472,12 +1410,23 @@ const createSession = async (userId, businessId, io, forceClean = false, isManua
           emitToUserRooms(io, validId, 'reconnecting', payload);
         }
 
-        console.log(`[Baileys] Reconectando ${userId} en 3s... (código: ${code}, motivo: ${errMsg})`);
-        setTimeout(() => {
+        // Si WhatsApp pide reinicio (515), reconectar casi de inmediato (1s); otros códigos en 3s
+        const delay = (code === DisconnectReason.restartRequired || code === 515) ? 1000 : 3000;
+        console.log(`[Baileys] 🔄 Reconectando ${userId} automáticamente en ${delay}ms... (código: ${code}, motivo: ${errMsg})`);
+
+        if (reconnectTimers.has(validId)) {
+          clearTimeout(reconnectTimers.get(validId));
+        }
+
+        const timer = setTimeout(() => {
+          reconnectTimers.delete(validId);
           if (!userDisconnectedMap.has(userId) && !userDisconnectedMap.has(validId)) {
-            createSession(userId, businessId, io, false, false).catch(console.error);
+            createSession(userId, businessId, io, false, false).catch(err => {
+              console.warn(`[Baileys Reconnect] Error reconectando ${userId}:`, err.message);
+            });
           }
-        }, 3000);
+        }, delay);
+        reconnectTimers.set(validId, timer);
       }
     }
   });
@@ -1675,17 +1624,18 @@ const getSession = (userId) => {
 const restoreSessions = async (io) => {
   if (!supabase) return;
   try {
-    // 1. Limpiar sesiones obsoletas atascadas en 'connecting' o 'qr_ready'
+    // 1. Limpiar sesiones obsoletas sin credenciales guardadas
     await supabase
       .from('whatsapp_sessions')
       .update({ status: 'disconnected', qr_code: null })
-      .in('status', ['connecting', 'qr_ready']);
+      .in('status', ['connecting', 'qr_ready'])
+      .is('session_data', null);
 
-    // 2. Solo restaurar sesiones que estaban efectivamente conectadas y con credenciales guardadas
+    // 2. Restaurar cualquier sesión con credenciales guardadas que no fue desconectada explícitamente
     const { data: activeSessions } = await supabase
       .from('whatsapp_sessions')
       .select('user_id, status, session_data')
-      .eq('status', 'connected')
+      .neq('status', 'disconnected')
       .not('session_data', 'is', null);
 
     if (!activeSessions || activeSessions.length === 0) {
@@ -1693,12 +1643,14 @@ const restoreSessions = async (io) => {
       return;
     }
 
+    console.log(`[Restore] Encontradas ${activeSessions.length} sesiones con credenciales para restaurar.`);
+
     for (const session of activeSessions) {
       if (!session || !session.user_id) continue;
       try {
-        console.log(`[Restore] Restaurando sesión activa para ${session.user_id}...`);
+        console.log(`[Restore] 🔄 Restaurando sesión activa para ${session.user_id}...`);
         await createSession(session.user_id, null, io, false, false);
-        await new Promise(r => setTimeout(r, 1500));
+        await new Promise(r => setTimeout(r, 2000));
       } catch (e) {
         console.error(`[Restore] Error restaurando ${session.user_id}:`, e.message);
       }
@@ -1707,6 +1659,29 @@ const restoreSessions = async (io) => {
     console.error('[Restore] Error en restoreSessions:', e.message);
   }
 };
+
+// Respaldo periódico en segundo plano de credenciales completas para todas las sesiones activas
+const saveAllActiveSessions = async () => {
+  if (!supabase) return;
+  try {
+    for (const [userId, s] of sessions.entries()) {
+      if (s?.sock && s?.status === 'connected') {
+        const validId = getValidUserId(userId);
+        const sessionDir = path.join(SESSIONS_DIR, validId);
+        if (fs.existsSync(sessionDir)) {
+          await saveFullSessionToDb(validId, sessionDir);
+        }
+      }
+    }
+  } catch (errSaveAll) {
+    console.warn('[Baileys Auth] Error en saveAllActiveSessions:', errSaveAll.message);
+  }
+};
+
+// Ejecutar respaldo cada 45 segundos para prevenir pérdida de claves si Render reinicia
+setInterval(() => {
+  saveAllActiveSessions().catch(() => {});
+}, 45 * 1000);
 
 const sendMessage = async (userId, to, text) => {
   const validUserId = getValidUserId(userId);
@@ -1909,6 +1884,7 @@ module.exports = {
   cleanPhoneFromJid,
   setContactBotStatus,
   isContactBotDisabled,
+  saveAllActiveSessions,
 };
 
 
