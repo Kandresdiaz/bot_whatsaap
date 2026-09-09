@@ -35,17 +35,30 @@ const supabaseUrl = (!isPlaceholder(rawUrl) && rawUrl) || DEFAULT_URL;
 let supabaseKey = null;
 let keyRole = null;
 
+// Supabase tiene dos formatos de llave:
+//   - Nuevo:   sb_secret_...  (privada, equivale a service_role)
+//              sb_publishable_... (pública, equivale a anon)
+//   - Legacy:  un JWT cuyos claims traen "role" y "ref".
+// El formato nuevo no es un JWT, así que no se le pueden leer claims: se identifica
+// por el prefijo.
+function describeKey(token) {
+  if (/^sb_secret_/.test(token)) return { role: 'service_role', ref: null };
+  if (/^sb_publishable_/.test(token)) return { role: 'anon', ref: null };
+  const claims = getJwtClaims(token);
+  return { role: claims?.role || 'desconocido', ref: claims?.ref || null };
+}
+
 for (const [label, candidate] of [['SUPABASE_SERVICE_KEY', rawService], ['SUPABASE_ANON_KEY', rawAnon]]) {
   if (isPlaceholder(candidate)) continue;
 
-  const claims = getJwtClaims(candidate);
-  if (claims?.ref && claims.ref !== EXPECTED_REF) {
-    console.warn(`[SUPABASE] ${label} pertenece al proyecto "${claims.ref}" y no a "${EXPECTED_REF}". Ignorada.`);
+  const { role, ref } = describeKey(candidate);
+  if (ref && ref !== EXPECTED_REF) {
+    console.warn(`[SUPABASE] ${label} pertenece al proyecto "${ref}" y no a "${EXPECTED_REF}". Ignorada.`);
     continue;
   }
 
   supabaseKey = candidate;
-  keyRole = claims?.role || 'desconocido';
+  keyRole = role;
   break;
 }
 
