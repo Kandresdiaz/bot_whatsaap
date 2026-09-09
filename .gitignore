@@ -8,3 +8,9 @@ dist/
 *.log
 sessions/
 backend/sessions/
+
+# Respaldos y datos de produccion: NUNCA subir (repo publico)
+respaldo_*.json
+backend/respaldo_*.json
+*.bak
+.env.*

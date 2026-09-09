@@ -270,21 +270,28 @@ router.get('/:conversationId/messages', async (req, res) => {
     const { conversationId } = req.params;
     const { phone: queryPhone, userId: queryUserId } = req.query;
 
-    const { getSessionUuid, getValidUserId, getUserStore, extractText, safeToIsoString, resolvePhoneAndJid, cleanPhoneFromJid } = require('../whatsapp/sessionManager');
+    const { getSessionUuid, getUserSessionIds, getValidUserId, getUserStore, extractText, safeToIsoString, resolvePhoneAndJid, cleanPhoneFromJid } = require('../whatsapp/sessionManager');
 
     const validUserId = getValidUserId(queryUserId || 'admin');
     const rawTargetPhone = (queryPhone || conversationId || '').toString().trim();
     const resolvedTarget = resolvePhoneAndJid(rawTargetPhone);
     const cleanPhone = resolvedTarget.phone || cleanPhoneFromJid(rawTargetPhone);
 
+    // Acotar SIEMPRE a las sesiones del usuario que pregunta. Sin este filtro, buscar por
+    // contact_phone devolvía las conversaciones de cualquier negocio del SaaS que tuviera
+    // guardado ese mismo número, y el endpoint terminaba sirviendo chats ajenos.
+    const ownSessionIds = await getUserSessionIds(validUserId);
+    const sessionScope = ownSessionIds.length > 0 ? ownSessionIds : null;
+
     let realConvId = isUuid(conversationId) ? conversationId : null;
 
     // Buscar UUID real de la conversación si no lo tenemos
-    if (!realConvId && cleanPhone) {
+    if (!realConvId && cleanPhone && sessionScope) {
       try {
         const { data: conv } = await supabase
           .from('conversations')
           .select('id')
+          .in('session_id', sessionScope)
           .eq('contact_phone', cleanPhone)
           .order('last_message_at', { ascending: false })
           .limit(1);
@@ -297,14 +304,22 @@ router.get('/:conversationId/messages', async (req, res) => {
     const convIdsToQuery = new Set();
     if (realConvId) convIdsToQuery.add(realConvId);
 
-    if (cleanPhone) {
+    if (cleanPhone && sessionScope) {
       try {
-        const { data: relatedConvs } = await supabase.from('conversations').select('id').eq('contact_phone', cleanPhone);
+        const { data: relatedConvs } = await supabase
+          .from('conversations')
+          .select('id')
+          .in('session_id', sessionScope)
+          .eq('contact_phone', cleanPhone);
         if (relatedConvs && relatedConvs.length > 0) {
           relatedConvs.forEach(c => convIdsToQuery.add(c.id));
         }
         if (resolvedTarget?.lid && resolvedTarget.lid !== cleanPhone) {
-          const { data: lidConvs } = await supabase.from('conversations').select('id').eq('contact_phone', resolvedTarget.lid);
+          const { data: lidConvs } = await supabase
+            .from('conversations')
+            .select('id')
+            .in('session_id', sessionScope)
+            .eq('contact_phone', resolvedTarget.lid);
           if (lidConvs && lidConvs.length > 0) {
             lidConvs.forEach(c => convIdsToQuery.add(c.id));
           }
@@ -411,10 +426,16 @@ router.post('/create', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Número de teléfono inválido' });
     }
 
-    // Buscar si ya existe
+    // Buscar si ya existe, solo dentro de las sesiones de este usuario. Sin ese filtro el
+    // endpoint podía devolver la conversación de otro negocio que tuviera el mismo número.
+    const { getUserSessionIds } = require('../whatsapp/sessionManager');
+    const ownSessionIds = await getUserSessionIds(validUserId);
+    if (sessionUuid && !ownSessionIds.includes(sessionUuid)) ownSessionIds.push(sessionUuid);
+
     let { data: existing } = await supabase
       .from('conversations')
       .select('*')
+      .in('session_id', ownSessionIds.length > 0 ? ownSessionIds : [sessionUuid])
       .eq('contact_phone', cleanPhone)
       .limit(1);
 
@@ -495,7 +516,7 @@ router.patch('/:conversationId/toggle-bot', async (req, res) => {
   try {
     const { conversationId } = req.params;
     const { bot_active, phone: reqPhone, userId } = req.body;
-    const { setContactBotStatus, getSessionUuid, getValidUserId } = require('../whatsapp/sessionManager');
+    const { setContactBotStatus, getSessionUuid, getUserSessionIds, getValidUserId } = require('../whatsapp/sessionManager');
 
     const cleanPhone = (reqPhone || conversationId || '').toString().replace('ram_', '').replace(/[^0-9]/g, '');
 
@@ -510,16 +531,22 @@ router.patch('/:conversationId/toggle-bot', async (req, res) => {
         .eq('id', conversationId);
     }
 
-    if (cleanPhone) {
+    // Acotado a las sesiones de este usuario: sin el filtro, pausar el bot para un contacto
+    // lo pausaba también en todos los demás negocios del SaaS que tuvieran ese número.
+    const ownSessionIds = await getUserSessionIds(userId || 'admin');
+
+    if (cleanPhone && ownSessionIds.length > 0) {
       const { data: existing } = await supabase
         .from('conversations')
         .select('id')
+        .in('session_id', ownSessionIds)
         .eq('contact_phone', cleanPhone);
 
       if (existing && existing.length > 0) {
         await supabase
           .from('conversations')
           .update({ bot_active })
+          .in('session_id', ownSessionIds)
           .eq('contact_phone', cleanPhone);
       } else {
         const validUserId = getValidUserId(userId || 'admin');
@@ -549,7 +576,7 @@ router.patch('/:conversationId/blacklist', async (req, res) => {
   try {
     const { conversationId } = req.params;
     const { blacklisted, reason, phone: reqPhone, userId } = req.body;
-    const { setContactBotStatus, getSessionUuid, getValidUserId } = require('../whatsapp/sessionManager');
+    const { setContactBotStatus, getSessionUuid, getUserSessionIds, getValidUserId } = require('../whatsapp/sessionManager');
 
     const cleanPhone = (reqPhone || conversationId || '').toString().replace('ram_', '').replace(/[^0-9]/g, '');
 
@@ -568,10 +595,15 @@ router.patch('/:conversationId/blacklist', async (req, res) => {
         .eq('id', conversationId);
     }
 
-    if (cleanPhone) {
+    // Acotado a las sesiones de este usuario: sin el filtro, poner un contacto en lista negra
+    // lo bloqueaba también en todos los demás negocios del SaaS que tuvieran ese número.
+    const ownSessionIds = await getUserSessionIds(userId || 'admin');
+
+    if (cleanPhone && ownSessionIds.length > 0) {
       const { data: existing } = await supabase
         .from('conversations')
         .select('id')
+        .in('session_id', ownSessionIds)
         .eq('contact_phone', cleanPhone);
 
       if (existing && existing.length > 0) {
@@ -582,6 +614,7 @@ router.patch('/:conversationId/blacklist', async (req, res) => {
             blacklist_reason: reason || null,
             bot_active: !blacklisted,
           })
+          .in('session_id', ownSessionIds)
           .eq('contact_phone', cleanPhone);
       } else {
         const validUserId = getValidUserId(userId || 'admin');

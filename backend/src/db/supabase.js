@@ -2,54 +2,90 @@ const { createClient } = require('@supabase/supabase-js');
 
 const cleanString = (val) => (val || '').trim().replace(/^['"]|['"]$/g, '');
 
+// El proyecto al que deben pertenecer las llaves. La URL no es un secreto.
 const DEFAULT_URL = 'https://rptxtzrwoyuedbjzpqhp.supabase.co';
-const DEFAULT_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJwdHh0enJ3b3l1ZWRianpwcWhwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMxOTQ2OTksImV4cCI6MjA5ODc3MDY5OX0.Mp-Hj5PcSZH-tVIhQNsDkdhWqMRUOFxH0pV8P23eM0E';
 const EXPECTED_REF = 'rptxtzrwoyuedbjzpqhp';
 
-function getJwtRef(token) {
+// NOTA DE SEGURIDAD
+// Aquí había una llave anon de Supabase incrustada en el código como fallback. Este repo
+// es público, así que esa llave quedó expuesta en GitHub y en todo el historial de git.
+// Mientras RLS esté desactivado, esa llave da lectura y escritura sobre TODAS las tablas.
+// Las llaves ahora se leen únicamente de variables de entorno; si faltan, el proceso
+// falla de inmediato en vez de degradarse en silencio a una llave pública.
+
+function getJwtClaims(token) {
   try {
     const parts = (token || '').split('.');
     if (parts.length === 3) {
-      const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf8'));
-      return payload.ref || null;
+      return JSON.parse(Buffer.from(parts[1], 'base64').toString('utf8'));
     }
   } catch (_) {}
   return null;
 }
 
+const isPlaceholder = (val) => !val || /your_|_here|xxx/i.test(val);
+
 const rawUrl = cleanString(process.env.SUPABASE_URL);
 const rawService = cleanString(process.env.SUPABASE_SERVICE_KEY);
 const rawAnon = cleanString(process.env.SUPABASE_ANON_KEY);
 
-const supabaseUrl = rawUrl || DEFAULT_URL;
+const supabaseUrl = (!isPlaceholder(rawUrl) && rawUrl) || DEFAULT_URL;
 
-let supabaseKey = DEFAULT_ANON;
-if (rawService && !rawService.includes('your_service')) {
-  const serviceRef = getJwtRef(rawService);
-  if (serviceRef && serviceRef !== EXPECTED_REF) {
-    console.warn(`[SUPABASE] ADVERTENCIA: SUPABASE_SERVICE_KEY pertenece al proyecto "${serviceRef}" en lugar de "${EXPECTED_REF}". Usando DEFAULT_ANON para prevenir error 401.`);
-    supabaseKey = DEFAULT_ANON;
-  } else {
-    supabaseKey = rawService;
-  }
-} else if (rawAnon) {
-  const anonRef = getJwtRef(rawAnon);
-  if (anonRef && anonRef !== EXPECTED_REF) {
-    console.warn(`[SUPABASE] ADVERTENCIA: SUPABASE_ANON_KEY pertenece a "${anonRef}". Usando DEFAULT_ANON.`);
-    supabaseKey = DEFAULT_ANON;
-  } else {
-    supabaseKey = rawAnon;
-  }
+// Elegir llave: service_role primero, anon como respaldo. Ambas deben ser del proyecto correcto.
+let supabaseKey = null;
+let keyRole = null;
+
+// Supabase tiene dos formatos de llave:
+//   - Nuevo:   sb_secret_...  (privada, equivale a service_role)
+//              sb_publishable_... (pública, equivale a anon)
+//   - Legacy:  un JWT cuyos claims traen "role" y "ref".
+// El formato nuevo no es un JWT, así que no se le pueden leer claims: se identifica
+// por el prefijo.
+function describeKey(token) {
+  if (/^sb_secret_/.test(token)) return { role: 'service_role', ref: null };
+  if (/^sb_publishable_/.test(token)) return { role: 'anon', ref: null };
+  const claims = getJwtClaims(token);
+  return { role: claims?.role || 'desconocido', ref: claims?.ref || null };
 }
 
-const supabase = createClient(supabaseUrl, supabaseKey);
+for (const [label, candidate] of [['SUPABASE_SERVICE_KEY', rawService], ['SUPABASE_ANON_KEY', rawAnon]]) {
+  if (isPlaceholder(candidate)) continue;
+
+  const { role, ref } = describeKey(candidate);
+  if (ref && ref !== EXPECTED_REF) {
+    console.warn(`[SUPABASE] ${label} pertenece al proyecto "${ref}" y no a "${EXPECTED_REF}". Ignorada.`);
+    continue;
+  }
+
+  supabaseKey = candidate;
+  keyRole = role;
+  break;
+}
+
+if (!supabaseKey) {
+  console.error('');
+  console.error('[SUPABASE] ERROR FATAL: no hay ninguna llave de Supabase utilizable.');
+  console.error('  Define SUPABASE_SERVICE_KEY (recomendado) o SUPABASE_ANON_KEY en el entorno.');
+  console.error('  En local: backend/.env   |   En producción: variables de entorno de Render.');
+  console.error('  La llave service_role está en Supabase > Settings > API.');
+  console.error('');
+  throw new Error('SUPABASE_SERVICE_KEY / SUPABASE_ANON_KEY no configuradas');
+}
+
+if (keyRole !== 'service_role') {
+  console.warn(`[SUPABASE] Usando una llave con rol "${keyRole}". El backend debería usar service_role.`);
+}
+
+const supabase = createClient(supabaseUrl, supabaseKey, {
+  auth: { persistSession: false },
+});
 
 // Verificación asíncrona de conectividad sin bloquear inicio
 supabase.from('users').select('id', { count: 'exact', head: true }).then(({ error }) => {
   if (error) {
     console.error('[SUPABASE] Error de conexión inicial:', error.message);
   } else {
-    console.log('[SUPABASE] Conexión con base de datos verificada con éxito ✅');
+    console.log(`[SUPABASE] Conexión verificada ✅ (rol: ${keyRole})`);
   }
 }).catch(err => {
   console.error('[SUPABASE] Excepción en conexión:', err.message);

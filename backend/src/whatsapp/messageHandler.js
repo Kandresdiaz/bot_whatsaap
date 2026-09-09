@@ -201,12 +201,19 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
 
   // ── 2. Guardar mensaje entrante ───────────────────────────────────────────
   if (conversation?.id) {
+    // Timestamp REAL del mensaje. syncChatsAndMessagesToDb inserta este mismo mensaje
+    // usando msg.messageTimestamp; si aquí usáramos new Date() las dos filas quedarían con
+    // timestamps distintos, la deduplicación no las reconocería como la misma y el mensaje
+    // saldría duplicado en el chat.
+    const { safeToIsoString } = require('./sessionManager');
+    const inboundTs = safeToIsoString(msg.messageTimestamp);
+
     await safeQuery(() => supabase.from('messages').insert({
       conversation_id: conversation.id,
       content: text,
       direction: 'inbound',
       sent_by: 'human',
-      timestamp: new Date().toISOString(),
+      timestamp: inboundTs,
     }));
 
     // Emitir tiempo real al dashboard INMEDIATAMENTE (0ms)
@@ -214,7 +221,7 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
       try {
         const { emitToUserRooms } = require('./sessionManager');
         const sessionUuid = await require('./sessionManager').getSessionUuid(userId);
-        const msgObj = { id: Date.now().toString(), content: text, direction: 'inbound', sent_by: 'human', timestamp: new Date().toISOString() };
+        const msgObj = { id: msg.key?.id || Date.now().toString(), content: text, direction: 'inbound', sent_by: 'human', timestamp: inboundTs };
         emitToUserRooms(global.io, userId, 'new_message', {
           conversationId: conversation?.id || `conv_${contactPhone}`,
           contactPhone,
@@ -251,15 +258,24 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
   let isBlacklisted = conversation ? conversation.is_blacklisted : false;
 
   try {
-    const { data: dbCheck } = await supabase
-      .from('conversations')
-      .select('bot_active, is_blacklisted')
-      .eq('contact_phone', contactPhone);
+    // Acotado a las sesiones de ESTE usuario. Sin el filtro, la consulta traía las filas de
+    // todos los negocios del SaaS que tuvieran ese contacto, y bastaba con que uno solo
+    // hubiera pausado el bot para ese número para que el bot dejara de responder a todos.
+    const { getUserSessionIds } = require('./sessionManager');
+    const ownSessionIds = await getUserSessionIds(userId);
 
-    if (dbCheck && dbCheck.length > 0) {
-      for (const row of dbCheck) {
-        if (row.bot_active === false) isChatBotActive = false;
-        if (row.is_blacklisted === true) isBlacklisted = true;
+    if (ownSessionIds.length > 0) {
+      const { data: dbCheck } = await supabase
+        .from('conversations')
+        .select('bot_active, is_blacklisted')
+        .in('session_id', ownSessionIds)
+        .eq('contact_phone', contactPhone);
+
+      if (dbCheck && dbCheck.length > 0) {
+        for (const row of dbCheck) {
+          if (row.bot_active === false) isChatBotActive = false;
+          if (row.is_blacklisted === true) isBlacklisted = true;
+        }
       }
     }
   } catch (_) {}
