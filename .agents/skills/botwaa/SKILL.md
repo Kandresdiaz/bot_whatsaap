@@ -752,6 +752,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-09** | fix: aislamiento total de catalogos por usuario y bloqueo estricto de alucinacion de modelos cuando no hay productos registrados (`14f673e`) | Auto-deploy |
 
+| **2026-09-09** | fix(rag): strict grounding with stopwords filtering and supreme priority custom instructions (`973662d`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
