@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { supabase } = require('../db/supabase');
+const { clearBusinessAiCache } = require('../ai/aiCache');
 
 // Helper para obtener el business_id real a partir del user_id o business_id
 const resolveBusinessId = async (idOrUserId) => {
@@ -106,6 +107,7 @@ router.post('/', async (req, res) => {
       return res.status(500).json({ success: false, error: error.message });
     }
 
+    clearBusinessAiCache(businessId).catch(() => {});
     return res.json({ success: true, product: data && data[0] });
   } catch (err) {
     console.error('[POST Product Crash Safe]:', err.message);
@@ -147,7 +149,12 @@ router.put('/:id', async (req, res) => {
       return res.status(500).json({ success: false, error: error.message });
     }
 
-    return res.json({ success: true, product: data && data[0] });
+    const updatedProd = data && data[0];
+    if (updatedProd?.business_id) {
+      clearBusinessAiCache(updatedProd.business_id).catch(() => {});
+    }
+
+    return res.json({ success: true, product: updatedProd });
   } catch (err) {
     console.error('[PUT Product Crash Safe]:', err.message);
     return res.status(500).json({ success: false, error: err.message });
@@ -171,7 +178,12 @@ router.patch('/:id/toggle', async (req, res) => {
       return res.status(500).json({ success: false, error: error.message });
     }
 
-    return res.json({ success: true, product: data && data[0] });
+    const toggledProd = data && data[0];
+    if (toggledProd?.business_id) {
+      clearBusinessAiCache(toggledProd.business_id).catch(() => {});
+    }
+
+    return res.json({ success: true, product: toggledProd });
   } catch (err) {
     return res.status(500).json({ success: false, error: error.message });
   }
@@ -181,6 +193,7 @@ router.patch('/:id/toggle', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
+    const { data: prod } = await supabase.from('products_services').select('business_id').eq('id', id).single();
     const { error } = await supabase
       .from('products_services')
       .delete()
@@ -189,6 +202,10 @@ router.delete('/:id', async (req, res) => {
     if (error) {
       console.error('[DELETE Product Error]:', error.message);
       return res.status(500).json({ success: false, error: error.message });
+    }
+
+    if (prod?.business_id) {
+      clearBusinessAiCache(prod.business_id).catch(() => {});
     }
 
     return res.json({ success: true, message: 'Producto eliminado correctamente' });

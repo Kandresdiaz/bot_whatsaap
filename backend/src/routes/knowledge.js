@@ -57,6 +57,8 @@ router.get('/:businessId', async (req, res) => {
   }
 });
 
+const { clearBusinessAiCache } = require('../ai/aiCache');
+
 // Agregar texto o FAQ
 router.post('/:businessId', async (req, res) => {
   const { businessId } = req.params;
@@ -67,6 +69,10 @@ router.post('/:businessId', async (req, res) => {
     .insert({ business_id: businessId, type, title, content })
     .select()
     .single();
+
+  if (!error) {
+    clearBusinessAiCache(businessId).catch(() => {});
+  }
 
   res.json({ success: !error, item: data, error: error?.message });
 });
@@ -92,6 +98,10 @@ router.post('/:businessId/upload', upload.single('file'), async (req, res) => {
       .select()
       .single();
 
+    if (!error) {
+      clearBusinessAiCache(businessId).catch(() => {});
+    }
+
     res.json({ success: !error, item: data, pages: parsed.numpages });
   } catch (err) {
     res.status(500).json({ success: false, error: 'Error procesando PDF: ' + err.message });
@@ -102,13 +112,22 @@ router.post('/:businessId/upload', upload.single('file'), async (req, res) => {
 router.patch('/:id/toggle', async (req, res) => {
   const { id } = req.params;
   const { is_active } = req.body;
+  const { data: item } = await supabase.from('knowledge_base').select('business_id').eq('id', id).single();
   await supabase.from('knowledge_base').update({ is_active }).eq('id', id);
+  if (item?.business_id) {
+    clearBusinessAiCache(item.business_id).catch(() => {});
+  }
   res.json({ success: true });
 });
 
 // Eliminar item
 router.delete('/:id', async (req, res) => {
+  const { id } = req.params;
+  const { data: item } = await supabase.from('knowledge_base').select('business_id').eq('id', id).single();
   await supabase.from('knowledge_base').delete().eq('id', id);
+  if (item?.business_id) {
+    clearBusinessAiCache(item.business_id).catch(() => {});
+  }
   res.json({ success: true });
 });
 

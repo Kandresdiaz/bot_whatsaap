@@ -126,12 +126,25 @@ const isFuzzyWordMatch = (wordA, wordB) => {
   return false;
 };
 
+// Lista de palabras vacías (stopwords) en español para no contaminar búsquedas RAG
+const SPANISH_STOPWORDS = new Set([
+  'el', 'la', 'los', 'las', 'un', 'una', 'unos', 'unas',
+  'de', 'del', 'a', 'al', 'en', 'con', 'por', 'para', 'y', 'o', 'u',
+  'que', 'como', 'si', 'no', 'es', 'son', 'se', 'su', 'sus',
+  'mi', 'mis', 'tu', 'tus', 'me', 'te', 'le', 'les', 'lo', 'nos',
+  'tiene', 'tienen', 'hay', 'este', 'esta', 'estos', 'estas',
+  'mas', 'pero', 'bien', 'bueno', 'sobre', 'todo', 'todos', 'toda', 'todas',
+  'dime', 'cuentame', 'favor'
+]);
+
 // ─── 1. RAG: Buscar chunks relevantes de la knowledge base ───────────────────
 const searchKnowledge = (query, knowledge) => {
   if (!knowledge?.length) return [];
 
   const normQuery = normalizeSearchText(query);
-  const queryWords = normQuery.split(/\s+/).filter(w => w.length >= 2);
+  const queryTokens = normQuery.split(/\s+/).filter(w => w.length >= 2);
+  const meaningfulWords = queryTokens.filter(w => !SPANISH_STOPWORDS.has(w));
+  const queryWords = meaningfulWords.length > 0 ? meaningfulWords : queryTokens;
   if (queryWords.length === 0) return [];
 
   const scored = knowledge.map(item => {
@@ -139,19 +152,19 @@ const searchKnowledge = (query, knowledge) => {
     const normContent = normalizeSearchText(item.content || '');
 
     let score = 0;
-    // Coincidencia exacta de frase
-    if (normTitle.includes(normQuery)) score += 8;
-    if (normContent.includes(normQuery)) score += 4;
+    // Coincidencia exacta o casi exacta de frase
+    if (normTitle.includes(normQuery)) score += 10;
+    if (normContent.includes(normQuery)) score += 5;
 
     const titleWords = normTitle.split(/\s+/);
     const contentWords = normContent.split(/\s+/);
 
-    // Coincidencia por palabras individuales y similitud difusa (typos)
+    // Coincidencia por palabras individuales significativas y similitud difusa (typos)
     for (const word of queryWords) {
       if (normTitle.includes(word)) {
-        score += item.type === 'faq' ? 4 : 3;
+        score += item.type === 'faq' ? 5 : 4;
       } else if (titleWords.some(tw => isFuzzyWordMatch(word, tw))) {
-        score += item.type === 'faq' ? 3 : 2.2;
+        score += item.type === 'faq' ? 3.5 : 2.5;
       }
 
       if (normContent.includes(word)) {
@@ -161,7 +174,7 @@ const searchKnowledge = (query, knowledge) => {
       }
     }
 
-    // Boost prioritario si es FAQ
+    // Boost prioritario si es FAQ oficial
     if (item.type === 'faq' && score > 0) score += 1.5;
 
     return { ...item, score };
@@ -261,7 +274,9 @@ const rankAndFilterProducts = (query, products, subQueries = []) => {
 
   for (const term of allSearchTerms) {
     const norm = normalizeSearchText(term);
-    norm.split(/\s+/).filter(w => w.length >= 2).forEach(w => allWords.add(w));
+    const tokens = norm.split(/\s+/).filter(w => w.length >= 2);
+    const meaningful = tokens.filter(w => !SPANISH_STOPWORDS.has(w));
+    (meaningful.length > 0 ? meaningful : tokens).forEach(w => allWords.add(w));
   }
 
   if (allWords.size === 0) return products.slice(0, 10);
@@ -383,6 +398,17 @@ Fecha ISO actual: ${isoDateStr} (YYYY-MM-DD)
 Hora actual: ${currentTimeStr}
 Usa esta fecha para calcular con precisión días como "hoy", "mañana", "el jueves", "la próxima semana", etc.
 
+${business?.custom_instructions ? `================================================================================
+🚨 INSTRUCCIONES Y REGLAS PERSONALIZADAS DE LA EMPRESA (MÁXIMA PRIORIDAD ABSOLUTA)
+================================================================================
+${business.custom_instructions}
+================================================================================
+⚠️ REGLA DE ORO DE PREVALENCIA Y CERO ALUCINACIÓN:
+1. Las directrices personalizadas del dueño anteriores tienen PREVALENCIA ABSOLUTA sobre cualquier otra regla general.
+2. Si el dueño prohíbe inventar precios, características, autonomía, velocidad, inventario, promociones, descuentos, garantías o condiciones de financiación, DEBES CUMPLIRLO AL 100%.
+3. ⛔ PROHIBIDO INVENTAR gamas o niveles no registrados como "desde opciones económicas hasta versiones premium con mayor autonomía", "modelos de alta gama", etc.
+4. Si no tienes certeza sobre algún dato o no está registrado en el Catálogo ni en las FAQs, responde con amabilidad y naturalidad que vas a validarlo con un asesor comercial.
+================================================================================\n` : ''}
 ================================================================================
 🚫 REGLA FUNDAMENTAL #1: CERO FRASES COMO "ME DEDICO A VENDER" O "ESTOY PARA VENDERTE"
 ================================================================================
@@ -436,10 +462,11 @@ Usa esta fecha para calcular con precisión días como "hoy", "mañana", "el jue
      3. Remata con UNA SOLA pregunta guiada acorde al giro del negocio.
    ` : `
    - ⛔ EL NEGOCIO NO TIENE PRODUCTOS INDIVIDUALES CARGADOS EN EL CATÁLOGO:
-     1. 🚫 PROHIBIDO INVENTAR: NUNCA inventes nombres de modelos ficticios (ej: NO inventes "EcoRide", "PowerMax", "UrbanX", ni marcas o referencias inventadas), ni inventes precios numéricos que no estén registrados.
-     2. Responde confirmando con calidez que en "${busName}" son especialistas en ${busCategory} según la descripción oficial: "${business?.description || busCategory}".
-     3. Haz una pregunta consultiva para entender qué modelo, uso o presupuesto busca el cliente, y ofrece comunicarlo con un asesor o registrar sus datos para enviarle la información oficial.
-     Ejemplo: "¡Hola! 👋 Con gusto te asesoramos. En ${busName} nos especializamos en ${busCategory}. Cuéntame, ¿qué modelo o necesidad puntual tienes en mente para orientarte con las opciones disponibles? 😊"
+     1. 🚫 PROHIBIDO INVENTAR: NUNCA inventes nombres de modelos ficticios (ej: NO inventes "EcoRide", "PowerMax", "UrbanX", ni marcas o referencias inventadas), ni inventes precios numéricos que no estén registrados, ni afirmaciones como "desde opciones económicas hasta versiones premium con mayor autonomía".
+     2. Si la consulta del cliente tiene una respuesta autorizada en la === BASE DE CONOCIMIENTO (FAQS) ===, UTILIZA ESA RESPUESTA AUTORIZADA fielmente.
+     3. Responde confirmando con calidez que en "${busName}" cuentan con ${busCategory} según la descripción oficial: "${business?.description || busCategory}".
+     4. Haz una pregunta consultiva para entender qué modelo, uso o presupuesto busca el cliente, y ofrece comunicarlo con un asesor comercial para confirmarle la información exacta.
+     Ejemplo: "¡Hola! 👋 Con gusto te asesoramos. En ${busName} nos especializamos en ${busCategory}. Cuéntame, ¿qué referencia, uso o presupuesto tienes en mente para orientarte con las opciones disponibles? 😊"
    `}
 
 4. REGLA DEL CTA ÚNICO POR MENSAJE:
@@ -461,19 +488,20 @@ Usa esta fecha para calcular con precisión días como "hoy", "mañana", "el jue
        "😄 ¡Esa te la debo! Aquí en ${busName} te asesoro exclusivamente en todo lo de ${busCategory}. ¿En qué te podemos colaborar hoy con nuestros productos o servicios? 😊"
 
 2. RESPETO ABSOLUTO A LA CONFIGURACIÓN DEL DUEÑO:
-   - Aplica de forma obligatoria las "REGLAS E INSTRUCCIONES PERSONALIZADAS DE LA EMPRESA" y las "INSTRUCCIONES ESPECÍFICAS DE CIERRE" configuradas por el usuario.
-   - Si el dueño indicó pedir datos específicos (nombre, dirección, ciudad, correo, etc.) o indicó métodos de pago concretos, sigue esas directrices al pie de la letra para cerrar.
+   - Aplica de forma obligatoria las "INSTRUCCIONES Y REGLAS PERSONALIZADAS DE LA EMPRESA" y las "INSTRUCCIONES ESPECÍFICAS DE CIERRE" configuradas por el usuario.
+   - Si el dueño indicó pedir datos específicos (nombre, dirección, ciudad, celular, referencia de interés, etc.) o indicó métodos de pago concretos, sigue esas directrices al pie de la letra.
 
 ================================================================================
 🚨 REGLAS CRÍTICAS DE ANTI-ALUCINACIÓN Y FIDELIDAD A LA INFORMACIÓN (ZERO HALLUCINATION)
 ================================================================================
-1. VERACIDAD ABSOLUTA EN PRECIOS Y PRODUCTOS:
+1. VERACIDAD ABSOLUTA EN PRECIOS, CARACTERÍSTICAS Y PRODUCTOS:
    - Solo puedes ofrecer los productos, planes o servicios que aparezcan explícitamente en el === CATÁLOGO OFICIAL === o en la Base de Conocimiento.
-   - ⛔ ESTÁ TOTALMENTE PROHIBIDO INVENTAR: No inventes modelos de vehículos (como EcoRide, UrbanX, etc.), referencias técnicas ficticias, repuestos, comidas ni productos que no existan en el catálogo. Si el negocio no tiene catálogo cargado, dilo con amabilidad y pregunta qué busca el cliente para validarlo con un asesor humano.
-   - Si el cliente solicita un producto o servicio no listado, ofrece amablemente las alternativas reales disponibles en el catálogo o indica que un asesor humano lo verificará.
+   - ⛔ ESTÁ TOTALMENTE PROHIBIDO INVENTAR: No inventes modelos, características técnicas, autonomía, velocidad, garantías ni precios ficticios.
+   - ⛔ CERO ADORNOS NO VERIFICADOS: NUNCA digas cosas como "contamos con opciones económicas y versiones premium con mayor autonomía", "tenemos para todos los gustos", etc., salvo que esté textualmente registrado en la base de conocimiento.
+   - Si el dato exacto no está registrado, dile con naturalidad al cliente que con gusto lo validas con un asesor comercial.
 
-2. FIDELIDAD A PREGUNTAS FRECUENTES (FAQs):
-   - Utiliza la información autorizada de la Base de Conocimiento para responder dudas sobre funcionamiento, requerimientos, garantías y métodos de pago.
+2. FIDELIDAD ESTRICTA A PREGUNTAS FRECUENTES (FAQs):
+   - Utiliza la información autorizada de la Base de Conocimiento para responder dudas sobre funcionamiento, autonomía, pendientes, tiempos de carga, requerimientos, garantías y financiación.
 
 === PERSONALIDAD Y TONO DE VOZ ===
 Tono configurado: ${personality} (cercano, consultivo, empático, servicial y enfocado en brindar una atención ágil y efectiva).
@@ -484,9 +512,6 @@ ${businessInfo}
 === ESTADO DE LA CONVERSACIÓN ===
 ${greetingInstruction}
 
-${business?.custom_instructions ? `=== REGLAS E INSTRUCCIONES PERSONALIZADAS DE LA EMPRESA (PROMPT) ===
-${business.custom_instructions}
-=== FIN DE REGLAS PERSONALIZADAS ===\n` : ''}
 ${categoriesOverview ? `${categoriesOverview}\n` : ''}
 ${hasProducts
   ? `=== CATÁLOGO OFICIAL DE PRODUCTOS / SERVICIOS Y PRECIOS DISPONIBLES ===\n${productsContext}\n=== FIN DEL CATÁLOGO ===`
@@ -494,7 +519,16 @@ ${hasProducts
 }
 
 ${hasKnowledge
-  ? `=== BASE DE CONOCIMIENTO (FAQS E INFORMACIÓN DEL NEGOCIO) ===\n${relevantContext}\n=== FIN DE LA INFORMACIÓN ===`
+  ? `================================================================================
+📚 BASE DE CONOCIMIENTO OFICIAL (FAQS E INFORMACIÓN VERIFICADA DEL NEGOCIO)
+================================================================================
+⚠️ DIRECTRIZ RAG OBLIGATORIA:
+- La siguiente información contiene las respuestas autorizadas de ${busName}.
+- Si el cliente formula una pregunta que corresponde a alguna de estas FAQs, DEBES responder utilizando fielmente la información de su "Respuesta Autorizada", adaptándola con calidez y de forma conversacional.
+- ESTÁ TERMINANTEMENTE PROHIBIDO contradecir, distorsionar o inventar datos que no figuren en estas respuestas.
+
+${relevantContext}
+================================================================================\n`
   : ''
 }
 
@@ -549,13 +583,21 @@ Sigue estrictamente estas indicaciones sobre qué datos pedir o qué cuentas/mé
 };
 
 // ─── Respuesta Asistente Humana (Fallback Contextual de Alto Nivel) ───────────
-const buildHumanAssistantReply = (userMessage, business, products = [], chatHistory = []) => {
+const buildHumanAssistantReply = (userMessage, business, products = [], chatHistory = [], knowledge = []) => {
   const busName = business?.name || 'BotWA';
   const busCategory = business?.category || 'nuestros servicios';
   const isSales = business?.main_goal !== 'agendar_citas';
   const validHistory = Array.isArray(chatHistory) ? chatHistory.filter(m => m && m.content) : [];
   const hasHistory = validHistory.length > 0;
   const norm = normalizeSearchText(userMessage);
+
+  // 0. Respaldo RAG Oficial: Si hay una FAQ autorizada que responda la duda del cliente
+  if (Array.isArray(knowledge) && knowledge.length > 0) {
+    const matchedFaqs = searchKnowledge(userMessage, knowledge);
+    if (matchedFaqs.length > 0 && matchedFaqs[0].score >= 7.5 && matchedFaqs[0].content) {
+      return matchedFaqs[0].content;
+    }
+  }
 
   // 1. Saludo simple inicial sin historial
   if (!hasHistory && isSimpleGreeting(userMessage)) {
@@ -634,10 +676,11 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
 
   // ── 0. Coincidencia Directa de FAQ (0 Tokens Gastados) ───────────────────
   if (Array.isArray(knowledge) && knowledge.length > 0) {
+    const normSearch = normalizeSearchText(userMessage);
     const directFaq = knowledge.find(k =>
       k.type === 'faq' &&
       k.title &&
-      normalizeText(k.title) === normQuery
+      (normalizeText(k.title) === normQuery || normalizeSearchText(k.title) === normSearch)
     );
     if (directFaq && directFaq.content) {
       console.log(`[RAG FAQ] ⚡ Coincidencia directa de FAQ: "${directFaq.title}" (0 tokens gastados)`);
@@ -739,7 +782,7 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
     }
 
     if (!fullReply) {
-      fullReply = buildHumanAssistantReply(userMessage, safeBusiness, products, chatHistory);
+      fullReply = buildHumanAssistantReply(userMessage, safeBusiness, products, chatHistory, knowledge);
     }
 
     // Doble sanitización de seguridad para etiquetas internas y tags de razonamiento
@@ -829,7 +872,7 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
       });
     } catch (_) {}
 
-    const reply = buildHumanAssistantReply(userMessage, safeBusiness, products, chatHistory);
+    const reply = buildHumanAssistantReply(userMessage, safeBusiness, products, chatHistory, knowledge);
     return {
       reply,
       isLeadHot: false,
