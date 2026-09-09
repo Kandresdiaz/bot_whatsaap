@@ -760,6 +760,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-09** | fix: resolve WhatsApp LIDs to real phone numbers, eliminate chat cross-contamination, and merge duplicate contacts (`1be8c37`) | Auto-deploy |
 
+| **2026-09-09** | fix: asegurar generacion de nuevo codigo QR al conectar y evitar sesion fantasma (`9f8a78e`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
