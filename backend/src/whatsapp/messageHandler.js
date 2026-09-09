@@ -428,6 +428,39 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
     console.error('[MSG] Error verificando horario:', e.message);
   }
 
+  // ── 6.5. Manejo amable de Stickers y Audios (sin quemar tokens ni fugar razonamiento) ──
+  if (text === '[Sticker]') {
+    const stickerReply = '😄 ¡Buen sticker! Cuéntame, ¿en qué te puedo colaborar el día de hoy? 😊';
+    await randomDelay();
+    await sendText(sock, jid, stickerReply);
+    if (conversation?.id) {
+      await safeQuery(() => supabase.from('messages').insert({
+        conversation_id: conversation.id,
+        content: stickerReply,
+        direction: 'outbound',
+        sent_by: 'bot',
+        timestamp: new Date().toISOString(),
+      }));
+    }
+    return;
+  }
+
+  if (text === '[Audio]') {
+    const audioReply = '🎙️ ¡Hola! Por aquí no puedo escuchar audios en este momento, pero si me escribes por texto te ayudo con gusto de inmediato. 😊';
+    await randomDelay();
+    await sendText(sock, jid, audioReply);
+    if (conversation?.id) {
+      await safeQuery(() => supabase.from('messages').insert({
+        conversation_id: conversation.id,
+        content: audioReply,
+        direction: 'outbound',
+        sent_by: 'bot',
+        timestamp: new Date().toISOString(),
+      }));
+    }
+    return;
+  }
+
   // ── 7. Flujo de citas inteligente manejado directamente por Groq AI (Citas / Ventas / Cancelaciones) ──
   // (El interceptor rígido de texto queda desactivado para que la IA maneje con contexto completo y empatía)
 

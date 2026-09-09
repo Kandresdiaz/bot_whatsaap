@@ -43,11 +43,12 @@ const getActiveModels = async (client) => {
 
   try {
     const list = await client.models.list();
-    const all = (list.data || []).map(m => m.id);
     const validChatModels = all.filter(id =>
       !id.includes('whisper') &&
       !id.includes('guard') &&
-      !id.includes('orpheus')
+      !id.includes('orpheus') &&
+      !id.includes('3.6') && // Excluir qwen3.6 / deepseek que emiten tags de razonamiento <think>
+      !id.includes('reasoning')
     );
 
     if (validChatModels.length > 0) {
@@ -55,12 +56,11 @@ const getActiveModels = async (client) => {
         const getPriority = (id) => {
           if (id.includes('groq/compound')) return 1;
           if (id.includes('qwen3.8')) return 2;
-          if (id.includes('qwen3.6')) return 3;
-          if (id.includes('qwen')) return 4;
-          if (id.includes('allam')) return 5;
-          if (id.includes('gpt-oss')) return 6;
-          if (id.includes('llama-3.3')) return 7;
-          if (id.includes('llama-3.1')) return 8;
+          if (id.includes('allam')) return 3;
+          if (id.includes('qwen') && !id.includes('3.6')) return 4;
+          if (id.includes('gpt-oss')) return 5;
+          if (id.includes('llama-3.3')) return 6;
+          if (id.includes('llama-3.1')) return 7;
           return 99;
         };
         return getPriority(a) - getPriority(b);
@@ -701,12 +701,25 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
           const response = await client.chat.completions.create({
             model: modelName,
             messages,
-            max_tokens: 150,
+            max_tokens: 350,
             temperature: 0.25,
           });
 
           if (response?.choices?.[0]?.message?.content) {
-            fullReply = response.choices[0].message.content;
+            let candidateReply = response.choices[0].message.content;
+            // Purgar de raíz cualquier bloque <think> completo o truncado
+            candidateReply = candidateReply
+              .replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, '')
+              .replace(/<\/?think>/gi, '')
+              .trim();
+
+            // Si quedó vacío porque el modelo solo gastó tokens pensando, descartar y pasar al siguiente
+            if (!candidateReply || candidateReply.length < 2) {
+              console.warn(`[Groq] Modelo ${modelName} solo emitió tokens de pensamiento, probando siguiente modelo...`);
+              continue;
+            }
+
+            fullReply = candidateReply;
             tokensUsed = response.usage?.total_tokens || 0;
             console.log(`[Groq] ✅ Respuesta IA generada con modelo: ${modelName}`);
             break;
@@ -721,8 +734,11 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
       fullReply = buildHumanAssistantReply(userMessage, safeBusiness, products, chatHistory);
     }
 
-    // Sanitizar etiquetas internas y tags <think> de modelos de razonamiento
-    fullReply = fullReply.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+    // Doble sanitización de seguridad para etiquetas internas y tags de razonamiento
+    fullReply = (fullReply || '')
+      .replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, '')
+      .replace(/<\/?think>/gi, '')
+      .trim();
 
     const isLeadHotFlag = fullReply.includes('[LEAD_CALIENTE]');
     const imageMatch = fullReply.match(/\[ENVIAR_IMAGEN:\s*(.+?)\]/i);
