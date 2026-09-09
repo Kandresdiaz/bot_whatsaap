@@ -52,15 +52,7 @@ router.get('/:businessId', async (req, res) => {
     const { data, error } = await supabase.from('products_services').select('*').eq('business_id', businessId);
     let products = data || [];
 
-    // Solo sembrar planes si es el negocio oficial de BotWA (Kevin Super Admin)
-    if (products.length === 0 && isBotWaBusiness) {
-      const { seedDefaultProductsAndKB } = require('../db/seedHelper');
-      await seedDefaultProductsAndKB(businessId);
-      const reFetch = await supabase.from('products_services').select('*').eq('business_id', businessId);
-      products = reFetch.data || [];
-    }
-
-    // Para cualquier otro negocio de clientes, lista vacía si aún no ha agregado productos
+    // Retornar lista de productos del negocio sin mutaciones
     return res.json({ success: true, products });
   } catch (err) {
     console.error('[GET Products Crash Safe]:', err.message);

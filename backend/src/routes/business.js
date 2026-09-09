@@ -116,10 +116,6 @@ router.get('/:userId', async (req, res) => {
       }
     }
 
-    if (business?.id && business.name === 'BotWA') {
-      seedDefaultProductsAndKB(business.id).catch(e => console.error('[BUSINESS GET] Auto-seed error:', e.message));
-    }
-
     return res.json({
       success: true,
       business: {
@@ -225,9 +221,6 @@ router.post('/:userId', async (req, res) => {
     if (resBus?.id) {
       const { clearBusinessAiCache } = require('../ai/aiCache');
       clearBusinessAiCache(resBus.id).catch(() => {});
-      if (resBus.name === 'BotWA') {
-        seedDefaultProductsAndKB(resBus.id).catch(e => console.error('[BUSINESS POST] Auto-seed error:', e.message));
-      }
     }
 
     return res.json({

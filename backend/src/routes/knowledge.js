@@ -42,15 +42,7 @@ router.get('/:businessId', async (req, res) => {
     const { data, error } = await supabase.from('knowledge_base').select('*').eq('business_id', businessId);
     let items = data || [];
 
-    // Solo sembrar FAQs si es el negocio oficial de BotWA (Kevin Super Admin)
-    if (items.length === 0 && isBotWaBusiness) {
-      const { seedDefaultProductsAndKB } = require('../db/seedHelper');
-      await seedDefaultProductsAndKB(businessId);
-      const reFetch = await supabase.from('knowledge_base').select('*').eq('business_id', businessId);
-      items = reFetch.data || [];
-    }
-
-    // Para cualquier otro negocio de clientes, lista vacía si aún no ha agregado documentos
+    // Retornar FAQs sin mutaciones
     res.json({ success: true, items });
   } catch (err) {
     res.json({ success: true, items: [] });
