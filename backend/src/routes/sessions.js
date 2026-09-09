@@ -321,9 +321,16 @@ router.post('/send', async (req, res) => {
         const resolvedPhone = resolved.phone || cleanDigits;
         const sessionUuid = await getSessionUuid(validUserId);
 
+        // Acotado a las sesiones de este usuario: sin el filtro, el mensaje enviado podía
+        // quedar registrado dentro de la conversación de otro negocio con el mismo número.
+        const { getUserSessionIds } = require('../whatsapp/sessionManager');
+        const ownSessionIds = await getUserSessionIds(validUserId);
+        if (sessionUuid && !ownSessionIds.includes(sessionUuid)) ownSessionIds.push(sessionUuid);
+
         const { data: existing } = await supabase
           .from('conversations')
           .select('id')
+          .in('session_id', ownSessionIds.length > 0 ? ownSessionIds : [sessionUuid])
           .eq('contact_phone', resolvedPhone)
           .limit(1);
 

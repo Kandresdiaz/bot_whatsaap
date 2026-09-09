@@ -269,9 +269,14 @@ const storeMessages = (userId, messages = []) => {
     }
   }
 
-  // Prevenir fugas de memoria RAM en Render (máx 200 mensajes en caché reciente)
-  if (store.messages.size > 200) {
-    const excess = store.messages.size - 200;
+  // Prevenir fugas de memoria RAM en Render. Este store es solo una caché de lectura:
+  // la persistencia real va a Supabase desde syncChatsAndMessagesToDb, que ya no depende
+  // de que el mensaje siga aquí. Con 200 el tope se repartía entre TODOS los chats del
+  // usuario (con 15 chats activos quedaban ~13 mensajes por chat), así que el panel de un
+  // chat concreto se veía incompleto al mezclar RAM + DB.
+  const MAX_CACHED_MESSAGES = 500;
+  if (store.messages.size > MAX_CACHED_MESSAGES) {
+    const excess = store.messages.size - MAX_CACHED_MESSAGES;
     const keys = Array.from(store.messages.keys()).slice(0, excess);
     for (const k of keys) store.messages.delete(k);
   }
@@ -342,6 +347,25 @@ const emitToUserRooms = (io, userId, event, payload, sessionUuid = null) => {
 
   for (const room of rooms) {
     try { io.to(room).emit(event, payload); } catch (_) {}
+  }
+};
+
+// Todos los session_id que pertenecen a un usuario.
+// Sirve para acotar CUALQUIER búsqueda de conversaciones por contact_phone: un mismo número
+// puede ser cliente de varios negocios distintos dentro del SaaS, y filtrar solo por
+// contact_phone hace que un negocio termine leyendo o escribiendo en el chat de otro.
+const getUserSessionIds = async (userId) => {
+  if (!supabase || !userId) return [];
+  try {
+    const validUserId = getValidUserId(userId);
+    const { data } = await supabase
+      .from('whatsapp_sessions')
+      .select('id')
+      .eq('user_id', validUserId);
+    return (data || []).map(s => s.id).filter(Boolean);
+  } catch (e) {
+    console.warn('[Sessions] Error obteniendo session ids:', e.message);
+    return [];
   }
 };
 
@@ -526,7 +550,23 @@ const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts =
     const store = getUserStore(userId);
     const chats = Array.from(store.chats.values());
     const contacts = Array.from(store.contacts.values());
-    const messages = Array.from(store.messages.values());
+
+    // El store de RAM está topado (ver storeMessages) para no reventar la memoria de Render.
+    // Si leyéramos SOLO del store, cualquier mensaje desalojado por ese tope entre el
+    // storeMessages() de arriba y esta línea se perdería para siempre: nunca llegaría a
+    // Supabase y por tanto nunca aparecería en el dashboard. Por eso unimos SIEMPRE los
+    // mensajes recién recibidos (inputMessages) con lo que quede en el store, indexando
+    // por key.id para no duplicar.
+    const messagesById = new Map();
+    for (const m of store.messages.values()) {
+      const k = m?.key?.id;
+      if (k) messagesById.set(k, m);
+    }
+    for (const m of (Array.isArray(inputMessages) ? inputMessages : [])) {
+      const k = m?.key?.id;
+      if (k) messagesById.set(k, m);
+    }
+    const messages = Array.from(messagesById.values());
 
     console.log(`[Sync DB] Sincronizando para ${userId} (${sessionUuid}): ${chats.length} chats, ${contacts.length} contactos, ${messages.length} msgs`);
 
@@ -829,23 +869,42 @@ const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts =
       }
 
       if (messagesToInsert.length > 0) {
-        // Cargar mensajes recientes para evitar duplicar mensajes exactos
-        const convIds = Array.from(convMap.values()).map(c => c.id).filter(Boolean);
+        // Cargar mensajes existentes para no duplicar. Antes se consultaban TODOS los
+        // mensajes de hasta 100 conversaciones sin .limit(): PostgREST corta la respuesta
+        // en su tope por defecto (~1000 filas) y en orden arbitrario, así que el set de
+        // deduplicación quedaba incompleto de forma impredecible. Ahora se consulta solo
+        // las conversaciones que realmente vamos a escribir y solo desde el mensaje más
+        // antiguo del lote hacia adelante, que es la única ventana que puede colisionar.
+        const convIds = [...new Set(messagesToInsert.map(m => m.conversation_id).filter(Boolean))];
         let existingMsgSet = new Set();
 
         if (convIds.length > 0) {
+          const oldestTs = messagesToInsert
+            .map(m => m.timestamp)
+            .filter(Boolean)
+            .sort()[0];
+
           try {
-            const { data: existingMsgs } = await supabase
+            let q = supabase
               .from('messages')
               .select('conversation_id, content, timestamp')
-              .in('conversation_id', convIds.slice(0, 100));
+              .in('conversation_id', convIds);
 
+            if (oldestTs) q = q.gte('timestamp', oldestTs);
+
+            const { data: existingMsgs, error: dupErr } = await q.limit(2000);
+
+            if (dupErr) {
+              console.warn('[Sync] No se pudo cargar el set de deduplicación:', dupErr.message);
+            }
             if (Array.isArray(existingMsgs)) {
               for (const m of existingMsgs) {
                 existingMsgSet.add(`${m.conversation_id}_${m.content}_${m.timestamp}`);
               }
             }
-          } catch (_) {}
+          } catch (e) {
+            console.warn('[Sync] Excepción cargando deduplicación:', e.message);
+          }
         }
 
         const uniqueMessages = messagesToInsert.filter(
@@ -853,16 +912,44 @@ const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts =
         );
 
         if (uniqueMessages.length > 0) {
-          // Insertar en lotes de 50 mensajes
+          // Insertar en lotes de 50 mensajes.
+          // El upsert con onConflict exige un índice UNIQUE (conversation_id, content,
+          // timestamp) en la tabla messages. Si ese índice no existe en Supabase, el upsert
+          // falla y ANTES se perdía el lote completo de 50 mensajes en silencio: esa era la
+          // razón de que faltaran mensajes "a ratos y solo en algunos chats". Ahora, si el
+          // upsert falla, reintentamos con un insert plano (la deduplicación en memoria de
+          // arriba ya evitó los repetidos) y dejamos rastro en los logs.
           const BATCH_SIZE = 50;
+          let inserted = 0;
+
           for (let i = 0; i < uniqueMessages.length; i += BATCH_SIZE) {
             const batch = uniqueMessages.slice(i, i + BATCH_SIZE);
+            let ok = false;
+
             try {
-              await supabase.from('messages').upsert(batch, { onConflict: 'conversation_id,content,timestamp', ignoreDuplicates: true });
+              const { error: upErr } = await supabase
+                .from('messages')
+                .upsert(batch, { onConflict: 'conversation_id,content,timestamp', ignoreDuplicates: true });
+              if (!upErr) ok = true;
+              else console.warn(`[Sync] Upsert falló en lote ${i} (${upErr.message}), reintentando con insert`);
             } catch (errMsg) {
-              console.warn(`[Sync] Error en lote de mensajes (${i}):`, errMsg.message);
+              console.warn(`[Sync] Excepción en upsert de lote ${i}:`, errMsg.message);
             }
+
+            if (!ok) {
+              try {
+                const { error: insErr2 } = await supabase.from('messages').insert(batch);
+                if (insErr2) console.warn(`[Sync] Insert de respaldo falló en lote ${i}:`, insErr2.message);
+                else ok = true;
+              } catch (e2) {
+                console.warn(`[Sync] Excepción en insert de respaldo (${i}):`, e2.message);
+              }
+            }
+
+            if (ok) inserted += batch.length;
           }
+
+          console.log(`[Sync DB] Mensajes persistidos: ${inserted}/${uniqueMessages.length}`);
         }
       }
     }
@@ -1595,6 +1682,7 @@ const createSession = async (userId, businessId, io, forceClean = false, isManua
               const { data: convRows } = await supabase
                 .from('conversations')
                 .select('id, last_message')
+                .eq('session_id', sessionUuid)
                 .eq('contact_phone', contactPhone)
                 .order('last_message_at', { ascending: false })
                 .limit(1);
@@ -1658,6 +1746,7 @@ const createSession = async (userId, businessId, io, forceClean = false, isManua
               const { data: convRows } = await supabase
                 .from('conversations')
                 .select('id, last_message')
+                .eq('session_id', sessionUuid)
                 .eq('contact_phone', contactPhone)
                 .order('last_message_at', { ascending: false })
                 .limit(1);
@@ -1718,12 +1807,22 @@ const createSession = async (userId, businessId, io, forceClean = false, isManua
         const text = extractText(msg);
         if (!contactPhone || !text) continue;
 
+        // Timestamp REAL del mensaje, no el de ahora. syncChatsAndMessagesToDb ya insertó
+        // (o insertará) este mismo mensaje usando msg.messageTimestamp; si aquí usamos
+        // new Date() las dos filas quedan con timestamps distintos, la deduplicación no las
+        // reconoce como iguales y el mensaje aparece DUPLICADO en el chat.
+        const msgTs = safeToIsoString(msg.messageTimestamp);
+
         try {
           const sessionUuid = await getSessionUuid(userId);
+
+          const ownSessionIds = await getUserSessionIds(userId);
+          if (sessionUuid && !ownSessionIds.includes(sessionUuid)) ownSessionIds.push(sessionUuid);
 
           const { data: convRows } = await supabase
             .from('conversations')
             .select('id')
+            .in('session_id', ownSessionIds.length > 0 ? ownSessionIds : [sessionUuid])
             .eq('contact_phone', contactPhone)
             .order('last_message_at', { ascending: false })
             .limit(1);
@@ -1737,7 +1836,7 @@ const createSession = async (userId, businessId, io, forceClean = false, isManua
               bot_active: true,
               is_blacklisted: false,
               last_message: text,
-              last_message_at: new Date().toISOString(),
+              last_message_at: msgTs,
             }, { onConflict: 'session_id,contact_phone' }).select('id').limit(1);
             conversationId = newConvRows && newConvRows[0]?.id;
           }
@@ -1745,16 +1844,27 @@ const createSession = async (userId, businessId, io, forceClean = false, isManua
           if (conversationId) {
             await supabase.from('conversations').update({
               last_message: text,
-              last_message_at: new Date().toISOString(),
+              last_message_at: msgTs,
             }).eq('id', conversationId);
 
-            await supabase.from('messages').insert({
-              conversation_id: conversationId,
-              content: text,
-              direction: 'outbound',
-              sent_by: 'human',
-              timestamp: new Date().toISOString(),
-            });
+            // Insertar solo si esta fila exacta no existe ya (la pudo haber escrito el sync).
+            const { data: dupRows } = await supabase
+              .from('messages')
+              .select('id')
+              .eq('conversation_id', conversationId)
+              .eq('content', text)
+              .eq('timestamp', msgTs)
+              .limit(1);
+
+            if (!dupRows || dupRows.length === 0) {
+              await supabase.from('messages').insert({
+                conversation_id: conversationId,
+                content: text,
+                direction: 'outbound',
+                sent_by: 'human',
+                timestamp: msgTs,
+              });
+            }
 
             if (io) {
               const msgObj = {
@@ -1762,7 +1872,7 @@ const createSession = async (userId, businessId, io, forceClean = false, isManua
                 content: text,
                 direction: 'outbound',
                 sent_by: 'human',
-                timestamp: new Date().toISOString(),
+                timestamp: msgTs,
               };
               emitToUserRooms(io, userId, 'new_message', {
                 conversationId,
@@ -1773,7 +1883,7 @@ const createSession = async (userId, businessId, io, forceClean = false, isManua
                 conversationId,
                 contactPhone,
                 lastMessage: text,
-                timestamp: new Date().toISOString(),
+                timestamp: msgTs,
               }, sessionUuid);
             }
           }
@@ -2134,6 +2244,7 @@ module.exports = {
   sendMessage,
   syncChatsAndMessagesToDb,
   getSessionUuid,
+  getUserSessionIds,
   getValidUserId,
   emitToUserRooms,
   getGlobalBotStatus,
