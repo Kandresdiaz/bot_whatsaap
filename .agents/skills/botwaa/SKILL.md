@@ -768,6 +768,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-09** | feat: optimizar 3 planes persuasivos, blindaje cuota IA, notificaciones email y campanita in-app (`1d8598e`) | Auto-deploy |
 
+| **2026-09-09** | fix: desactivar auto-seed en endpoints GET de business, products y knowledge (`6353f35`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
