@@ -756,6 +756,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-09** | feat: mostrar estado de lectura de QR, número de WhatsApp vinculado y filtro de bots conectados en panel admin (`6c053fa`) | Auto-deploy |
 
+| **2026-09-09** | fix(admin): corregir nombres de columnas en consulta de whatsapp_sessions para panel admin (`fdf528f`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
