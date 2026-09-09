@@ -146,6 +146,14 @@ const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
   console.log(`🚀 BotWA Backend LATEST corriendo en puerto ${PORT}`);
 
+  // ── Inicializar cron jobs de retención y recordatorios ─────────────────────
+  try {
+    const { initCronJobs } = require('./services/cronService');
+    initCronJobs();
+  } catch (eCron) {
+    console.error('[CRON INIT ERROR]', eCron.message);
+  }
+
   // ── SELF-PING KEEPALIVE (4 MINUTOS) ───────────────────────────────────────
   // Render free tier duerme después de 15 min de inactividad.
   // Este self-ping cada 4 min mantiene el servidor despierto 24/7 sin caídas.

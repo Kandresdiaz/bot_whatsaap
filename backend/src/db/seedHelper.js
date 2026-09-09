@@ -2,27 +2,27 @@ const { supabase } = require('./supabase');
 
 const defaultProducts = [
   {
-    name: 'Plan Vendedor Automático',
-    description: '1 número de WhatsApp, Agente IA 24/7 con Catálogo RAG, 1.500 msgs/mes, 20 docs FAQs. Respuestas instantáneas en 2 segundos.',
+    name: 'Plan Vendedor Automático (1.500 msgs/mes)',
+    description: 'Ideal para negocios pequeños o independientes (hasta 50 chats/día). Atención 24/7 en WhatsApp, respuestas inmediatas en <2s, catálogo inteligente con IA y base de FAQs. Incluye 7 días gratis ($0 COP hoy con tarjeta).',
     price: 120000,
     currency: 'COP',
-    category: 'Planes / Membresías',
+    category: 'Planes BotWA',
     is_active: true,
   },
   {
-    name: 'Plan Máquina de Ventas Pro',
-    description: '1 número de WhatsApp, Catálogo interactivo con envío de fotos multimedia, Agendador de Citas y Pedidos, 5.000 msgs/mes, 100 docs, Generador de FAQs con IA.',
+    name: 'Plan Máquina de Ventas Pro (5.000 msgs/mes - ⭐ Más Recomendado)',
+    description: 'Para tiendas y empresas en crecimiento (hasta 170 chats/día). Envío automático de fotos y multimedia del catálogo, agendador de citas y toma de pedidos con sincronización a tu panel, 5.000 msgs IA/mes y FAQs ampliadas. Incluye 7 días gratis ($0 COP hoy con tarjeta).',
     price: 249000,
     currency: 'COP',
-    category: 'Planes / Membresías',
+    category: 'Planes BotWA',
     is_active: true,
   },
   {
-    name: 'Plan Dominio Agencia / VIP',
-    description: 'Multi-línea WhatsApp, White-Label VIP, 20.000 msgs/mes, Catálogo ilimitado, Prompting a la medida Done-For-You y soporte 1 a 1.',
+    name: 'Plan Dominio Agencia / VIP (20.000 msgs/mes)',
+    description: 'Para empresas consolidadas, clínicas o agencias (más de 650 chats/día). Múltiples líneas de WhatsApp conectadas, marca blanca con tu logo, prompting y embudo personalizado Done-For-You y soporte VIP 1 a 1. Incluye 7 días gratis ($0 COP hoy con tarjeta).',
     price: 490000,
     currency: 'COP',
-    category: 'Planes / Membresías',
+    category: 'Planes BotWA',
     is_active: true,
   },
 ];
@@ -58,13 +58,24 @@ const seedDefaultProductsAndKB = async (businessId) => {
       return;
     }
 
+    // Si ya existen 3 o más productos en el catálogo de este negocio, NO sembrar nada
+    const { data: currentProds } = await supabase
+      .from('products_services')
+      .select('id')
+      .eq('business_id', businessId);
+
+    if (currentProds && currentProds.length >= 3) {
+      console.log('[SEED HELPER] El negocio ya cuenta con sus 3 planes oficiales. Omitiendo.');
+      return;
+    }
+
     for (const prod of defaultProducts) {
       const payload = { ...prod, business_id: businessId };
       const { data: existing } = await supabase
         .from('products_services')
         .select('id')
         .eq('business_id', businessId)
-        .eq('name', prod.name)
+        .ilike('name', `%${prod.name.split(' ')[1]}%`)
         .limit(1);
 
       if (!existing || existing.length === 0) {

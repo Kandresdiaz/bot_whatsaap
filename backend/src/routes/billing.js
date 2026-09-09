@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { MercadoPagoConfig, PreApproval } = require('mercadopago');
 const { supabase } = require('../db/supabase');
+const { sendTrialWelcomeEmail, sendPaymentSuccessEmail } = require('../services/emailService');
 
 // Planes con metodología de Oferta Irresistible de Alex Hormozi ($100M Offers)
 const HORMOZI_PLANS = {
@@ -230,6 +231,20 @@ router.post('/mp-webhook', async (req, res) => {
           } else if (payerEmail) {
             await supabase.from('users').update(updatePayload).eq('email', payerEmail);
           }
+
+          // Enviar correo de bienvenida al trial de 7 días
+          try {
+            const destEmail = payerEmail || (userId ? (await supabase.from('users').select('email, name').eq('id', userId).maybeSingle())?.data?.email : null);
+            if (destEmail) {
+              await sendTrialWelcomeEmail({
+                to: destEmail,
+                planName: subData.reason || 'Plan Máquina de Ventas Pro',
+                trialEndsAt: trialEndsAt.toISOString()
+              });
+            }
+          } catch (eMail) {
+            console.error('[BILLING EMAIL ERROR] Fallo al enviar bienvenida de trial:', eMail.message);
+          }
         } else if (status === 'cancelled') {
           // Suscripción cancelada por el usuario
           const updatePayload = { subscription_status: 'canceled', status: 'paused' };
@@ -277,6 +292,20 @@ router.post('/mp-webhook', async (req, res) => {
             await supabase.from('users').update(updatePayload).eq('id', externalRef);
           } else if (payerEmail) {
             await supabase.from('users').update(updatePayload).eq('email', payerEmail);
+          }
+
+          // Enviar recibo de cobro mensual exitoso
+          try {
+            const destEmail = payerEmail || (externalRef ? (await supabase.from('users').select('email, name, plan').eq('id', externalRef).maybeSingle())?.data?.email : null);
+            if (destEmail) {
+              await sendPaymentSuccessEmail({
+                to: destEmail,
+                amountCOP: payment.transaction_amount || 249000,
+                nextBillingDate: paidUntil.toISOString()
+              });
+            }
+          } catch (eMail) {
+            console.error('[BILLING EMAIL ERROR] Fallo al enviar recibo de pago:', eMail.message);
           }
         } else if (status === 'rejected') {
           // Cobro rechazado -> marcar past_due
@@ -360,10 +389,10 @@ router.get('/status/:userId', async (req, res) => {
       (user.subscription_status === 'active' || user.status === 'active') && (!user.paid_until || new Date(user.paid_until) > now)
     );
 
-    // ── Límites por plan y estado de suscripción ────────────────────────────
+    // ── Límites por plan y estado de suscripción (Protección API de IA) ─────
     const PLAN_LIMITS = {
-      free: 100,         // Plan inicial de prueba sin tarjeta
-      trial: 300,        // 7 Días de prueba gratis con tarjeta ($0 COP hoy)
+      free: 50,          // Modo demo inicial
+      trial: 150,        // 7 Días de prueba gratis con tarjeta ($0 COP hoy - Protección API)
       starter: 1500,     // Plan Vendedor Automático ($120.000 COP)
       pro: 5000,         // Plan Máquina de Ventas Pro ($249.000 COP)
       business: 20000,   // Plan Dominio Agencia / VIP ($490.000 COP)

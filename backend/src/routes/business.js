@@ -243,6 +243,69 @@ router.post('/:userId', async (req, res) => {
     console.error('[BUSINESS POST] Exception:', e.message);
     return res.status(500).json({ success: false, error: e.message });
   }
+// ── Endpoint para Campanita y Badges de Notificaciones (Pedidos y Citas) ──
+router.get('/badges/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const targetUserId = resolveTargetUserId(userId);
+
+    // Obtener negocio del usuario
+    const { data: bData } = await supabase
+      .from('businesses')
+      .select('id')
+      .eq('user_id', targetUserId)
+      .limit(1);
+
+    const businessId = bData && bData[0] ? bData[0].id : null;
+    if (!businessId) {
+      return res.json({
+        success: true,
+        pendingOrdersCount: 0,
+        upcomingAppointmentsCount: 0,
+        totalNotifications: 0,
+        recentOrders: [],
+        recentAppointments: []
+      });
+    }
+
+    // 1. Contar pedidos pendientes
+    const { count: pendingOrdersCount, data: recentOrders } = await supabase
+      .from('orders')
+      .select('id, client_name, total_amount, status, created_at, items', { count: 'exact' })
+      .eq('business_id', businessId)
+      .order('created_at', { ascending: false })
+      .limit(5);
+
+    // 2. Contar citas agendadas recientes
+    const today = new Date().toISOString().split('T')[0];
+    const { count: upcomingAppointmentsCount, data: recentAppointments } = await supabase
+      .from('appointments')
+      .select('id, client_name, service, appointment_date, appointment_time, status, created_at', { count: 'exact' })
+      .eq('business_id', businessId)
+      .gte('appointment_date', today)
+      .order('appointment_date', { ascending: true })
+      .limit(5);
+
+    const pCount = pendingOrdersCount || 0;
+    const aCount = upcomingAppointmentsCount || 0;
+
+    return res.json({
+      success: true,
+      pendingOrdersCount: pCount,
+      upcomingAppointmentsCount: aCount,
+      totalNotifications: pCount + aCount,
+      recentOrders: recentOrders || [],
+      recentAppointments: recentAppointments || []
+    });
+  } catch (err) {
+    console.error('[BADGES ERROR]', err.message);
+    return res.json({
+      success: false,
+      pendingOrdersCount: 0,
+      upcomingAppointmentsCount: 0,
+      totalNotifications: 0
+    });
+  }
 });
 
 module.exports = router;

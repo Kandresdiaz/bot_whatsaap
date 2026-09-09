@@ -380,7 +380,7 @@ function PricingContent() {
                       fontWeight: 700,
                       whiteSpace: 'nowrap'
                     }}>
-                      300 en prueba gratis
+                      150 en prueba gratis
                     </span>
                   </div>
 
@@ -449,6 +449,13 @@ function PricingContent() {
                     <>Comenzar 7 Días Gratis ($0 Hoy) →</>
                   )}
                 </button>
+
+                {/* Mensaje de Transparencia de Cobro Automático con Tarjeta */}
+                <div style={{ marginTop: 10, textAlign: 'center', fontSize: 11, color: '#94a3b8', lineHeight: 1.4 }}>
+                  💳 <strong>$0 COP cobrados hoy</strong> al registrar tu tarjeta.<br />
+                  El primer cobro se realiza automáticamente el día 7.<br />
+                  Cancela con 1 clic en cualquier momento sin costo.
+                </div>
               </div>
             );
           })}

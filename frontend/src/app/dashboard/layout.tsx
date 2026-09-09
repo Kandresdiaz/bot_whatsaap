@@ -98,6 +98,40 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       .catch(() => {});
   }, [effectiveUserId, BACKEND]);
 
+  // ── Badges y Notificaciones en Vivo (Pedidos y Citas) ──────────────────────
+  const [badgeData, setBadgeData] = useState<{
+    pendingOrdersCount: number;
+    upcomingAppointmentsCount: number;
+    totalNotifications: number;
+    recentOrders?: any[];
+    recentAppointments?: any[];
+  }>({
+    pendingOrdersCount: 0,
+    upcomingAppointmentsCount: 0,
+    totalNotifications: 0,
+    recentOrders: [],
+    recentAppointments: []
+  });
+  const [isBellOpen, setIsBellOpen] = useState(false);
+
+  const loadBadges = useCallback(() => {
+    if (!effectiveUserId) return;
+    fetch(`${BACKEND}/api/business/badges/${effectiveUserId}`)
+      .then(r => r.json())
+      .then(d => {
+        if (d.success) {
+          setBadgeData(d);
+        }
+      })
+      .catch(() => {});
+  }, [effectiveUserId, BACKEND]);
+
+  useEffect(() => {
+    loadBadges();
+    const interval = setInterval(loadBadges, 15000); // Polling cada 15 segundos
+    return () => clearInterval(interval);
+  }, [loadBadges]);
+
   const [isGuideOpen, setIsGuideOpen] = useState(false);
   const [activeGuideKey, setActiveGuideKey] = useState('inicio');
   const [isFirstVisitForSection, setIsFirstVisitForSection] = useState(false);
@@ -281,6 +315,37 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             {globalBotEnabled ? '🤖 ON' : '⏸️ OFF'}
           </span>
 
+          {/* Campanita Mobile */}
+          <button
+            onClick={() => setIsBellOpen(!isBellOpen)}
+            style={{
+              background: badgeData.totalNotifications > 0 ? 'rgba(239, 68, 68, 0.2)' : 'rgba(255, 255, 255, 0.08)',
+              border: `1px solid ${badgeData.totalNotifications > 0 ? '#ef4444' : 'rgba(255, 255, 255, 0.15)'}`,
+              borderRadius: 8,
+              width: 32,
+              height: 32,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: 15,
+              cursor: 'pointer',
+              position: 'relative',
+            }}
+            title="Notificaciones de Pedidos y Citas"
+            aria-label="Notificaciones"
+          >
+            <span>🔔</span>
+            {badgeData.totalNotifications > 0 && (
+              <span style={{
+                position: 'absolute', top: -4, right: -4, background: '#ef4444', color: '#fff',
+                fontSize: 9, fontWeight: 900, width: 15, height: 15, borderRadius: '50%',
+                display: 'flex', alignItems: 'center', justifyContent: 'center'
+              }}>
+                {badgeData.totalNotifications}
+              </span>
+            )}
+          </button>
+
           <button
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
             style={{ background: 'none', border: 'none', color: '#00CFFF', fontSize: 24, cursor: 'pointer', padding: '4px 8px' }}
@@ -309,18 +374,41 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
 
         <nav className="sidebar-nav">
-          {navItems.map(item => (
-            <Link
-              key={item.href}
-              href={item.href}
-              data-tour={item.tourKey}
-              className={`nav-link ${pathname === item.href ? 'active' : ''}`}
-              onClick={() => setIsMobileMenuOpen(false)}
-            >
-              <span style={{ fontSize: 18 }}>{item.icon}</span>
-              {item.label}
-            </Link>
-          ))}
+          {navItems.map(item => {
+            const isOrders = item.href === '/dashboard/orders';
+            const isAppts = item.href === '/dashboard/appointments';
+            const count = isOrders ? badgeData.pendingOrdersCount : isAppts ? badgeData.upcomingAppointmentsCount : 0;
+
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                data-tour={item.tourKey}
+                className={`nav-link ${pathname === item.href ? 'active' : ''}`}
+                onClick={() => setIsMobileMenuOpen(false)}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ fontSize: 18 }}>{item.icon}</span>
+                  <span>{item.label}</span>
+                </div>
+                {count > 0 && (
+                  <span style={{
+                    background: isOrders ? '#f59e0b' : '#00CFFF',
+                    color: '#080E1F',
+                    fontSize: 10,
+                    fontWeight: 800,
+                    padding: '2px 7px',
+                    borderRadius: 10,
+                    lineHeight: '14px',
+                    boxShadow: isOrders ? '0 0 6px rgba(245, 158, 11, 0.4)' : '0 0 6px rgba(0, 207, 255, 0.4)'
+                  }}>
+                    {count}
+                  </span>
+                )}
+              </Link>
+            );
+          })}
         </nav>
 
         {/* Global Bot Toggle Widget */}
@@ -562,6 +650,144 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </Link>
             </div>
           )}
+
+          {/* Campanita de Notificaciones Desktop */}
+          <div style={{ position: 'relative' }}>
+            <button
+              onClick={() => setIsBellOpen(!isBellOpen)}
+              style={{
+                background: badgeData.totalNotifications > 0 ? 'rgba(239, 68, 68, 0.15)' : 'rgba(255, 255, 255, 0.05)',
+                border: `1px solid ${badgeData.totalNotifications > 0 ? 'rgba(239, 68, 68, 0.5)' : 'rgba(255, 255, 255, 0.12)'}`,
+                borderRadius: 10,
+                width: 36,
+                height: 36,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                fontSize: 16,
+                position: 'relative',
+                color: '#fff',
+                transition: 'all 0.2s',
+              }}
+              title="Notificaciones de Pedidos y Citas"
+            >
+              <span>🔔</span>
+              {badgeData.totalNotifications > 0 && (
+                <span style={{
+                  position: 'absolute',
+                  top: -5,
+                  right: -5,
+                  background: '#ef4444',
+                  color: '#fff',
+                  fontSize: 10,
+                  fontWeight: 800,
+                  width: 18,
+                  height: 18,
+                  borderRadius: '50%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  boxShadow: '0 0 8px rgba(239, 68, 68, 0.8)',
+                }}>
+                  {badgeData.totalNotifications > 9 ? '9+' : badgeData.totalNotifications}
+                </span>
+              )}
+            </button>
+
+            {/* Menú Desplegable de la Campanita */}
+            {isBellOpen && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: 44,
+                  right: 0,
+                  width: 320,
+                  background: '#0B132B',
+                  border: '1px solid rgba(0, 207, 255, 0.35)',
+                  borderRadius: 14,
+                  padding: 16,
+                  boxShadow: '0 12px 35px rgba(0, 0, 0, 0.7)',
+                  zIndex: 9999,
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: 8 }}>
+                  <span style={{ fontSize: 13, fontWeight: 800, color: '#fff' }}>🔔 Notificaciones en Vivo</span>
+                  <button
+                    onClick={() => setIsBellOpen(false)}
+                    style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 14 }}
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                {badgeData.totalNotifications === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '16px 0', color: '#94a3b8', fontSize: 13 }}>
+                    <span style={{ fontSize: 24, display: 'block', marginBottom: 6 }}>✨</span>
+                    Todo al día. No hay pedidos ni citas pendientes por gestionar.
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {/* Card Pedidos */}
+                    {badgeData.pendingOrdersCount > 0 && (
+                      <div style={{
+                        background: 'rgba(245, 158, 11, 0.1)',
+                        border: '1px solid rgba(245, 158, 11, 0.35)',
+                        borderRadius: 10,
+                        padding: 10,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                      }}>
+                        <div>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: '#f59e0b' }}>
+                            🛍️ {badgeData.pendingOrdersCount} {badgeData.pendingOrdersCount === 1 ? 'Pedido pendiente' : 'Pedidos pendientes'}
+                          </div>
+                          <div style={{ fontSize: 11, color: '#cbd5e1' }}>Nuevos pedidos tomados por el bot</div>
+                        </div>
+                        <Link
+                          href="/dashboard/orders"
+                          onClick={() => setIsBellOpen(false)}
+                          className="btn"
+                          style={{ fontSize: 11, padding: '4px 10px', background: '#f59e0b', color: '#080E1F', fontWeight: 800, textDecoration: 'none', borderRadius: 6 }}
+                        >
+                          Ver →
+                        </Link>
+                      </div>
+                    )}
+
+                    {/* Card Citas */}
+                    {badgeData.upcomingAppointmentsCount > 0 && (
+                      <div style={{
+                        background: 'rgba(0, 207, 255, 0.1)',
+                        border: '1px solid rgba(0, 207, 255, 0.35)',
+                        borderRadius: 10,
+                        padding: 10,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                      }}>
+                        <div>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: '#00CFFF' }}>
+                            📅 {badgeData.upcomingAppointmentsCount} {badgeData.upcomingAppointmentsCount === 1 ? 'Cita agendada' : 'Citas agendadas'}
+                          </div>
+                          <div style={{ fontSize: 11, color: '#cbd5e1' }}>Citas confirmadas por el bot</div>
+                        </div>
+                        <Link
+                          href="/dashboard/appointments"
+                          onClick={() => setIsBellOpen(false)}
+                          className="btn"
+                          style={{ fontSize: 11, padding: '4px 10px', background: '#00CFFF', color: '#080E1F', fontWeight: 800, textDecoration: 'none', borderRadius: 6 }}
+                        >
+                          Ver →
+                        </Link>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Quota Exceeded Alert Banner */}

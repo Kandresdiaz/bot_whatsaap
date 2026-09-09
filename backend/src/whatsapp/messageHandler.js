@@ -520,9 +520,9 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
     if (products.length === 0 && business?.id === PRIMARY_BOTWA_ID) {
       const { data: defaultProds } = await supabase.from('products_services').select('name, description, price, currency, category, image_url').eq('business_id', PRIMARY_BOTWA_ID).eq('is_active', true).limit(15);
       products = (defaultProds && defaultProds.length > 0) ? defaultProds : [
-        { name: 'Plan Vendedor Básico', description: 'Automatización 24/7 con respuestas inmediatas en <2s para resolver dudas y catálogo de texto. Incluye 7 días gratis ($0 hoy).', price: 120000, currency: 'COP', category: 'Planes BotWA' },
-        { name: 'Plan Máquina de Ventas Pro (⭐ Más Recomendado)', description: 'Catálogo interactivo con envío automático de fotos de productos, agendador de citas/pedidos y seguimiento. Incluye 7 días gratis ($0 hoy).', price: 249000, currency: 'COP', category: 'Planes BotWA' },
-        { name: 'Plan Dominio VIP / Multi-Línea', description: 'Para empresas consolidadas con alto tráfico: múltiples líneas de WhatsApp, marca blanca y soporte personalizado.', price: 490000, currency: 'COP', category: 'Planes BotWA' },
+        { name: 'Plan Vendedor Automático (1.500 msgs/mes)', description: 'Ideal para negocios pequeños o independientes (hasta 50 chats/día). Atención 24/7 en WhatsApp, respuestas inmediatas en <2s, catálogo inteligente con IA y base de FAQs. Incluye 7 días gratis ($0 COP hoy con tarjeta).', price: 120000, currency: 'COP', category: 'Planes BotWA' },
+        { name: 'Plan Máquina de Ventas Pro (5.000 msgs/mes - ⭐ Más Recomendado)', description: 'Para tiendas y empresas en crecimiento (hasta 170 chats/día). Envío automático de fotos y multimedia del catálogo, agendador de citas y toma de pedidos con sincronización a tu panel, 5.000 msgs IA/mes y FAQs ampliadas. Incluye 7 días gratis ($0 COP hoy con tarjeta).', price: 249000, currency: 'COP', category: 'Planes BotWA' },
+        { name: 'Plan Dominio Agencia / VIP (20.000 msgs/mes)', description: 'Para empresas consolidadas, clínicas o agencias (más de 650 chats/día). Múltiples líneas de WhatsApp conectadas, marca blanca con tu logo, prompting y embudo personalizado Done-For-You y soporte VIP 1 a 1. Incluye 7 días gratis ($0 COP hoy con tarjeta).', price: 490000, currency: 'COP', category: 'Planes BotWA' },
       ];
     }
   } catch (e) {
@@ -570,6 +570,65 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
         }
       }
     } catch (_) {}
+  }
+
+  // ── 9.5 VERIFICACIÓN ESTRICTA DE CUOTA (Protección de Tokens Groq en Free Trial) ──
+  let isQuotaExceeded = false;
+  try {
+    if (userId) {
+      const { data: userProfile } = await supabase
+        .from('users')
+        .select('id, is_admin, plan, subscription_status, status, trial_ends_at')
+        .eq('id', userId)
+        .maybeSingle();
+
+      // Los administradores NUNCA tienen límite
+      if (userProfile && !userProfile.is_admin) {
+        const isTrial = userProfile.subscription_status === 'trialing' || userProfile.status === 'trial';
+        const maxTrialMsgs = 150;
+        
+        if (isTrial) {
+          const { getSessionUuid } = require('./sessionManager');
+          const sessionUuid = await getSessionUuid(userId);
+
+          if (sessionUuid) {
+            // 1. Obtener conversaciones de esta sesión exacta
+            const { data: userConvs } = await supabase
+              .from('conversations')
+              .select('id')
+              .eq('session_id', sessionUuid)
+              .limit(500);
+
+            const userConvIds = (userConvs || []).map(c => c.id).filter(Boolean);
+
+            if (userConvIds.length > 0) {
+              const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
+              // Contar mensajes emitidos ÚNICAMENTE en las conversaciones de este usuario
+              const { count: msgsSent } = await supabase
+                .from('messages')
+                .select('id', { count: 'exact', head: true })
+                .in('conversation_id', userConvIds)
+                .eq('direction', 'outbound')
+                .gte('timestamp', startOfMonth);
+
+              if ((msgsSent || 0) >= maxTrialMsgs) {
+                console.warn(`[QUOTA PROTECT] 🛑 Usuario ${userId} superó el límite de prueba gratuita (${msgsSent}/${maxTrialMsgs} msgs). Bloqueando llamada a Groq.`);
+                isQuotaExceeded = true;
+              }
+            }
+          }
+        }
+      }
+    }
+  } catch (eQuota) {
+    // Si hay cualquier error de red, NO bloqueamos el servicio para no interferir
+    console.error('[QUOTA CHECK ERROR]', eQuota.message);
+    isQuotaExceeded = false;
+  }
+
+  if (isQuotaExceeded) {
+    await sendText(sock, jid, '¡Hola! 👋 El asistente virtual ha alcanzado el límite de mensajes de su prueba gratuita de 150 mensajes. Para continuar atendiendo 24/7 sin interrupciones, puedes activar tu plan en: https://bot-whatsaap.vercel.app/pricing');
+    return;
   }
 
   // ── 10. RAG + Groq: generar respuesta ─────────────────────────────────────

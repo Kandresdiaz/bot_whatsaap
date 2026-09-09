@@ -544,7 +544,8 @@ Sigue estrictamente estas indicaciones sobre qué datos pedir o qué cuentas/mé
    - Termina SIEMPRE con UN SOLO llamado a la acción (CTA) claro y persuasivo.
 
 2. PROCESO DE TOMA DE PEDIDOS Y COMPRAS (${busName}):
-   - Cuando el cliente decida comprar o contratar cualquier producto, plan o servicio del catálogo:
+${busName === 'BotWA' || business?.id === '8fd9a59d-77d7-4db7-8637-9aaebca1158e' ? `   - 🚨 REGLA EXCLUSIVA PARA BOTWA: NUNCA pidas nombre, dirección de entrega ni cuentas bancarias (Nequi/Bancolombia). Para cerrar la venta, envía SIEMPRE el link de la página con los 7 días gratis: https://bot-whatsaap.vercel.app/pricing para que el usuario active su prueba y conecte su WhatsApp.
+   - Si el cliente elige un plan, felicítalo y dale el link directo: "¡Excelente elección! Puedes activar tus 7 días gratis ($0 hoy) aquí: https://bot-whatsaap.vercel.app/pricing [LEAD_CALIENTE]"` : `   - Cuando el cliente decida comprar o contratar cualquier producto, plan o servicio del catálogo:
      1. Confirma el producto/plan y su precio en $ COP.
      2. Solicita con amabilidad los datos indispensables:
         • Nombre completo
@@ -553,7 +554,7 @@ Sigue estrictamente estas indicaciones sobre qué datos pedir o qué cuentas/mé
      3. Cuando el cliente entregue sus datos o confirme la compra, felicítalo con entusiasmo ("¡Excelente [Nombre]! Tu solicitud de [Producto] ha sido registrada con éxito ✨") e incluye SIEMPRE al final de tu respuesta:
         [LEAD_CALIENTE]
         [NUEVO_PEDIDO: {"nombre": "Nombre Cliente", "producto": "Producto Confirmado", "cantidad": 1, "total": 120000, "direccion": "Dirección completa", "ciudad": "Ciudad", "metodo_pago": "Nequi / Transferencia", "notas": "Detalles del pedido"}]
-        [DATOS_CLIENTE: {"nombre": "Nombre Cliente", "producto": "Producto Confirmado", "ciudad": "Ciudad/Dirección", "metodo_pago": "Método de Pago"}]
+        [DATOS_CLIENTE: {"nombre": "Nombre Cliente", "producto": "Producto Confirmado", "ciudad": "Ciudad/Dirección", "metodo_pago": "Método de Pago"}]`}
 
 3. PROCESO DE AGENDAMIENTO DE CITAS Y RESERVAS EN CALENDARIO (${busName}):
    - Cuando el cliente requiera un servicio presencial, cita o reserva:
@@ -616,21 +617,25 @@ const buildHumanAssistantReply = (userMessage, business, products = [], chatHist
   const isBotWASaaS = (busName === 'BotWA' && business?.id === '8fd9a59d-77d7-4db7-8637-9aaebca1158e');
 
   if (isBotWASaaS) {
+    const pricingLink = 'https://bot-whatsaap.vercel.app/pricing';
     // Consultas específicas del SaaS BotWA
     if (norm.includes('acaban') || norm.includes('limite') || norm.includes('tope') || norm.includes('mas mensajes')) {
-      return `En ${busName} nunca dejas de atender. Si llegas al límite, pasas al plan superior pagando la diferencia o compras mensajes extra desde tu panel. ¿Activamos tus 7 días gratis ($0 hoy)? 😊`;
+      return `En ${busName} nunca dejas de atender. Si llegas al límite, pasas al plan superior pagando solo la diferencia desde tu panel. Además, tienes 7 días gratis ($0 hoy). Pruébalo aquí: ${pricingLink} 😊`;
     }
     if (norm.includes('pro') || norm.includes('medio') || norm.includes('segundo') || norm.includes('foto')) {
-      return `El *Plan Máquina de Ventas Pro ($249.000 COP/mes)* incluye fotos automáticas, agendador de citas/pedidos y hasta 5.000 msgs/mes con 7 días gratis ($0 hoy). ¿Te gustaría activarlo? 😊`;
+      return `El *Plan Máquina de Ventas Pro ($249.000 COP/mes)* incluye hasta 5.000 msgs/mes, envío de fotos de catálogo y agendador de citas/pedidos. ¡Empieza tus 7 días gratis ($0 hoy) aquí: ${pricingLink}?plan=pro 🚀`;
     }
-    if (norm.includes('basico') || norm.includes('starter') || norm.includes('primero') || norm.includes('economico')) {
-      return `El *Plan Vendedor Automático ($120.000 COP/mes)* incluye catálogo 24/7, respuestas en <2s y hasta 1.500 msgs/mes con 7 días gratis ($0 hoy). ¿Deseas activarlo? 😊`;
+    if (norm.includes('basico') || norm.includes('starter') || norm.includes('primero') || norm.includes('economico') || norm.includes('automatico')) {
+      return `El *Plan Vendedor Automático ($120.000 COP/mes)* incluye hasta 1.500 msgs/mes, catálogo 24/7 y respuestas en <2s. Activa tus 7 días gratis ($0 hoy) aquí: ${pricingLink}?plan=starter 😊`;
+    }
+    if (norm.includes('vip') || norm.includes('agencia') || norm.includes('grande') || norm.includes('empresa')) {
+      return `El *Plan Dominio Agencia / VIP ($490.000 COP/mes)* incluye hasta 20.000 msgs/mes, multi-línea y marca blanca. Activa tus 7 días gratis ($0 hoy) aquí: ${pricingLink}?plan=business 👑`;
     }
     if (norm.includes('plan') || norm.includes('precio') || norm.includes('costo') || norm.includes('oferta') || norm.includes('tarifa') || norm.includes('cuanto') || norm.includes('opcion')) {
-      return `Tenemos 3 planes con 7 Días Gratis ($0 hoy):\n• *Vendedor Básico ($120k/mes):* Respuestas y catálogo 24/7.\n• *Máquina de Ventas Pro ($249k/mes - ⭐ Recomendado):* Envía fotos y agenda pedidos/citas en automático.\n• *VIP ($490k/mes):* Multi-línea y soporte VIP.\n\nLa mayoría inicia con el Plan Pro. ¿Tu negocio vende productos o servicios? 😊`;
+      return `Tenemos 3 planes con 7 Días Gratis ($0 hoy):\n• *Vendedor Automático ($120k/mes):* 1.500 msgs/mes (hasta 50 chats/día).\n• *Máquina de Ventas Pro ($249k/mes - ⭐ Recomendado):* 5.000 msgs/mes con fotos y citas.\n• *Dominio VIP ($490k/mes):* 20.000 msgs/mes multi-línea.\n\nPuedes probar cualquiera 7 días gratis aquí: ${pricingLink} 😊`;
     }
-    if (norm.includes('prueba') || norm.includes('interesa') || norm.includes('activar') || norm.includes('empezar')) {
-      return `¡Excelente! 🎉 Te conectamos en 10 minutos con 7 Días de Prueba Gratis ($0 COP hoy). ¿Cuál es el nombre de tu negocio y qué vendes? 😊 [LEAD_CALIENTE]`;
+    if (norm.includes('prueba') || norm.includes('interesa') || norm.includes('activar') || norm.includes('empezar') || norm.includes('comprar') || norm.includes('contratar') || norm.includes('link') || norm.includes('pagina') || norm.includes('registro')) {
+      return `¡Excelente decisión! 🚀 Activa tus 7 Días de Prueba Gratis ($0 COP hoy) en solo 5 minutos ingresando aquí: ${pricingLink}\n\nConectas tu WhatsApp escaneando el código QR y comienzas a vender 24/7. ¡Te esperamos dentro! ✨ [LEAD_CALIENTE]`;
     }
   }
 
