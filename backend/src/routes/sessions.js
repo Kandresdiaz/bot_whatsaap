@@ -87,8 +87,19 @@ router.post('/start', async (req, res) => {
       console.warn('DB session upsert aviso (continuando con Baileys):', dbErr.message);
     }
 
-    // 2.5 Si ya hay un QR activo esperando escaneo en pantalla y no se pidió regenerar, reutilizarlo
+    // 2.5 Si la sesión ya está conectada y no se forzó reconexión, responder de inmediato
     const active = getSession(userId) || getSession(validUserId);
+    if (!force && active && active.status === 'connected') {
+      console.log(`[Sessions API] Sesión ya conectada para ${validUserId}`);
+      return res.json({
+        success: true,
+        sessionId,
+        status: 'connected',
+        qr: null,
+        phone: active.phone,
+      });
+    }
+
     if (!force && active && active.status === 'qr_ready' && active.qr) {
       console.log(`[Sessions API] Reutilizando QR existente para ${validUserId}`);
       return res.json({
@@ -100,10 +111,8 @@ router.post('/start', async (req, res) => {
       });
     }
 
-    // 3. Iniciar sesión de Baileys generando un código QR limpio y fresco
-    // Al pedir conectar manualmente desde la web, forzamos limpieza para que WhatsApp entregue un QR nuevo
-    // y no reutilice credenciales viejas de un teléfono que ya fue desvinculado.
-    const forceClean = true;
+    // 3. Iniciar sesión de Baileys
+    const forceClean = Boolean(force);
 
     createSession(validUserId, businessId, global.io, forceClean, true).catch(err => {
       console.error('Error en Baileys createSession:', err);

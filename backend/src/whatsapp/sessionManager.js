@@ -1011,7 +1011,6 @@ const createSession = async (userId, businessId, io, forceClean = false, isManua
     userStores.delete(validUserId);
     userContacts.delete(userId);
     userContacts.delete(validUserId);
-    clearUserConversationsFromDb(validUserId).catch(() => {});
 
     safeUpsert('whatsapp_sessions', {
       user_id: validUserId,
@@ -1105,8 +1104,8 @@ const createSession = async (userId, businessId, io, forceClean = false, isManua
     generateHighQualityLinkPreview: false,
     syncFullHistory: false,
     downloadHistory: false,
-    markOnlineOnConnect: false,
-    shouldSyncHistoryMessage: () => false,
+    markOnlineOnConnect: true,
+    shouldSyncHistoryMessage: () => true,
     getMessage: async (key) => {
       try {
         const store = getUserStore(userId);
@@ -1245,75 +1244,29 @@ const createSession = async (userId, businessId, io, forceClean = false, isManua
 
       const validId = getValidUserId(userId);
 
-      // ── VALIDACIÓN DE NÚMERO DUPLICADO: Impedir que un mismo número esté en múltiples cuentas ──
+      // ── REASIGNACIÓN AUTOMÁTICA Y SEGURA DE NÚMERO DE TELÉFONO ──
       try {
-        let duplicateUser = null;
-
-        // 1. Revisar en Supabase (whatsapp_sessions) si otro usuario ya tiene este teléfono conectado
-        if (supabase && phone) {
-          const { data: existingSessions } = await supabase
-            .from('whatsapp_sessions')
-            .select('id, user_id, phone_number, status')
-            .eq('phone_number', phone)
-            .eq('status', 'connected');
-
-          if (Array.isArray(existingSessions)) {
-            const conflict = existingSessions.find(s => getValidUserId(s.user_id) !== validId);
-            if (conflict) {
-              duplicateUser = conflict.user_id;
-            }
-          }
-        }
-
-        // 2. Revisar en memoria RAM activa si alguna sesión tiene el mismo número en otra cuenta
-        if (!duplicateUser && phone) {
+        if (phone) {
+          // 1. Si otra sesión distinta en memoria RAM estaba usando este número en otra cuenta, cerrarla limpiamente
           for (const [key, s] of sessions.entries()) {
-            if (s?.phone === phone && s?.status === 'connected' && getValidUserId(key) !== validId) {
-              duplicateUser = key;
-              break;
+            if (s?.phone === phone && s?.sock && s.sock !== sock && getValidUserId(key) !== validId) {
+              console.log(`[Baileys Reassignment] 🔄 Desconectando sesión anterior del número +${phone} en cuenta ${key}`);
+              try { s.sock.end(new Error('Número transferido a otra cuenta')); } catch (_) {}
+              sessions.delete(key);
             }
           }
-        }
 
-        if (duplicateUser) {
-          console.warn(`[Baileys Security] 🛑 El número +${phone} ya está conectado en otra cuenta (${duplicateUser}). Rechazando vinculación para ${userId}.`);
-
-          userDisconnectedMap.add(userId);
-          userDisconnectedMap.add(validId);
-
-          try { sock.ev.removeAllListeners(); } catch (_) {}
-          try { sock.end(new Error('Número ya vinculado en otra cuenta')); } catch (_) {}
-
-          // Limpiar de RAM y disco para esta cuenta que intentó duplicar
-          sessions.delete(userId);
-          sessions.delete(validId);
-          userStores.delete(userId);
-          userStores.delete(validId);
-          deleteSessionFolder(userId);
-          deleteSessionFolder(validId);
-
-          // Actualizar estado en DB a error
-          await safeUpsert('whatsapp_sessions', {
-            user_id: validId,
-            status: 'error',
-            phone_number: null,
-            qr_code: null,
-            session_data: null,
-            connected_at: null,
-          });
-
-          const errorMsg = `⚠️ El número +${phone} ya está conectado en otra cuenta de la plataforma. Para evitar errores y cruce de datos, debes desconectarlo de la otra cuenta antes de vincularlo aquí.`;
-
-          if (io) {
-            emitToUserRooms(io, userId, 'connection_error', { error: errorMsg, phone });
-            emitToUserRooms(io, validId, 'connection_error', { error: errorMsg, phone });
-            emitToUserRooms(io, userId, 'disconnected', { shouldReconnect: false, error: errorMsg, isDuplicate: true });
-            emitToUserRooms(io, validId, 'disconnected', { shouldReconnect: false, error: errorMsg, isDuplicate: true });
+          // 2. En Supabase, marcar cualquier sesión de otro usuario con este teléfono como desconectada
+          if (supabase) {
+            await supabase
+              .from('whatsapp_sessions')
+              .update({ status: 'disconnected', phone_number: null, qr_code: null })
+              .eq('phone_number', phone)
+              .neq('user_id', validId);
           }
-          return;
         }
-      } catch (dupErr) {
-        console.error('[Baileys Security] Error verificando número duplicado:', dupErr.message);
+      } catch (reassignErr) {
+        console.warn('[Baileys Reassignment] Aviso reasignando número:', reassignErr.message);
       }
 
       // Si el número de teléfono cambió respecto a la sesión guardada en DB,

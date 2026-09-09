@@ -251,22 +251,12 @@ export default function ConversationsPage() {
   };
 
   const loadConversations = async (targetId: string) => {
-    if (sessionStatusRef.current === 'disconnected' || sessionStatusRef.current === 'qr_ready') {
-      setConversations([]);
-      setActive(null);
-      return;
-    }
     const idToFetch = effectiveUserId || targetId || 'admin';
     if (!idToFetch) return;
     try {
       const res = await fetch(`${BACKEND}/api/conversations/${idToFetch}`);
       if (!res.ok) return;
       const data = await res.json();
-      if (sessionStatusRef.current === 'disconnected' || sessionStatusRef.current === 'qr_ready') {
-        setConversations([]);
-        setActive(null);
-        return;
-      }
       if (data.conversations && Array.isArray(data.conversations)) {
         setConversations(data.conversations);
 
@@ -317,7 +307,7 @@ export default function ConversationsPage() {
 
           if (currentStatus === 'connected') {
             loadConversations(userIdToUse);
-          } else if (currentStatus === 'disconnected' || currentStatus === 'qr_ready') {
+          } else if (currentStatus === 'disconnected') {
             setConversations([]);
             setActive(null);
             setMessages([]);
