@@ -750,6 +750,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-09** | fix: evitar desconexion automatica de WhatsApp, preservar credenciales en Supabase y optimizar reconexion en Render (`9fd2c05`) | Auto-deploy |
 
+| **2026-09-09** | fix: aislamiento total de catalogos por usuario y bloqueo estricto de alucinacion de modelos cuando no hay productos registrados (`14f673e`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
