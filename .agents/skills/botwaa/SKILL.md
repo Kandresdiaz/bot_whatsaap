@@ -762,6 +762,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-09** | fix: asegurar generacion de nuevo codigo QR al conectar y evitar sesion fantasma (`9f8a78e`) | Auto-deploy |
 
+| **2026-09-09** | fix: resolve QR disconnect on scan, enable history message sync, and allow transparent phone connection (`8c4926a`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
