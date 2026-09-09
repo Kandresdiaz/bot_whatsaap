@@ -26,6 +26,9 @@ router.post('/start', async (req, res) => {
 
   try {
     const validUserId = getValidUserId(userId);
+    const { clearExplicitDisconnect } = require('../whatsapp/sessionManager');
+    clearExplicitDisconnect(userId);
+    clearExplicitDisconnect(validUserId);
     const isUuid = (str) => typeof str === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
 
     // 0. Verificar que el usuario tenga suscripción paga o prueba con tarjeta activa (si no es admin)

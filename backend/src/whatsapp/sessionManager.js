@@ -1879,6 +1879,12 @@ const isExplicitlyDisconnected = (userId) => {
   return userDisconnectedMap.has(userId) || userDisconnectedMap.has(validId);
 };
 
+const clearExplicitDisconnect = (userId) => {
+  const validId = getValidUserId(userId);
+  userDisconnectedMap.delete(userId);
+  if (validId) userDisconnectedMap.delete(validId);
+};
+
 module.exports = {
   sessions,
   createSession,
@@ -1898,6 +1904,7 @@ module.exports = {
   storeChats,
   extractText,
   isExplicitlyDisconnected,
+  clearExplicitDisconnect,
   resolvePhoneAndJid,
   cleanPhoneFromJid,
   setContactBotStatus,
