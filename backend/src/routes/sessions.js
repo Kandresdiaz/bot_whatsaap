@@ -87,39 +87,27 @@ router.post('/start', async (req, res) => {
       console.warn('DB session upsert aviso (continuando con Baileys):', dbErr.message);
     }
 
-    // 2.5 Si ya hay un QR activo o sesión conectada y no se forzó nuevo QR, responder inmediatamente
+    // 2.5 Si ya hay un QR activo esperando escaneo en pantalla y no se pidió regenerar, reutilizarlo
     const active = getSession(userId) || getSession(validUserId);
-    if (!force && active) {
-      if (active.status === 'qr_ready' && active.qr) {
-        console.log(`[Sessions API] Reutilizando QR existente para ${validUserId}`);
-        return res.json({
-          success: true,
-          sessionId,
-          status: 'qr_ready',
-          qr: active.qr,
-          phone: null
-        });
-      }
-      if (active.status === 'connected') {
-        return res.json({
-          success: true,
-          sessionId,
-          status: 'connected',
-          qr: null,
-          phone: active.phone || null,
-        });
-      }
-    }
-
-    // 3. Iniciar sesión de Baileys marcando explícitamente isManualStart = true
-    const isAlreadyConnecting = !force && active?.status === 'connecting' && active?.sock;
-    const forceClean = Boolean(force);
-
-    if (!isAlreadyConnecting) {
-      createSession(validUserId, businessId, global.io, forceClean, true).catch(err => {
-        console.error('Error en Baileys createSession:', err);
+    if (!force && active && active.status === 'qr_ready' && active.qr) {
+      console.log(`[Sessions API] Reutilizando QR existente para ${validUserId}`);
+      return res.json({
+        success: true,
+        sessionId,
+        status: 'qr_ready',
+        qr: active.qr,
+        phone: null
       });
     }
+
+    // 3. Iniciar sesión de Baileys generando un código QR limpio y fresco
+    // Al pedir conectar manualmente desde la web, forzamos limpieza para que WhatsApp entregue un QR nuevo
+    // y no reutilice credenciales viejas de un teléfono que ya fue desvinculado.
+    const forceClean = true;
+
+    createSession(validUserId, businessId, global.io, forceClean, true).catch(err => {
+      console.error('Error en Baileys createSession:', err);
+    });
 
     // 4. Esperar hasta 8 segundos a que Baileys genere el QR en RAM para retornos directos y rápidos
     let qrReady = null;

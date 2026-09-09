@@ -366,7 +366,7 @@ export default function ConnectPage() {
           <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>Acciones</div>
           <div className="action-buttons-row" style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             {status === 'disconnected' && (
-              <button className="btn btn-primary btn-mobile-full" onClick={() => startSession(false)}>
+              <button className="btn btn-primary btn-mobile-full" onClick={() => startSession(true)}>
                 🔌 Conectar WhatsApp / Obtener QR
               </button>
             )}
