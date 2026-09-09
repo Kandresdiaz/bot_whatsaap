@@ -758,6 +758,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-09** | fix(admin): corregir nombres de columnas en consulta de whatsapp_sessions para panel admin (`fdf528f`) | Auto-deploy |
 
+| **2026-09-09** | fix: resolve WhatsApp LIDs to real phone numbers, eliminate chat cross-contamination, and merge duplicate contacts (`1be8c37`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
