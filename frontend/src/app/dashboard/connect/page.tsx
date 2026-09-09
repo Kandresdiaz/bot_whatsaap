@@ -6,7 +6,9 @@ import { useAuth } from '@/context/AuthContext';
 import OnboardingWizardModal from '@/components/OnboardingWizardModal';
 import TrialActivationModal from '@/components/TrialActivationModal';
 
-const BACKEND = 'https://bot-whatsaap-tkjd.onrender.com';
+import { BACKEND_URL } from '@/lib/config';
+
+const BACKEND = BACKEND_URL;
 
 type Status = 'disconnected' | 'connecting' | 'qr_ready' | 'connected' | 'error';
 
@@ -516,8 +518,19 @@ export default function ConnectPage() {
         </div>
       )}
 
+      {/* Estado Conectando / Generando QR */}
+      {status === 'connecting' && !qr && (
+        <div className="card" style={{ maxWidth: 360, marginBottom: 24, textAlign: 'center', padding: '32px 24px', border: '1px solid rgba(0, 207, 255, 0.2)' }}>
+          <div className="spinner" style={{ width: 40, height: 40, margin: '0 auto 16px auto', borderWidth: 3 }} />
+          <h3 style={{ fontWeight: 700, fontSize: 16, marginBottom: 8, color: '#00CFFF' }}>Generando Código QR...</h3>
+          <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0, lineHeight: 1.5 }}>
+            Conectando con WhatsApp. El código QR aparecerá aquí en unos segundos para que puedas escanearlo.
+          </p>
+        </div>
+      )}
+
       {/* QR Code */}
-      {hasAccess && qr && (
+      {qr && (
         <div className="qr-container" style={{ maxWidth: 360, marginBottom: 24 }}>
           <div style={{ fontSize: 36 }}>📷</div>
           <h2 style={{ fontWeight: 700, fontSize: 18 }}>Escanea con WhatsApp</h2>

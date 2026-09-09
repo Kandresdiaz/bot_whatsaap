@@ -1,7 +1,17 @@
 const express = require('express');
 const router = express.Router();
 const { supabase } = require('../db/supabase');
-const { createSession, disconnectSession, sendMessage, getSession } = require('../whatsapp/sessionManager');
+const {
+  createSession,
+  disconnectSession,
+  sendMessage,
+  getSession,
+  getValidUserId,
+  getSessionUuid,
+  isExplicitlyDisconnected,
+  emitToUserRooms,
+  resolvePhoneAndJid,
+} = require('../whatsapp/sessionManager');
 
 // Iniciar sesión (genera QR con Baileys)
 router.post('/start', async (req, res) => {
@@ -15,7 +25,6 @@ router.post('/start', async (req, res) => {
   let sessionId = userId;
 
   try {
-    const { getValidUserId } = require('../whatsapp/sessionManager');
     const validUserId = getValidUserId(userId);
     const isUuid = (str) => typeof str === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
 
@@ -52,7 +61,6 @@ router.post('/start', async (req, res) => {
     businessId = business?.id || null;
 
     // 2. Garantizar que el registro de sesión exista en DB ANTES de arrancar Baileys
-    // (crítico: messaging-history.set se dispara al conectar y necesita el sessionUuid ya creado)
     try {
       const { data: existingSession } = await supabase
         .from('whatsapp_sessions')
@@ -62,11 +70,9 @@ router.post('/start', async (req, res) => {
         .limit(1);
 
       if (existingSession && existingSession.length > 0) {
-        // Actualizar estado a connecting
         await supabase.from('whatsapp_sessions').update({ status: 'connecting', qr_code: null }).eq('id', existingSession[0].id);
         sessionId = existingSession[0].id;
       } else {
-        // Crear nuevo registro
         const { data: newSession } = await supabase
           .from('whatsapp_sessions')
           .insert({ user_id: validUserId, status: 'connecting' })
@@ -102,19 +108,22 @@ router.post('/start', async (req, res) => {
       }
     }
 
-    // 3. Iniciar sesión de Baileys (forzando limpieza si no estaba conectada)
-    const forceClean = !!force || !active || active.status !== 'connected';
+    // 3. Iniciar sesión de Baileys marcando explícitamente isManualStart = true
+    const isAlreadyConnecting = !force && active?.status === 'connecting' && active?.sock;
+    const forceClean = Boolean(force);
 
-    createSession(validUserId, businessId, global.io, forceClean).catch(err => {
-      console.error('Error en Baileys createSession:', err);
-    });
+    if (!isAlreadyConnecting) {
+      createSession(validUserId, businessId, global.io, forceClean, true).catch(err => {
+        console.error('Error en Baileys createSession:', err);
+      });
+    }
 
-    // 4. Esperar hasta 5 segundos a que Baileys genere el QR en RAM para retornos ultrarrápidos
+    // 4. Esperar hasta 8 segundos a que Baileys genere el QR en RAM para retornos directos y rápidos
     let qrReady = null;
     let currentStatus = 'connecting';
     let phoneNum = null;
 
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 16; i++) {
       await new Promise(r => setTimeout(r, 500));
       const currentActive = getSession(userId) || getSession(validUserId);
       if (currentActive?.qr) {
@@ -145,9 +154,9 @@ router.post('/start', async (req, res) => {
 // Obtener estado de la sesión
 router.get('/status/:userId', async (req, res) => {
   const { userId } = req.params;
-  const validUserId = getValidUserId(userId);
 
   try {
+    const validUserId = getValidUserId(userId);
     const active = getSession(userId) || getSession(validUserId);
 
     // Consultar DB Supabase para complementar
@@ -233,9 +242,10 @@ router.get('/status/:userId', async (req, res) => {
     }
 
     const sessionUuid = await getSessionUuid(validUserId);
-    res.json({ success: true, session: { id: sessionUuid, status: 'disconnected', user_id: validUserId, phone_number: null, qr_code: null, bot_enabled: true } });
+    return res.json({ success: true, session: { id: sessionUuid, status: 'disconnected', user_id: validUserId, phone_number: null, qr_code: null, bot_enabled: true } });
   } catch (err) {
-    res.json({ success: true, session: { status: 'disconnected', user_id: userId, phone_number: null, qr_code: null } });
+    console.error('Error en /status/:userId:', err);
+    return res.json({ success: true, session: { status: 'disconnected', user_id: userId, phone_number: null, qr_code: null } });
   }
 });
 

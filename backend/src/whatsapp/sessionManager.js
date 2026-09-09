@@ -907,8 +907,9 @@ const restoreFullSessionFromDb = async (userId, sessionDir) => {
 
 const createSession = async (userId, businessId, io, forceClean = false, isManualStart = false) => {
   const validUserId = getValidUserId(userId);
+  const validId = validUserId;
   userDisconnectedMap.delete(userId);
-  userDisconnectedMap.delete(validUserId);
+  userDisconnectedMap.delete(validId);
 
   const existingSession = sessions.get(userId) || sessions.get(validUserId);
 
