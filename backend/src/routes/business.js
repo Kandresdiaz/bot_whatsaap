@@ -236,6 +236,8 @@ router.post('/:userId', async (req, res) => {
     console.error('[BUSINESS POST] Exception:', e.message);
     return res.status(500).json({ success: false, error: e.message });
   }
+});
+
 // ── Endpoint para Campanita y Badges de Notificaciones (Pedidos y Citas) ──
 router.get('/badges/:userId', async (req, res) => {
   try {
