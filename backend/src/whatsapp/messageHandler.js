@@ -374,12 +374,13 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
       }
     }
 
-    // Fallback prioritario al negocio principal del SaaS (BotWA)
-    if (!business || business.name === 'Asistente Virtual') {
+    // Fallback a BotWA SOLO si es el administrador principal
+    const PRIMARY_ADMIN_UUID = '0b8c0710-b97a-4e2d-acf8-b7f33dcd5b3d';
+    if (!business && (validUserId === PRIMARY_ADMIN_UUID || userId === 'admin')) {
       const { data: botwaBus } = await supabase
         .from('businesses')
         .select('*')
-        .eq('name', 'BotWA')
+        .eq('id', '8fd9a59d-77d7-4db7-8637-9aaebca1158e')
         .limit(1);
       if (botwaBus && botwaBus.length > 0) {
         business = botwaBus[0];
@@ -389,22 +390,41 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
     console.error('[MSG] Error obteniendo negocio:', e.message);
   }
 
-  // Si no hay negocio configurado, usar objeto predeterminado de BotWA Vendedor
-  if (!business || business.name === 'Asistente Virtual') {
-    business = {
-      id: '8fd9a59d-77d7-4db7-8637-9aaebca1158e',
-      name: 'BotWA',
-      category: 'Automatización de WhatsApp con IA',
-      city: 'Colombia',
-      timezone: 'America/Bogota',
-      bot_personality: 'persuasivo',
-      main_goal: 'vender',
-      greeting_msg: '¡Hola! 👋 Te damos la bienvenida a BotWA. Te ayudamos a automatizar tus ventas en WhatsApp 24/7 con Inteligencia Artificial por menos del 10% del costo de un empleado. ¿Te gustaría conocer nuestros precios o probar una demostración?',
-      active_hours_start: '00:00:00',
-      active_hours_end: '23:59:59',
-      active_days: [0, 1, 2, 3, 4, 5, 6],
-      bot_enabled: true
-    };
+  // Si no hay negocio configurado, usar objeto predeterminado estrictamente aislado
+  if (!business) {
+    const isPrimaryAdmin = validUserId === '0b8c0710-b97a-4e2d-acf8-b7f33dcd5b3d' || userId === 'admin';
+    if (isPrimaryAdmin) {
+      business = {
+        id: '8fd9a59d-77d7-4db7-8637-9aaebca1158e',
+        name: 'BotWA',
+        category: 'Automatización y Bots de WhatsApp con IA',
+        city: 'Colombia',
+        timezone: 'America/Bogota',
+        bot_personality: 'persuasivo',
+        main_goal: 'vender',
+        greeting_msg: '¡Hola! 👋 Te damos la bienvenida a BotWA. ¿Te gustaría conocer nuestros planes o probar una demostración?',
+        active_hours_start: '00:00:00',
+        active_hours_end: '23:59:59',
+        active_days: [0, 1, 2, 3, 4, 5, 6],
+        bot_enabled: true
+      };
+    } else {
+      business = {
+        user_id: validUserId,
+        name: 'Mi Negocio',
+        category: 'Atención Comercial y Servicios',
+        city: 'Colombia',
+        timezone: 'America/Bogota',
+        bot_personality: 'amigable y profesional',
+        main_goal: 'vender',
+        greeting_msg: '¡Hola! 👋 Bienvenido. ¿En qué te podemos colaborar hoy?',
+        away_msg: 'Gracias por escribirnos 🙏 Te respondemos pronto.',
+        active_hours_start: '08:00:00',
+        active_hours_end: '20:00:00',
+        active_days: [1, 2, 3, 4, 5, 6],
+        bot_enabled: true
+      };
+    }
   }
 
   // ── 6. Horario de atención (Modo Asistente Virtual 24/7) ─────────────────
@@ -496,8 +516,9 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
     const { data: prods } = await pQuery.order('category', { ascending: true }).limit(150);
     products = prods || [];
 
-    if (products.length === 0 && (business?.name === 'BotWA' || !business?.name)) {
-      const { data: defaultProds } = await supabase.from('products_services').select('name, description, price, currency, category, image_url').eq('is_active', true).limit(15);
+    const PRIMARY_BOTWA_ID = '8fd9a59d-77d7-4db7-8637-9aaebca1158e';
+    if (products.length === 0 && business?.id === PRIMARY_BOTWA_ID) {
+      const { data: defaultProds } = await supabase.from('products_services').select('name, description, price, currency, category, image_url').eq('business_id', PRIMARY_BOTWA_ID).eq('is_active', true).limit(15);
       products = (defaultProds && defaultProds.length > 0) ? defaultProds : [
         { name: 'Plan Vendedor Básico', description: 'Automatización 24/7 con respuestas inmediatas en <2s para resolver dudas y catálogo de texto. Incluye 7 días gratis ($0 hoy).', price: 120000, currency: 'COP', category: 'Planes BotWA' },
         { name: 'Plan Máquina de Ventas Pro (⭐ Más Recomendado)', description: 'Catálogo interactivo con envío automático de fotos de productos, agendador de citas/pedidos y seguimiento. Incluye 7 días gratis ($0 hoy).', price: 249000, currency: 'COP', category: 'Planes BotWA' },

@@ -428,11 +428,19 @@ Usa esta fecha para calcular con precisión días como "hoy", "mañana", "el jue
      * En productos/pedidos: "¿Lo buscas para entrega a domicilio o prefieres recogerlo?" o "¿Cuál de las opciones te llama más la atención para apartar tu pedido? 😊"
      * En citas/servicios: "¿Prefieres en la mañana o en la tarde?" o "¿Para qué día y hora te queda mejor tu turno? 📅"
 
-3. RECOMENDACIÓN INTELIGENTE DE CATÁLOGO:
-   - Si el cliente pregunta por opciones o precios generales de "${busName}":
+3. MANEJO INTELIGENTE DEL CATÁLOGO DE "${busName}":
+   ${hasProducts ? `
+   - El negocio CUENTA CON CATÁLOGO OFICIAL REGISTRADO:
      1. Presenta 2 o 3 opciones destacadas del === CATÁLOGO OFICIAL === con sus precios en $ COP y beneficio práctico.
      2. Si una opción está marcada como "⭐ Más Recomendado" o "⭐ Más Popular", recomiéndala proactivamente como la opción preferida.
      3. Remata con UNA SOLA pregunta guiada acorde al giro del negocio.
+   ` : `
+   - ⛔ EL NEGOCIO NO TIENE PRODUCTOS INDIVIDUALES CARGADOS EN EL CATÁLOGO:
+     1. 🚫 PROHIBIDO INVENTAR: NUNCA inventes nombres de modelos ficticios (ej: NO inventes "EcoRide", "PowerMax", "UrbanX", ni marcas o referencias inventadas), ni inventes precios numéricos que no estén registrados.
+     2. Responde confirmando con calidez que en "${busName}" son especialistas en ${busCategory} según la descripción oficial: "${business?.description || busCategory}".
+     3. Haz una pregunta consultiva para entender qué modelo, uso o presupuesto busca el cliente, y ofrece comunicarlo con un asesor o registrar sus datos para enviarle la información oficial.
+     Ejemplo: "¡Hola! 👋 Con gusto te asesoramos. En ${busName} nos especializamos en ${busCategory}. Cuéntame, ¿qué modelo o necesidad puntual tienes en mente para orientarte con las opciones disponibles? 😊"
+   `}
 
 4. REGLA DEL CTA ÚNICO POR MENSAJE:
    - ⛔ PROHIBIDO hacer dos o más preguntas en el mismo mensaje.
@@ -461,7 +469,7 @@ Usa esta fecha para calcular con precisión días como "hoy", "mañana", "el jue
 ================================================================================
 1. VERACIDAD ABSOLUTA EN PRECIOS Y PRODUCTOS:
    - Solo puedes ofrecer los productos, planes o servicios que aparezcan explícitamente en el === CATÁLOGO OFICIAL === o en la Base de Conocimiento.
-   - ⛔ ESTÁ TOTALMENTE PROHIBIDO INVENTAR: No inventes electrodomésticos, repuestos, comidas ni productos que no existan en el catálogo. Si el negocio no vende eso, dilo con amabilidad y enfócate en lo que sí ofrece "${busName}".
+   - ⛔ ESTÁ TOTALMENTE PROHIBIDO INVENTAR: No inventes modelos de vehículos (como EcoRide, UrbanX, etc.), referencias técnicas ficticias, repuestos, comidas ni productos que no existan en el catálogo. Si el negocio no tiene catálogo cargado, dilo con amabilidad y pregunta qué busca el cliente para validarlo con un asesor humano.
    - Si el cliente solicita un producto o servicio no listado, ofrece amablemente las alternativas reales disponibles en el catálogo o indica que un asesor humano lo verificará.
 
 2. FIDELIDAD A PREGUNTAS FRECUENTES (FAQs):
@@ -563,7 +571,7 @@ const buildHumanAssistantReply = (userMessage, business, products = [], chatHist
   }
 
   const hasProds = Array.isArray(products) && products.length > 0;
-  const isBotWASaaS = busName === 'BotWA' || (!hasProds && busCategory.includes('Consultoría'));
+  const isBotWASaaS = (busName === 'BotWA' && business?.id === '8fd9a59d-77d7-4db7-8637-9aaebca1158e');
 
   if (isBotWASaaS) {
     // Consultas específicas del SaaS BotWA
