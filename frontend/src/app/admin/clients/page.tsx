@@ -12,8 +12,12 @@ type Client = {
   plan: string;
   status: string;
   paid_until: string;
+  whatsapp_status?: string;
+  whatsapp_phone?: string;
+  whatsapp_has_qr?: boolean;
+  last_connected_at?: string;
   businesses?: { name: string; category: string }[];
-  whatsapp_sessions?: { status: string; phone_number: string }[];
+  whatsapp_sessions?: { status: string; phone_number: string; last_connected_at?: string }[];
 };
 
 const PLAN_PRICES: Record<string, number> = { starter: 120000, pro: 249000, business: 490000 };
@@ -25,6 +29,7 @@ export default function AdminClientsPage() {
   const [clients, setClients] = useState<Client[]>([]);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [botFilter, setBotFilter] = useState<'all' | 'connected' | 'qr_ready' | 'disconnected'>('all');
   const [loading, setLoading] = useState(true);
 
   // Modales
@@ -231,9 +236,19 @@ export default function AdminClientsPage() {
 
   const filteredClients = clients.filter(c => {
     const q = search.toLowerCase();
-    const matchesSearch = c.name.toLowerCase().includes(q) || c.email.toLowerCase().includes(q) || (c.phone && c.phone.includes(q));
+    const matchesSearch = c.name.toLowerCase().includes(q) ||
+      c.email.toLowerCase().includes(q) ||
+      (c.phone && c.phone.includes(q)) ||
+      (c.whatsapp_phone && c.whatsapp_phone.includes(q));
     const matchesStatus = statusFilter === 'all' || c.status === statusFilter;
-    return matchesSearch && matchesStatus;
+
+    const botSt = c.whatsapp_status || c.whatsapp_sessions?.[0]?.status || 'disconnected';
+    const matchesBot = botFilter === 'all' ||
+      (botFilter === 'connected' && botSt === 'connected') ||
+      (botFilter === 'qr_ready' && (botSt === 'qr_ready' || botSt === 'connecting')) ||
+      (botFilter === 'disconnected' && botSt !== 'connected' && botSt !== 'qr_ready');
+
+    return matchesSearch && matchesStatus && matchesBot;
   });
 
   const statusBadge = (s: string) => {
@@ -242,10 +257,54 @@ export default function AdminClientsPage() {
     return <span className={`badge ${map[s] || 'badge-purple'}`}>{labels[s] || s}</span>;
   };
 
-  const botStatus = (sessions?: { status: string }[]) => {
-    const s = sessions?.[0]?.status;
-    if (s === 'connected') return <span className="badge badge-green">🟢 Conectado</span>;
-    return <span className="badge badge-red">🔴 Off</span>;
+  const renderBotStatus = (c: Client) => {
+    const session = c.whatsapp_sessions?.[0];
+    const s = c.whatsapp_status || session?.status || 'disconnected';
+    const phone = c.whatsapp_phone || session?.phone_number;
+
+    if (s === 'connected') {
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <span className="badge badge-green" style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 700, width: 'fit-content' }}>
+            🟢 Conectado (QR Leído)
+          </span>
+          {phone && (
+            <div style={{ fontSize: 12, color: '#00CFFF', fontWeight: 700, marginTop: 2 }}>
+              📱 +{phone.replace('+', '')}
+            </div>
+          )}
+          {c.last_connected_at && (
+            <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+              Activo desde: {new Date(c.last_connected_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short' })}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    if (s === 'qr_ready' || s === 'connecting' || c.whatsapp_has_qr) {
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <span className="badge badge-yellow" style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 700, width: 'fit-content' }}>
+            🟡 QR Generado
+          </span>
+          <div style={{ fontSize: 10, color: '#fbbf24' }}>
+            Esperando escaneo en app
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <span className="badge badge-red" style={{ fontSize: 11, width: 'fit-content' }}>
+          🔴 Sin vincular / Off
+        </span>
+        <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+          QR no escaneado
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -254,7 +313,7 @@ export default function AdminClientsPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
         <div>
           <h1 className="page-title" style={{ margin: 0 }}>👥 Gestión de Clientes</h1>
-          <p className="page-subtitle" style={{ margin: '4px 0 0 0' }}>Administra suscripciones, activa bots con duraciones flexibles y gestiona cuentas</p>
+          <p className="page-subtitle" style={{ margin: '4px 0 0 0' }}>Administra suscripciones, monitorea qué bots leyeron el QR y controla cada WhatsApp</p>
         </div>
 
         <button
@@ -271,10 +330,10 @@ export default function AdminClientsPage() {
         <input
           type="text"
           className="input"
-          placeholder="🔍 Buscar cliente por nombre, email o teléfono..."
+          placeholder="🔍 Buscar por nombre, email o número de WhatsApp..."
           value={search}
           onChange={e => setSearch(e.target.value)}
-          style={{ flex: 1, minWidth: 160, fontSize: 13 }}
+          style={{ flex: 1, minWidth: 180, fontSize: 13 }}
         />
 
         <select
@@ -284,9 +343,21 @@ export default function AdminClientsPage() {
           style={{ flex: '1 1 140px', minWidth: 130, fontSize: 13 }}
         >
           <option value="all">Todos los Estados</option>
-          <option value="active">🟢 Activos</option>
-          <option value="paused">⏸ Pausados</option>
-          <option value="trial">🆓 Trial</option>
+          <option value="active">🟢 Cuenta Activa</option>
+          <option value="paused">⏸ Cuenta Pausada</option>
+          <option value="trial">🆓 En Prueba</option>
+        </select>
+
+        <select
+          className="input"
+          value={botFilter}
+          onChange={e => setBotFilter(e.target.value as any)}
+          style={{ flex: '1 1 180px', minWidth: 160, fontSize: 13 }}
+        >
+          <option value="all">🤖 Todos los Bots</option>
+          <option value="connected">🟢 Bots Conectados (QR Leído)</option>
+          <option value="qr_ready">🟡 QR Listo / Esperando Escaneo</option>
+          <option value="disconnected">🔴 Bots Sin Vincular / Off</option>
         </select>
       </div>
 
@@ -320,7 +391,7 @@ export default function AdminClientsPage() {
       {/* Tabla Clientes */}
       <div className="card" style={{ padding: 0, overflow: 'hidden', background: '#0C1527', borderColor: '#1E293B' }}>
         {loading ? (
-          <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>Cargando clientes...</div>
+          <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>Cargando clientes y estado de WhatsApp...</div>
         ) : (
           <div className="table-responsive">
             <table className="table" style={{ width: '100%', fontSize: 13 }}>
@@ -329,8 +400,8 @@ export default function AdminClientsPage() {
                   <th style={{ padding: '12px 16px' }}>Cliente</th>
                   <th style={{ padding: '12px 16px' }}>Negocio</th>
                   <th style={{ padding: '12px 16px' }}>Plan</th>
-                  <th style={{ padding: '12px 16px' }}>Estado</th>
-                  <th style={{ padding: '12px 16px' }}>Bot WA</th>
+                  <th style={{ padding: '12px 16px' }}>Estado Cuenta</th>
+                  <th style={{ padding: '12px 16px' }}>Estado del Bot & WhatsApp</th>
                   <th style={{ padding: '12px 16px' }}>Vence el</th>
                   <th style={{ padding: '12px 16px', textAlign: 'right' }}>Acciones Admin</th>
                 </tr>
@@ -341,7 +412,7 @@ export default function AdminClientsPage() {
                     <td style={{ padding: '12px 16px' }}>
                       <div style={{ fontWeight: 700, color: '#f8fafc' }}>{c.name}</div>
                       <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{c.email}</div>
-                      {c.phone && <div style={{ fontSize: 11, color: '#00CFFF' }}>📞 {c.phone}</div>}
+                      {c.phone && <div style={{ fontSize: 11, color: '#94a3b8' }}>📞 {c.phone}</div>}
                     </td>
                     <td style={{ padding: '12px 16px' }}>
                       <div style={{ fontSize: 13, fontWeight: 600 }}>{c.businesses?.[0]?.name || '—'}</div>
@@ -351,7 +422,7 @@ export default function AdminClientsPage() {
                       <span className="badge badge-purple" style={{ textTransform: 'uppercase', fontSize: 10 }}>{c.plan}</span>
                     </td>
                     <td style={{ padding: '12px 16px' }}>{statusBadge(c.status)}</td>
-                    <td style={{ padding: '12px 16px' }}>{botStatus(c.whatsapp_sessions)}</td>
+                    <td style={{ padding: '12px 16px' }}>{renderBotStatus(c)}</td>
                     <td style={{ padding: '12px 16px', fontSize: 12, color: 'var(--text-muted)' }}>
                       {c.paid_until ? new Date(c.paid_until).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
                     </td>

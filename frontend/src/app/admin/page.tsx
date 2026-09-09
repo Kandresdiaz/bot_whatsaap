@@ -13,8 +13,12 @@ type Client = {
   plan: string;
   status: string;
   paid_until: string;
+  whatsapp_status?: string;
+  whatsapp_phone?: string;
+  whatsapp_has_qr?: boolean;
+  last_connected_at?: string;
   businesses?: { name: string; category: string }[];
-  whatsapp_sessions?: { status: string; phone_number: string }[];
+  whatsapp_sessions?: { status: string; phone_number: string; last_connected_at?: string }[];
 };
 
 type Payment = {
@@ -93,10 +97,27 @@ export default function AdminDashboardPage() {
     return <span className={`badge ${map[s] || 'badge-purple'}`}>{labels[s] || s}</span>;
   };
 
-  const botStatus = (sessions?: { status: string }[]) => {
-    const s = sessions?.[0]?.status;
-    if (s === 'connected') return <span className="badge badge-green">🟢 Conectado</span>;
-    return <span className="badge badge-red">🔴 Off</span>;
+  const renderBotStatus = (c: Client) => {
+    const s = c.whatsapp_status || c.whatsapp_sessions?.[0]?.status || 'disconnected';
+    const phone = c.whatsapp_phone || c.whatsapp_sessions?.[0]?.phone_number;
+
+    if (s === 'connected') {
+      return (
+        <div>
+          <span className="badge badge-green" style={{ fontSize: 11 }}>🟢 Conectado</span>
+          {phone && <div style={{ fontSize: 11, color: '#00CFFF', fontWeight: 700, marginTop: 2 }}>📱 +{phone.replace('+', '')}</div>}
+        </div>
+      );
+    }
+    if (s === 'qr_ready' || s === 'connecting' || c.whatsapp_has_qr) {
+      return (
+        <div>
+          <span className="badge badge-yellow" style={{ fontSize: 11 }}>🟡 QR Listo</span>
+          <div style={{ fontSize: 10, color: '#fbbf24' }}>Esperando escaneo</div>
+        </div>
+      );
+    }
+    return <span className="badge badge-red" style={{ fontSize: 11 }}>🔴 Off</span>;
   };
 
   return (
@@ -218,7 +239,7 @@ export default function AdminDashboardPage() {
                   <td style={{ padding: '10px 14px', color: 'var(--text-muted)' }}>{c.businesses?.[0]?.name || '—'}</td>
                   <td style={{ padding: '10px 14px' }}><span className="badge badge-purple" style={{ fontSize: 10 }}>{c.plan}</span></td>
                   <td style={{ padding: '10px 14px' }}>{statusBadge(c.status)}</td>
-                  <td style={{ padding: '10px 14px' }}>{botStatus(c.whatsapp_sessions)}</td>
+                  <td style={{ padding: '10px 14px' }}>{renderBotStatus(c)}</td>
                   <td style={{ padding: '10px 14px', textAlign: 'right' }}>
                     <button
                       className="btn btn-ghost"

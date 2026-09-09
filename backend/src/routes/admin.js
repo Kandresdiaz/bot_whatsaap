@@ -44,12 +44,12 @@ const calculatePaidUntil = (days, months, currentPaidUntil) => {
   return result;
 };
 
-// Listar todos los clientes
+// Listar todos los clientes enriquecidos con su estado de WhatsApp y QR
 router.get('/clients', isAdmin, async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('users')
-      .select('*, businesses(name, category), whatsapp_sessions(status, phone_number)')
+      .select('*, businesses(name, category), whatsapp_sessions(id, status, phone_number, qr_code, last_connected_at, updated_at)')
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -57,7 +57,39 @@ router.get('/clients', isAdmin, async (req, res) => {
       return res.status(500).json({ success: false, error: error.message, clients: [] });
     }
 
-    res.json({ success: true, clients: data || [] });
+    let activeMemorySessions = null;
+    let getSession = null;
+    try {
+      const sm = require('../whatsapp/sessionManager');
+      activeMemorySessions = sm.sessions;
+      getSession = sm.getSession;
+    } catch (_) {}
+
+    const enrichedClients = (data || []).map(client => {
+      const dbSession = Array.isArray(client.whatsapp_sessions) ? client.whatsapp_sessions[0] : client.whatsapp_sessions;
+      const memSession = (activeMemorySessions && activeMemorySessions.get(client.id)) ||
+                         (getSession && getSession(client.id)) || null;
+
+      const liveStatus = (memSession && memSession.status) || (dbSession && dbSession.status) || 'disconnected';
+      const livePhone = (memSession && memSession.phone) || (dbSession && dbSession.phone_number) || null;
+      const hasQr = Boolean((memSession && memSession.qr) || (dbSession && dbSession.qr_code));
+      const lastConnected = (dbSession && dbSession.last_connected_at) || (dbSession && dbSession.updated_at) || null;
+
+      return {
+        ...client,
+        whatsapp_status: liveStatus,
+        whatsapp_phone: livePhone,
+        whatsapp_has_qr: hasQr,
+        last_connected_at: lastConnected,
+        whatsapp_sessions: [{
+          status: liveStatus,
+          phone_number: livePhone,
+          last_connected_at: lastConnected,
+        }]
+      };
+    });
+
+    res.json({ success: true, clients: enrichedClients });
   } catch (err) {
     console.error('[ADMIN GET CLIENTS] Excepción:', err.message);
     res.status(500).json({ success: false, error: err.message, clients: [] });
@@ -351,11 +383,24 @@ router.get('/stats', isAdmin, async (req, res) => {
     const [clients, payments, sessions] = await Promise.all([
       supabase.from('users').select('status', { count: 'exact' }),
       supabase.from('payments').select('amount, currency').eq('status', 'confirmed'),
-      supabase.from('whatsapp_sessions').select('status'),
+      supabase.from('whatsapp_sessions').select('status, phone_number'),
     ]);
 
+    let activeMemorySessions = null;
+    try {
+      activeMemorySessions = require('../whatsapp/sessionManager').sessions;
+    } catch (_) {}
+
+    let memConnectedCount = 0;
+    if (activeMemorySessions) {
+      for (const [_, s] of activeMemorySessions.entries()) {
+        if (s?.status === 'connected') memConnectedCount++;
+      }
+    }
+
+    const dbConnectedCount = sessions.data?.filter(s => s.status === 'connected').length || 0;
+    const activeBots = Math.max(dbConnectedCount, memConnectedCount);
     const totalRevenueCOP = payments.data?.filter(p => p.currency === 'COP').reduce((sum, p) => sum + (p.amount || 0), 0) || 0;
-    const activeBots = sessions.data?.filter(s => s.status === 'connected').length || 0;
     const activeClients = clients.data?.filter(c => c.status === 'active').length || 0;
 
     res.json({
