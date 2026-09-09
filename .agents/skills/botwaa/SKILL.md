@@ -770,6 +770,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-09** | fix: desactivar auto-seed en endpoints GET de business, products y knowledge (`6353f35`) | Auto-deploy |
 
+| **2026-09-09** | merge: arreglos de sincronización de mensajes, aislamiento por sesión y seguridad de Supabase (`986c3d7`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
