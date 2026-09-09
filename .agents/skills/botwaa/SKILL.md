@@ -754,6 +754,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-09** | fix(rag): strict grounding with stopwords filtering and supreme priority custom instructions (`973662d`) | Auto-deploy |
 
+| **2026-09-09** | feat: mostrar estado de lectura de QR, número de WhatsApp vinculado y filtro de bots conectados en panel admin (`6c053fa`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
