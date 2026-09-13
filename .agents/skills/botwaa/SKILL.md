@@ -774,6 +774,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-09** | fix: cerrar la ruta POST /:userId en business.js (build roto desde 1d8598e) (`6ed9a33`) | Auto-deploy |
 
+| **2026-09-13** | fix: reducir consumo de ancho de banda y no exponer session_data (`1adc5af`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
