@@ -976,6 +976,9 @@ const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts =
 
 // Persistencia y restauración indestructible de la carpeta completa de credenciales y claves de Baileys
 const saveSessionTimeouts = new Map();
+// Hash del último JSON subido por usuario: si no cambió, no se vuelve a subir.
+// Cada subida pesa cientos de KB y cuenta contra el ancho de banda de Render.
+const lastSavedSessionHash = new Map();
 const debouncedSaveFullSessionToDb = (userId, sessionDir, delay = 2500) => {
   const validUserId = getValidUserId(userId);
   if (saveSessionTimeouts.has(validUserId)) {
@@ -1028,10 +1031,14 @@ const saveFullSessionToDb = async (userId, sessionDir) => {
     }
 
     const jsonStr = JSON.stringify(sessionObj);
+    const hash = require('crypto').createHash('sha1').update(jsonStr).digest('hex');
+    if (lastSavedSessionHash.get(validUserId) === hash) return;
+
     await safeUpsert('whatsapp_sessions', {
       user_id: validUserId,
       session_data: jsonStr,
     });
+    lastSavedSessionHash.set(validUserId, hash);
     console.log(`[Baileys Auth] 💾 Sesión guardada en Supabase para ${validUserId} (${Object.keys(sessionObj).length} archivos, ${(totalBytes / 1024).toFixed(1)} KB)`);
   } catch (e) {
     console.warn('[Baileys Auth] Error guardando sesión completa:', e.message);
@@ -1232,7 +1239,7 @@ const createSession = async (userId, businessId, io, forceClean = false, isManua
   sock.ev.on('creds.update', async () => {
     try {
       await saveCreds();
-      debouncedSaveFullSessionToDb(userId, sessionDir, 2500);
+      debouncedSaveFullSessionToDb(userId, sessionDir, 30000);
     } catch (_) {}
   });
 
@@ -2065,10 +2072,12 @@ const saveAllActiveSessions = async () => {
   }
 };
 
-// Ejecutar respaldo cada 45 segundos para prevenir pérdida de claves si Render reinicia
+// Respaldo periódico cada 10 min por si Render reinicia sin SIGTERM.
+// Antes era cada 45s y subía la sesión completa (~300KB) aunque no cambiara:
+// ~17 GB/mes de ancho de banda, suficiente para agotar el plan free de Render.
 setInterval(() => {
   saveAllActiveSessions().catch(() => {});
-}, 45 * 1000);
+}, 10 * 60 * 1000);
 
 const sendMessage = async (userId, to, text) => {
   const validUserId = getValidUserId(userId);

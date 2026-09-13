@@ -259,7 +259,15 @@ export default function ConnectPage() {
       if (e.name === 'AbortError') {
         setError('⏱ El servidor tardó mucho en responder (~30s). Si Render estaba dormido, ya debería estar despertando. Haz clic en Reintentar.');
       } else {
-        setError(`⚠️ No se pudo conectar al servidor: ${e.message}`);
+        // "Failed to fetch" = el navegador no obtuvo una respuesta con CORS válido.
+        // En la práctica casi siempre significa que el servicio de Render está
+        // suspendido/detenido (su página de error 503 no envía cabeceras CORS).
+        setError(
+          `⚠️ No se pudo conectar al servidor (${e.message}). ` +
+          'Normalmente significa que el backend en Render está suspendido o detenido: ' +
+          'entra a dashboard.render.com y pulsa "Resume Service". Revisa el panel ' +
+          '"Estado del servidor" más abajo para confirmarlo.'
+        );
       }
       setStatus('error');
     }
@@ -656,6 +664,10 @@ function ServerStatus({ backendUrl }: { backendUrl: string }) {
         const ping = await fetch(`${backendUrl}/ping`, { cache: 'no-store' });
         const pingOk = ping.status === 200;
 
+        // El servicio responde pero con error de infraestructura (503 = suspendido
+        // o caído en Render, 502 = arrancando). Lo reportamos tal cual.
+        const suspended = ping.status === 503;
+
         // Probar versión (solo disponible en nuevo deploy)
         let version = null;
         try {
@@ -663,9 +675,17 @@ function ServerStatus({ backendUrl }: { backendUrl: string }) {
           if (vr.ok) version = await vr.json();
         } catch (_) {}
 
-        setInfo({ pingOk, version });
+        setInfo({ pingOk, version, suspended, httpStatus: ping.status });
       } catch (_) {
-        setInfo({ pingOk: true, version: { commit: 'cee8f8f', env: { GROQ_API_KEY: true, SUPABASE_URL: true, SUPABASE_SERVICE_KEY: true, ADMIN_PASSWORD: true } } });
+        // NUNCA fingir que el servidor está en línea: si el fetch falla, está caído.
+        // Sondeo no-cors para distinguir "no responde nada" de "responde sin CORS"
+        // (la página de error/suspensión de Render no envía cabeceras CORS).
+        let reachable = false;
+        try {
+          await fetch(`${backendUrl}/ping`, { mode: 'no-cors', cache: 'no-store' });
+          reachable = true;
+        } catch (_) {}
+        setInfo({ pingOk: false, version: null, suspended: reachable, httpStatus: null });
       }
       setChecking(false);
     };
@@ -682,14 +702,39 @@ function ServerStatus({ backendUrl }: { backendUrl: string }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 13 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <span className={`dot ${info?.pingOk ? 'dot-green' : 'dot-red'}`} />
-        <span>Servidor: {info?.pingOk ? 'En línea ✅' : 'Sin respuesta ❌'}</span>
+        <span>
+          Servidor:{' '}
+          {info?.pingOk
+            ? 'En línea ✅'
+            : info?.suspended
+              ? 'Suspendido o caído en Render ❌'
+              : 'Sin respuesta ❌'}
+        </span>
       </div>
+      {!info?.pingOk && info?.suspended && (
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, color: '#f87171' }}>
+          <span>🛑</span>
+          <span>
+            Render responde con error{info?.httpStatus ? ` (HTTP ${info.httpStatus})` : ''} y sin cabeceras
+            CORS: el servicio está suspendido o detenido. Reactívalo en{' '}
+            <a
+              href="https://dashboard.render.com"
+              target="_blank"
+              rel="noreferrer"
+              style={{ color: 'var(--accent-light)', textDecoration: 'underline' }}
+            >
+              dashboard.render.com
+            </a>{' '}
+            (botón <strong>Resume Service</strong>). Mientras esté suspendido el bot no puede conectarse.
+          </span>
+        </div>
+      )}
       {info?.version ? (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span className="dot dot-green" />
           <span>Versión desplegada: <code style={{ color: 'var(--accent-light)' }}>{info.version.commit?.slice(0, 7)}</code></span>
         </div>
-      ) : (
+      ) : info?.pingOk ? (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span className="dot dot-yellow" />
           <span style={{ color: '#fbbf24' }}>
@@ -704,7 +749,7 @@ function ServerStatus({ backendUrl }: { backendUrl: string }) {
             </a>
           </span>
         </div>
-      )}
+      ) : null}
       {info?.version?.env && (
         <div style={{ marginTop: 4, padding: '8px 12px', background: 'rgba(26,107,255,0.06)', borderRadius: 8 }}>
           {Object.entries(info.version.env).map(([k, v]) => (

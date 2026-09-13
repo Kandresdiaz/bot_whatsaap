@@ -163,9 +163,13 @@ router.get('/status/:userId', async (req, res) => {
     let dbSession = null;
     if (supabase) {
       try {
+        // NUNCA seleccionar session_data aquí: son las llaves privadas de WhatsApp
+        // (~300KB). Este endpoint se consulta cada pocos segundos desde el
+        // dashboard; con select('*') se enviaban al navegador en cada poll,
+        // exponiendo las credenciales y agotando el ancho de banda de Render.
         const { data } = await supabase
           .from('whatsapp_sessions')
-          .select('*')
+          .select('id, user_id, phone_number, status, qr_code, bot_enabled, connected_at, created_at')
           .eq('user_id', validUserId)
           .order('created_at', { ascending: false })
           .limit(1);
@@ -212,7 +216,18 @@ router.get('/status/:userId', async (req, res) => {
 
     // Si no está en RAM pero sí en DB
     if (dbSession) {
-      const isConn = dbSession.status === 'connected' && Boolean(dbSession.session_data);
+      let hasCreds = false;
+      if (dbSession.status === 'connected') {
+        // Solo comprobar que existan credenciales, sin descargarlas
+        const { data: credRows } = await supabase
+          .from('whatsapp_sessions')
+          .select('id')
+          .eq('user_id', validUserId)
+          .not('session_data', 'is', null)
+          .limit(1);
+        hasCreds = Boolean(credRows && credRows.length > 0);
+      }
+      const isConn = dbSession.status === 'connected' && hasCreds;
       if (isConn && !active && !isExplicitlyDisconnected(validUserId)) {
         // Auto-restaurar sesión Baileys en segundo plano si estaba conectada en DB y no fue desconectada manualmente
         createSession(validUserId, dbSession.business_id, global.io, false, false).catch(() => {});

@@ -314,7 +314,7 @@ export default function ConversationsPage() {
           }
         })
         .catch(() => {});
-    }, 4000);
+    }, 15000); // Respaldo lento: el tiempo real llega por Socket.io
 
     const socket = io(BACKEND, {
       transports: ['websocket', 'polling'],
