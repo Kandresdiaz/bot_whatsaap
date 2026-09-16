@@ -242,6 +242,10 @@ router.post('/:userId', async (req, res) => {
 router.get('/badges/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
+
+    // Se consulta cada 15s desde el layout del dashboard: revalidar con ETag
+    // para devolver 304 cuando no hay pedidos ni citas nuevas.
+    res.set('Cache-Control', 'no-cache');
     const targetUserId = resolveTargetUserId(userId);
 
     // Obtener negocio del usuario

@@ -10,6 +10,12 @@ router.get('/:sessionId', async (req, res) => {
     let { sessionId } = req.params;
     const { search, status } = req.query;
 
+    // El panel repite esta consulta cada pocos segundos y la respuesta puede
+    // pesar ~200KB. Con no-cache el navegador revalida usando el ETag que
+    // Express ya calcula: si nada cambió recibe un 304 vacío en vez de todo
+    // el listado. Ahorra la mayor parte del ancho de banda del dashboard.
+    res.set('Cache-Control', 'no-cache');
+
     const { getValidUserId, getUserStore, resolvePhoneAndJid, safeToIsoString, getSession } = require('../whatsapp/sessionManager');
     const validUserId = getValidUserId(sessionId);
 
