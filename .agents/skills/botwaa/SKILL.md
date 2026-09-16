@@ -776,6 +776,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-13** | fix: reducir consumo de ancho de banda y no exponer session_data (`1adc5af`) | Auto-deploy |
 
+| **2026-09-16** | perf: revalidar con ETag el listado de conversaciones y los badges (`8eb6f2d`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
