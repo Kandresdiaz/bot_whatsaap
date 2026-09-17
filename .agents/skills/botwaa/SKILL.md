@@ -778,6 +778,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-16** | perf: revalidar con ETag el listado de conversaciones y los badges (`8eb6f2d`) | Auto-deploy |
 
+| **2026-09-17** | chore: permitir desplegar el backend fuera de Render (`4bb77ec`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
