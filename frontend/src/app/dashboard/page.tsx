@@ -2,13 +2,14 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
+import { BACKEND_URL } from '@/lib/config';
 
 export default function DashboardHome() {
   const { user, effectiveUserId, selectedClientName } = useAuth();
   const [session, setSession] = useState<any>(null);
   const [billingData, setBillingData] = useState<any>(null);
   const [loadingUsage, setLoadingUsage] = useState(true);
-  const BACKEND = 'https://bot-whatsaap-tkjd.onrender.com';
+  const BACKEND = BACKEND_URL;
 
   useEffect(() => {
     if (!effectiveUserId) return;

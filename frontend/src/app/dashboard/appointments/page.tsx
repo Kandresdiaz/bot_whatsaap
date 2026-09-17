@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { io as socketIO } from 'socket.io-client';
+import { BACKEND_URL } from '@/lib/config';
 
 type Appointment = {
   id: string;
@@ -71,7 +72,7 @@ export default function AppointmentsPage() {
     notes: '',
   });
 
-  const BACKEND = 'https://bot-whatsaap-tkjd.onrender.com';
+  const BACKEND = BACKEND_URL;
 
   const showToastMsg = (msg: string) => {
     setToast(msg);

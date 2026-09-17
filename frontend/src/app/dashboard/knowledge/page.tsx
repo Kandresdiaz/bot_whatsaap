@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
+import { BACKEND_URL } from '@/lib/config';
 
 type KBItem = { id: string; type: string; title: string; content: string; is_active: boolean; created_at: string };
 
@@ -12,7 +13,7 @@ export default function KnowledgePage() {
   const [form, setForm] = useState({ title: '', content: '', question: '', answer: '', imageUrl: '', imageDesc: '' });
   const [loading, setLoading] = useState(false);
   const [file, setFile] = useState<File | null>(null);
-  const BACKEND = 'https://bot-whatsaap-tkjd.onrender.com';
+  const BACKEND = BACKEND_URL;
 
   useEffect(() => {
     const targetId = effectiveUserId || user?.id || 'admin';

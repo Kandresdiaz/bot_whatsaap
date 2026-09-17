@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "WhatsApp Bot SaaS Backend",
   "main": "src/index.js",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "nodemon src/index.js",
     "start": "node src/index.js"

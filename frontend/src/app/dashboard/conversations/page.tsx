@@ -2,6 +2,7 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { io, Socket } from 'socket.io-client';
+import { BACKEND_URL } from '@/lib/config';
 
 type Conversation = {
   id: string;
@@ -48,7 +49,7 @@ export default function ConversationsPage() {
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const socketRef = useRef<Socket | null>(null);
-  const BACKEND = 'https://bot-whatsaap-tkjd.onrender.com';
+  const BACKEND = BACKEND_URL;
 
   const [syncing, setSyncing] = useState(false);
   const [newPhoneModal, setNewPhoneModal] = useState(false);

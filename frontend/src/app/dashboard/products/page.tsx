@@ -2,8 +2,9 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import { useAuth } from '@/context/AuthContext';
+import { BACKEND_URL } from '@/lib/config';
 
-const BACKEND = 'https://bot-whatsaap-tkjd.onrender.com';
+const BACKEND = BACKEND_URL;
 
 interface Product {
   id: string;

@@ -3,6 +3,7 @@ import { useState, useEffect, Suspense } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import { BACKEND_URL } from '@/lib/config';
 
 interface Plan {
   id: string;
@@ -99,7 +100,7 @@ function PricingContent() {
   const [loadingCheckout, setLoadingCheckout] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string>('');
 
-  const BACKEND = 'https://bot-whatsaap-tkjd.onrender.com';
+  const BACKEND = BACKEND_URL;
 
   const formatCOP = (val: number) => {
     return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(val);

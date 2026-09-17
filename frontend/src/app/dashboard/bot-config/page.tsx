@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
+import { BACKEND_URL } from '@/lib/config';
 
 const DAYS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 const CATEGORIES = [
@@ -42,7 +43,7 @@ export default function BotConfigPage() {
   });
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(false);
-  const BACKEND = 'https://bot-whatsaap-tkjd.onrender.com';
+  const BACKEND = BACKEND_URL;
 
   useEffect(() => {
     const targetId = effectiveUserId || user?.id || 'admin';

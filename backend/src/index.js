@@ -159,7 +159,12 @@ server.listen(PORT, () => {
   // Este self-ping cada 4 min mantiene el servidor despierto 24/7 sin caídas.
   const https = require('https');
   const http2 = require('http');
-  const selfUrl = process.env.RENDER_EXTERNAL_URL || process.env.RAILWAY_STATIC_URL || 'https://bot-whatsaap-tkjd.onrender.com';
+  // Solo Render duerme el servicio; en Railway, una VPS o un PC no hace falta.
+  const selfUrl = process.env.RENDER_EXTERNAL_URL;
+  if (!selfUrl) {
+    console.log('[KEEPALIVE] No es Render: self-ping desactivado');
+    return;
+  }
 
   const pingUrl = `${selfUrl}/ping`;
   console.log(`[KEEPALIVE] Self-ping activado cada 4 min → ${pingUrl}`);
