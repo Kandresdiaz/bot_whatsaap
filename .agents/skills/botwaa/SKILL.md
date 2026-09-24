@@ -784,6 +784,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-24** | feat: el bot solo responde con la información configurada del negocio (`59fbea6`) | Auto-deploy |
 
+| **2026-09-24** | ci: reiniciar el backend en Wispbyte al cambiar backend/ (reemplaza Render) (`0397098`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
