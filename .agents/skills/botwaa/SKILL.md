@@ -780,6 +780,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-17** | chore: permitir desplegar el backend fuera de Render (`4bb77ec`) | Auto-deploy |
 
+| **2026-09-24** | feat: el panel alcanza el backend por proxy de Vercel (backend en Wispbyte) (`e528ca9`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
