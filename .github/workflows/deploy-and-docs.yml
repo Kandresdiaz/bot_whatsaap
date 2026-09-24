@@ -1,32 +1,56 @@
-name: 🚀 Deploy a Render + Actualizar Documentación
+name: 🚀 Deploy a Wispbyte + Actualizar Documentación
 
 on:
   push:
     branches: [ main ]
+  workflow_dispatch:
 
 jobs:
-  # ── JOB 1: Trigger redespliegue en Render ──────────────────────────────────
-  deploy-render:
-    name: Redeploy Render Backend
+  # ── JOB 1: Reiniciar el backend en Wispbyte si cambió backend/ ──────────────
+  # Al arrancar, el comando de inicio del servidor descarga el código nuevo de
+  # GitHub (ver "Startup" en el panel de Wispbyte), así que basta con reiniciarlo.
+  deploy-wispbyte:
+    name: Redeploy Backend (Wispbyte)
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger Render Deploy Hook
+      - name: Checkout código
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Reiniciar servidor
+        env:
+          PANEL_URL: ${{ secrets.WISPBYTE_PANEL_URL }}
+          API_KEY: ${{ secrets.WISPBYTE_API_KEY }}
+          SERVER_ID: ${{ secrets.WISPBYTE_SERVER_ID }}
+          BEFORE: ${{ github.event.before }}
         run: |
-          if [ -n "${{ secrets.RENDER_DEPLOY_HOOK }}" ]; then
-            echo "🚀 Disparando redeploy en Render..."
-            curl -X POST "${{ secrets.RENDER_DEPLOY_HOOK }}"
-            echo "✅ Redeploy disparado. Render tardará ~3-5 min en aplicar."
-          else
-            echo "⚠️  RENDER_DEPLOY_HOOK no configurado. Ve a:"
-            echo "   Render Dashboard → tu servicio → Settings → Deploy Hooks → Create Hook"
-            echo "   Luego en GitHub → Settings → Secrets → New secret → RENDER_DEPLOY_HOOK"
+          if [ "${{ github.event_name }}" = "push" ] && [ -n "$BEFORE" ] \
+             && git cat-file -e "$BEFORE" 2>/dev/null \
+             && ! git diff --name-only "$BEFORE" "${{ github.sha }}" | grep -q '^backend/'; then
+            echo "Sin cambios en backend/: no se reinicia el servidor."
+            exit 0
           fi
+          if [ -z "$PANEL_URL" ] || [ -z "$API_KEY" ] || [ -z "$SERVER_ID" ]; then
+            echo "⚠️  Faltan los secrets WISPBYTE_PANEL_URL, WISPBYTE_API_KEY o WISPBYTE_SERVER_ID."
+            echo "   GitHub → Settings → Secrets and variables → Actions → New repository secret"
+            exit 0
+          fi
+          status=$(curl -s -o /tmp/resp.txt -w "%{http_code}" -X POST \
+            "${PANEL_URL%/}/api/client/servers/${SERVER_ID}/power" \
+            -H "Authorization: Bearer ${API_KEY}" \
+            -H "Accept: application/json" -H "Content-Type: application/json" \
+            -d '{"signal":"restart"}')
+          if [ "$status" != "204" ]; then
+            echo "❌ Wispbyte respondió HTTP $status"; cat /tmp/resp.txt; exit 1
+          fi
+          echo "✅ Reinicio enviado: el servidor descarga el código nuevo al arrancar (~1 min)."
 
   # ── JOB 2: Actualizar SKILL.md automáticamente ─────────────────────────────
   update-docs:
     name: Actualizar Documentación del Proyecto
     runs-on: ubuntu-latest
-    needs: deploy-render
+    needs: deploy-wispbyte
     permissions:
       contents: write
     steps:
