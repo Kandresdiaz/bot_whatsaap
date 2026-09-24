@@ -4,7 +4,48 @@ const multer = require('multer');
 const pdfParse = require('pdf-parse');
 const { supabase } = require('../db/supabase');
 
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+// El servidor tiene 512 MB compartidos con todas las sesiones de WhatsApp:
+// PDFs pequeños, de a uno a la vez y con tope de páginas y de texto.
+const MAX_PDF_BYTES = 5 * 1024 * 1024;
+const MAX_PDF_PAGES = 60;
+const MAX_PDF_QUEUE = 5;
+const CHUNK_CHARS = 1500;
+const MAX_CHUNKS_PER_PDF = 40;
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_PDF_BYTES } });
+
+// Cola de un solo carril: leer un PDF ocupa CPU y RAM, y varios en paralelo
+// pueden reiniciar el proceso y tumbar las sesiones de todos los clientes.
+let pdfQueueTail = Promise.resolve();
+let pdfQueueSize = 0;
+const enqueuePdfJob = (job) => {
+  pdfQueueSize++;
+  const run = pdfQueueTail.then(job);
+  pdfQueueTail = run.catch(() => {}).finally(() => { pdfQueueSize--; });
+  return run;
+};
+
+// Parte el texto en bloques de ~CHUNK_CHARS respetando párrafos y frases, para que el
+// buscador traiga solo la parte relevante y el prompt nunca reciba el PDF entero.
+const splitIntoChunks = (text) => {
+  const paragraphs = text.replace(/\r/g, '').split(/\n\s*\n/).map(p => p.replace(/\s+/g, ' ').trim()).filter(Boolean);
+  const pieces = paragraphs.flatMap(p => p.length <= CHUNK_CHARS ? [p] : p.match(/[^.!?]+[.!?]*\s*/g) || [p]);
+
+  const chunks = [];
+  let current = '';
+  for (const piece of pieces) {
+    for (let i = 0; i < piece.length; i += CHUNK_CHARS) {
+      const part = piece.slice(i, i + CHUNK_CHARS).trim();
+      if (current && current.length + part.length + 1 > CHUNK_CHARS) {
+        chunks.push(current);
+        current = '';
+      }
+      current = current ? `${current} ${part}` : part;
+    }
+  }
+  if (current) chunks.push(current);
+  return chunks;
+};
 
 const resolveBusinessId = async (idOrUserId) => {
   if (!idOrUserId) return null;
@@ -54,11 +95,11 @@ const { clearBusinessAiCache } = require('../ai/aiCache');
 // Agregar texto o FAQ
 router.post('/:businessId', async (req, res) => {
   const { businessId } = req.params;
-  const { type, title, content } = req.body;
+  const { type, title, content, file_url } = req.body;
 
   const { data, error } = await supabase
     .from('knowledge_base')
-    .insert({ business_id: businessId, type, title, content })
+    .insert({ business_id: businessId, type, title, content, file_url: file_url || null })
     .select()
     .single();
 
@@ -70,31 +111,62 @@ router.post('/:businessId', async (req, res) => {
 });
 
 // Subir PDF y extraer texto
-router.post('/:businessId/upload', upload.single('file'), async (req, res) => {
+const uploadPdf = (req, res, next) => {
+  upload.single('file')(req, res, (err) => {
+    if (err?.code === 'LIMIT_FILE_SIZE') {
+      return res.status(413).json({ success: false, error: `El PDF supera el máximo de ${MAX_PDF_BYTES / 1024 / 1024} MB. Divídelo en archivos más pequeños.` });
+    }
+    if (err) return res.status(400).json({ success: false, error: err.message });
+    next();
+  });
+};
+
+router.post('/:businessId/upload', uploadPdf, async (req, res) => {
   const { businessId } = req.params;
 
   if (!req.file) return res.status(400).json({ success: false, error: 'No se recibió archivo' });
+  if (req.file.mimetype !== 'application/pdf') {
+    return res.status(400).json({ success: false, error: 'Solo se aceptan archivos PDF.' });
+  }
+  if (pdfQueueSize >= MAX_PDF_QUEUE) {
+    return res.status(503).json({ success: false, error: 'Hay varios PDFs procesándose ahora mismo. Intenta de nuevo en un minuto.' });
+  }
 
   try {
-    const parsed = await pdfParse(req.file.buffer);
-    const content = parsed.text.trim();
+    const buffer = req.file.buffer;
+    req.file.buffer = null;
+    const parsed = await enqueuePdfJob(() => pdfParse(buffer, { max: MAX_PDF_PAGES }));
 
-    const { data, error } = await supabase
-      .from('knowledge_base')
-      .insert({
-        business_id: businessId,
-        type: 'file',
-        title: req.file.originalname,
-        content,
-      })
-      .select()
-      .single();
+    const allChunks = splitIntoChunks(parsed.text || '');
+    if (allChunks.length === 0) {
+      return res.status(422).json({ success: false, error: 'No se encontró texto en el PDF (¿es un escaneo o solo imágenes?).' });
+    }
+    const chunks = allChunks.slice(0, MAX_CHUNKS_PER_PDF);
+    const truncated = allChunks.length > chunks.length || parsed.numpages > MAX_PDF_PAGES;
+
+    const baseTitle = req.file.originalname.replace(/\.pdf$/i, '');
+    const rows = chunks.map((content, i) => ({
+      business_id: businessId,
+      type: 'file',
+      title: chunks.length > 1 ? `${baseTitle} (parte ${i + 1}/${chunks.length})` : baseTitle,
+      content,
+    }));
+
+    const { data, error } = await supabase.from('knowledge_base').insert(rows).select();
 
     if (!error) {
       clearBusinessAiCache(businessId).catch(() => {});
     }
 
-    res.json({ success: !error, item: data, pages: parsed.numpages });
+    res.json({
+      success: !error,
+      items: data,
+      item: data?.[0],
+      parts: rows.length,
+      pages: parsed.numpages,
+      truncated,
+      error: error?.message,
+    });
   } catch (err) {
     res.status(500).json({ success: false, error: 'Error procesando PDF: ' + err.message });
   }

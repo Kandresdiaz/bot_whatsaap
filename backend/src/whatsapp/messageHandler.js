@@ -75,6 +75,19 @@ const safeQuery = async (fn) => {
   }
 };
 
+// Avisa al panel que el mensaje debe responderlo un humano (el bot no contestó)
+const emitManualNeeded = (userId, payload) => {
+  if (!global.io) return;
+  try {
+    const { emitToUserRooms, getSessionUuid } = require('./sessionManager');
+    getSessionUuid(userId).then(sessionUuid => {
+      emitToUserRooms(global.io, userId, 'manual_needed', payload, sessionUuid);
+    });
+  } catch (_) {
+    global.io.to(`user_${userId}`).emit('manual_needed', payload);
+  }
+};
+
 // ─── Handler principal ────────────────────────────────────────────────────────
 const handleIncomingMessage = async (sock, msg, userId, businessId) => {
   if (!msg || !msg.key) return;
@@ -282,20 +295,7 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
 
   if (!isGlobalBotEnabled || isBlacklisted || !isChatBotActive) {
     console.log(`[MSG] 🛑 Bot NO responde para ${contactPhone} (Global ON: ${isGlobalBotEnabled}, Chat Bot ON: ${isChatBotActive}, Blacklist: ${isBlacklisted})`);
-    if (global.io) {
-      try {
-        const { emitToUserRooms, getSessionUuid } = require('./sessionManager');
-        getSessionUuid(userId).then(sessionUuid => {
-          emitToUserRooms(global.io, userId, 'manual_needed', {
-            conversationId: conversation?.id, contactName, message: text,
-          }, sessionUuid);
-        });
-      } catch (_) {
-        global.io.to(`user_${userId}`).emit('manual_needed', {
-          conversationId: conversation?.id, contactName, message: text,
-        });
-      }
-    }
+    emitManualNeeded(userId, { conversationId: conversation?.id, contactName, message: text });
     return;
   }
 
@@ -406,9 +406,11 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
     console.error('[MSG] Error obteniendo negocio:', e.message);
   }
 
-  // Si no hay negocio configurado, usar objeto predeterminado estrictamente aislado
+  // Si no hay negocio: solo el administrador principal usa el perfil de BotWA.
+  // Cualquier otro usuario sin negocio no tiene información y el bot no responde.
   if (!business) {
-    const isPrimaryAdmin = validUserId === '0b8c0710-b97a-4e2d-acf8-b7f33dcd5b3d' || userId === 'admin';
+    const { getValidUserId } = require('./sessionManager');
+    const isPrimaryAdmin = getValidUserId(userId) === '0b8c0710-b97a-4e2d-acf8-b7f33dcd5b3d' || userId === 'admin';
     if (isPrimaryAdmin) {
       business = {
         id: '8fd9a59d-77d7-4db7-8637-9aaebca1158e',
@@ -425,21 +427,9 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
         bot_enabled: true
       };
     } else {
-      business = {
-        user_id: validUserId,
-        name: 'Mi Negocio',
-        category: 'Atención Comercial y Servicios',
-        city: 'Colombia',
-        timezone: 'America/Bogota',
-        bot_personality: 'amigable y profesional',
-        main_goal: 'vender',
-        greeting_msg: '¡Hola! 👋 Bienvenido. ¿En qué te podemos colaborar hoy?',
-        away_msg: 'Gracias por escribirnos 🙏 Te respondemos pronto.',
-        active_hours_start: '08:00:00',
-        active_hours_end: '20:00:00',
-        active_days: [1, 2, 3, 4, 5, 6],
-        bot_enabled: true
-      };
+      console.log(`[MSG] 🛑 Bot NO responde para ${contactPhone}: el usuario ${userId} no tiene negocio configurado.`);
+      emitManualNeeded(userId, { conversationId: conversation?.id, contactName, message: text });
+      return;
     }
   }
 
@@ -462,6 +452,63 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
     }
   } catch (e) {
     console.error('[MSG] Error verificando horario:', e.message);
+  }
+
+  // ── 8. Cargar knowledge base completa y Catálogo de Productos/Servicios ────
+  let knowledge = [];
+  let products = [];
+  let priceFiltered = false;
+  try {
+    let query = supabase.from('knowledge_base').select('id, title, content, type, file_url').eq('is_active', true);
+    if (business?.id) {
+      query = query.eq('business_id', business.id);
+    }
+    const { data } = await query;
+    knowledge = data || [];
+  } catch (e) {
+    console.error('[MSG] Error cargando knowledge base:', e.message);
+  }
+
+  try {
+    let pQuery = supabase.from('products_services').select('name, description, price, currency, category, image_url').eq('is_active', true);
+    if (business?.id) {
+      pQuery = pQuery.eq('business_id', business.id);
+    }
+
+    // Filtro SQL por presupuesto si el usuario menciona montos (ej: "menos de 150.000")
+    const priceMatch = (text || '').match(/(?:menos de|hasta|máximo|maximo|menor a)\s*\$?\s*([\d\.\,]+)/i);
+    if (priceMatch) {
+      const num = parseInt(priceMatch[1].replace(/[\.\,]/g, ''));
+      if (!isNaN(num) && num > 0) {
+        pQuery = pQuery.lte('price', num);
+        priceFiltered = true;
+      }
+    }
+
+    const { data: prods } = await pQuery.order('category', { ascending: true }).limit(150);
+    products = prods || [];
+
+    const PRIMARY_BOTWA_ID = '8fd9a59d-77d7-4db7-8637-9aaebca1158e';
+    if (products.length === 0 && business?.id === PRIMARY_BOTWA_ID) {
+      const { data: defaultProds } = await supabase.from('products_services').select('name, description, price, currency, category, image_url').eq('business_id', PRIMARY_BOTWA_ID).eq('is_active', true).limit(15);
+      products = (defaultProds && defaultProds.length > 0) ? defaultProds : [
+        { name: 'Plan Vendedor Automático (1.500 msgs/mes)', description: 'Ideal para negocios pequeños o independientes (hasta 50 chats/día). Atención 24/7 en WhatsApp, respuestas inmediatas en <2s, catálogo inteligente con IA y base de FAQs. Incluye 7 días gratis ($0 COP hoy con tarjeta).', price: 120000, currency: 'COP', category: 'Planes BotWA' },
+        { name: 'Plan Máquina de Ventas Pro (5.000 msgs/mes - ⭐ Más Recomendado)', description: 'Para tiendas y empresas en crecimiento (hasta 170 chats/día). Envío automático de fotos y multimedia del catálogo, agendador de citas y toma de pedidos con sincronización a tu panel, 5.000 msgs IA/mes y FAQs ampliadas. Incluye 7 días gratis ($0 COP hoy con tarjeta).', price: 249000, currency: 'COP', category: 'Planes BotWA' },
+        { name: 'Plan Dominio Agencia / VIP (20.000 msgs/mes)', description: 'Para empresas consolidadas, clínicas o agencias (más de 650 chats/día). Múltiples líneas de WhatsApp conectadas, marca blanca con tu logo, prompting y embudo personalizado Done-For-You y soporte VIP 1 a 1. Incluye 7 días gratis ($0 COP hoy con tarjeta).', price: 490000, currency: 'COP', category: 'Planes BotWA' },
+      ];
+    }
+  } catch (e) {
+    console.error('[MSG] Error cargando catálogo de productos:', e.message);
+  }
+
+  // ── 8.5. Sin información configurada no hay nada que responder: la IA solo inventaría ──
+  const { evaluateBotReadiness } = require('../services/botReadiness');
+  // Un filtro por presupuesto puede vaciar la lista sin que el catálogo esté vacío
+  const readiness = evaluateBotReadiness(business, products.length || (priceFiltered ? 1 : 0), knowledge.length);
+  if (!readiness.ready) {
+    console.log(`[MSG] 🛑 Bot NO responde para ${contactPhone}: negocio sin información (${readiness.missing.join(' | ')})`);
+    emitManualNeeded(userId, { conversationId: conversation?.id, contactName, message: text });
+    return;
   }
 
   // ── 6.5. Manejo amable de Stickers y Audios (sin quemar tokens ni fugar razonamiento) ──
@@ -499,51 +546,6 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
 
   // ── 7. Flujo de citas inteligente manejado directamente por Groq AI (Citas / Ventas / Cancelaciones) ──
   // (El interceptor rígido de texto queda desactivado para que la IA maneje con contexto completo y empatía)
-
-  // ── 8. Cargar knowledge base completa y Catálogo de Productos/Servicios ────
-  let knowledge = [];
-  let products = [];
-  try {
-    let query = supabase.from('knowledge_base').select('id, title, content, type, file_url').eq('is_active', true);
-    if (business?.id) {
-      query = query.eq('business_id', business.id);
-    }
-    const { data } = await query;
-    knowledge = data || [];
-  } catch (e) {
-    console.error('[MSG] Error cargando knowledge base:', e.message);
-  }
-
-  try {
-    let pQuery = supabase.from('products_services').select('name, description, price, currency, category, image_url').eq('is_active', true);
-    if (business?.id) {
-      pQuery = pQuery.eq('business_id', business.id);
-    }
-
-    // Filtro SQL por presupuesto si el usuario menciona montos (ej: "menos de 150.000")
-    const priceMatch = (text || '').match(/(?:menos de|hasta|máximo|maximo|menor a)\s*\$?\s*([\d\.\,]+)/i);
-    if (priceMatch) {
-      const num = parseInt(priceMatch[1].replace(/[\.\,]/g, ''));
-      if (!isNaN(num) && num > 0) {
-        pQuery = pQuery.lte('price', num);
-      }
-    }
-
-    const { data: prods } = await pQuery.order('category', { ascending: true }).limit(150);
-    products = prods || [];
-
-    const PRIMARY_BOTWA_ID = '8fd9a59d-77d7-4db7-8637-9aaebca1158e';
-    if (products.length === 0 && business?.id === PRIMARY_BOTWA_ID) {
-      const { data: defaultProds } = await supabase.from('products_services').select('name, description, price, currency, category, image_url').eq('business_id', PRIMARY_BOTWA_ID).eq('is_active', true).limit(15);
-      products = (defaultProds && defaultProds.length > 0) ? defaultProds : [
-        { name: 'Plan Vendedor Automático (1.500 msgs/mes)', description: 'Ideal para negocios pequeños o independientes (hasta 50 chats/día). Atención 24/7 en WhatsApp, respuestas inmediatas en <2s, catálogo inteligente con IA y base de FAQs. Incluye 7 días gratis ($0 COP hoy con tarjeta).', price: 120000, currency: 'COP', category: 'Planes BotWA' },
-        { name: 'Plan Máquina de Ventas Pro (5.000 msgs/mes - ⭐ Más Recomendado)', description: 'Para tiendas y empresas en crecimiento (hasta 170 chats/día). Envío automático de fotos y multimedia del catálogo, agendador de citas y toma de pedidos con sincronización a tu panel, 5.000 msgs IA/mes y FAQs ampliadas. Incluye 7 días gratis ($0 COP hoy con tarjeta).', price: 249000, currency: 'COP', category: 'Planes BotWA' },
-        { name: 'Plan Dominio Agencia / VIP (20.000 msgs/mes)', description: 'Para empresas consolidadas, clínicas o agencias (más de 650 chats/día). Múltiples líneas de WhatsApp conectadas, marca blanca con tu logo, prompting y embudo personalizado Done-For-You y soporte VIP 1 a 1. Incluye 7 días gratis ($0 COP hoy con tarjeta).', price: 490000, currency: 'COP', category: 'Planes BotWA' },
-      ];
-    }
-  } catch (e) {
-    console.error('[MSG] Error cargando catálogo de productos:', e.message);
-  }
 
   // ── 9. Historial reciente de la conversación ───────────────────────────────
   let history = [];

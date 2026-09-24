@@ -571,11 +571,17 @@ export default function ConversationsPage() {
     setTogglingGlobal(true);
     setGlobalBotEnabled(nextVal);
     try {
-      await fetch(`${BACKEND}/api/sessions/global-bot/${user.id}`, {
+      const res = await fetch(`${BACKEND}/api/sessions/global-bot/${user.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ bot_enabled: nextVal }),
       });
+      // El backend no deja encender un bot sin información del negocio
+      if (res.status === 409) {
+        const data = await res.json().catch(() => ({}));
+        setGlobalBotEnabled(false);
+        alert(`${data.error || 'Antes de activar el bot debes cargarle la información de tu negocio.'}\n\nTe falta:\n• ${(data.missing || []).join('\n• ')}`);
+      }
     } catch (e) {
       console.error('Error cambiando estado global:', e);
       setGlobalBotEnabled(!nextVal);

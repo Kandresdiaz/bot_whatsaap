@@ -230,13 +230,17 @@ router.patch('/clients/:id/activate', isAdmin, async (req, res) => {
       return res.status(400).json({ success: false, error: error.message });
     }
 
-    // Activar también el bot global en businesses y sesiones de WhatsApp
-    await supabase.from('businesses').update({ bot_enabled: true }).eq('user_id', id);
-    await supabase.from('whatsapp_sessions').update({ bot_enabled: true }).eq('user_id', id);
-    try {
-      const { setGlobalBotStatus } = require('../whatsapp/sessionManager');
-      await setGlobalBotStatus(id, true, global.io);
-    } catch (_) {}
+    // Activar también el bot global, salvo que el negocio aún no tenga información cargada
+    const { checkBotReadiness } = require('../services/botReadiness');
+    const readiness = await checkBotReadiness(id).catch(() => ({ ready: false }));
+    if (readiness.ready) {
+      await supabase.from('businesses').update({ bot_enabled: true }).eq('user_id', id);
+      await supabase.from('whatsapp_sessions').update({ bot_enabled: true }).eq('user_id', id);
+      try {
+        const { setGlobalBotStatus } = require('../whatsapp/sessionManager');
+        await setGlobalBotStatus(id, true, global.io);
+      } catch (_) {}
+    }
 
     res.json({ success: true, paid_until: paidUntil, client: data });
   } catch (err) {

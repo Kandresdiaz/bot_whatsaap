@@ -120,10 +120,24 @@ export default function KnowledgePage() {
 
   const uploadPdf = async () => {
     if (!businessId || !file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      alert('El PDF supera el máximo de 5 MB. Divídelo en archivos más pequeños.');
+      return;
+    }
     setLoading(true);
     const fd = new FormData();
     fd.append('file', file);
-    await fetch(`${BACKEND}/api/knowledge/${businessId}/upload`, { method: 'POST', body: fd });
+    try {
+      const res = await fetch(`${BACKEND}/api/knowledge/${businessId}/upload`, { method: 'POST', body: fd });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        alert(data.error || `No se pudo procesar el PDF (HTTP ${res.status}).`);
+      } else if (data.truncated) {
+        alert(`El PDF es muy largo: se guardaron las primeras ${data.parts} partes. Sube el resto en otro archivo si lo necesitas.`);
+      }
+    } catch (e: any) {
+      alert('Error al subir el PDF: ' + e.message);
+    }
     setFile(null);
     await loadItems(businessId);
     setLoading(false);

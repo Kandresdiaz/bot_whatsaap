@@ -1,10 +1,9 @@
 const Groq = require('groq-sdk');
 
+// Sin 'groq/compound*': esos modelos buscan en internet por su cuenta y traen datos
+// que el dueño nunca configuró. El bot solo puede responder con la información del negocio.
 const CANDIDATE_MODELS = [
-  'groq/compound',
-  'groq/compound-mini',
   'qwen/qwen3.8-27b',
-  'qwen/qwen3.6-27b',
   'allam-2-7b',
   'openai/gpt-oss-120b',
   'openai/gpt-oss-20b',
@@ -43,7 +42,9 @@ const getActiveModels = async (client) => {
 
   try {
     const list = await client.models.list();
+    const all = (list?.data || []).map(m => m.id).filter(Boolean);
     const validChatModels = all.filter(id =>
+      !id.includes('compound') &&
       !id.includes('whisper') &&
       !id.includes('guard') &&
       !id.includes('orpheus') &&
@@ -54,7 +55,6 @@ const getActiveModels = async (client) => {
     if (validChatModels.length > 0) {
       validChatModels.sort((a, b) => {
         const getPriority = (id) => {
-          if (id.includes('groq/compound')) return 1;
           if (id.includes('qwen3.8')) return 2;
           if (id.includes('allam')) return 3;
           if (id.includes('qwen') && !id.includes('3.6')) return 4;
@@ -201,7 +201,7 @@ const generateSubQueries = async (userMessage, business = null, chatHistory = []
 
   try {
     const models = await getActiveModels(client);
-    const modelToUse = models[0] || 'groq/compound';
+    const modelToUse = models[0] || CANDIDATE_MODELS[0];
 
     const response = await client.chat.completions.create({
       model: modelToUse,
@@ -232,10 +232,11 @@ Responde ÚNICAMENTE con las consultas separadas por "|", sin texto adicional ni
 };
 
 // ─── 3. RAG Multi-Query ───────────────────────────────────────────────────────
-const ragSearch = async (userMessage, knowledge, business = null, chatHistory = []) => {
+// `precomputedSubQueries` evita pedirle a Groq las mismas sub-consultas dos veces por mensaje
+const ragSearch = async (userMessage, knowledge, business = null, chatHistory = [], precomputedSubQueries = null) => {
   if (!knowledge?.length) return [];
 
-  const subQueries = await generateSubQueries(userMessage, business, chatHistory);
+  const subQueries = precomputedSubQueries || await generateSubQueries(userMessage, business, chatHistory);
   const allQueries = [userMessage, ...subQueries];
 
   const seenIds = new Set();
@@ -318,22 +319,42 @@ const rankAndFilterProducts = (query, products, subQueries = []) => {
   return products.slice(0, 10);
 };
 
+// Topes del contexto: un documento largo (p. ej. un PDF subido antes de partirse en
+// bloques) no puede desbordar el límite de tokens del modelo y dejar al bot sin IA.
+const MAX_ITEM_CHARS = 2000;
+const MAX_KNOWLEDGE_CONTEXT_CHARS = 9000;
+
 const buildKnowledgeContext = (knowledge) => {
   if (!knowledge?.length) return null;
 
-  return knowledge.map((k, i) => {
-    if (k.type === 'faq') return `[PREGUNTA FRECUENTE (FAQ) OFICIAL ${i+1}]\nPregunta: ${k.title}\nRespuesta Autorizada: ${k.content}`;
-    if (k.type === 'image') return `[PRODUCTO CON IMAGEN/FOTO ${i+1}: ${k.title}]\nDescripción: ${k.content}${k.file_url ? `\nURL Foto: ${k.file_url}` : ''}`;
-    if (k.type === 'file') return `[GUÍA / DOCUMENTO ${i+1}: ${k.title}]\nContenido: ${k.content}`;
-    return `[INFORMACIÓN OFICIAL ${i+1}: ${k.title}]\n${k.content}`;
-  }).join('\n\n---\n\n');
+  const blocks = [];
+  let used = 0;
+  knowledge.forEach((k, i) => {
+    const content = (k.content || '').length > MAX_ITEM_CHARS ? `${k.content.slice(0, MAX_ITEM_CHARS)}…` : (k.content || '');
+    let block;
+    if (k.type === 'faq') block = `[PREGUNTA FRECUENTE (FAQ) OFICIAL ${i+1}]\nPregunta: ${k.title}\nRespuesta Autorizada: ${content}`;
+    else if (k.type === 'image') block = `[PRODUCTO CON IMAGEN/FOTO ${i+1}: ${k.title}]\nDescripción: ${content}${k.file_url ? `\nURL Foto: ${k.file_url}` : ''}`;
+    else if (k.type === 'file') block = `[GUÍA / DOCUMENTO ${i+1}: ${k.title}]\nContenido: ${content}`;
+    else block = `[INFORMACIÓN OFICIAL ${i+1}: ${k.title}]\n${content}`;
+
+    if (used + block.length > MAX_KNOWLEDGE_CONTEXT_CHARS && blocks.length > 0) return;
+    blocks.push(block);
+    used += block.length;
+  });
+  return blocks.join('\n\n---\n\n');
 };
 
 // ─── 5. System prompt con info del negocio ────────────────────────────────────
+const FULL_KNOWLEDGE_MAX_CHARS = 8000;
+
 const buildSystemPrompt = (business, relevantKnowledge, allKnowledge, products = [], isFirstMessage = true, userMessage = '', subQueries = [], hasAlreadyGreeted = false) => {
   const busName = business?.name || 'BotWA';
   const busCategory = business?.category || 'Atención Comercial y Servicios';
-  const busCity = business?.city || 'Colombia';
+  // Datos opcionales: si el dueño no los configuró NO se rellenan con valores supuestos
+  const busCity = business?.city || '';
+  const hoursStart = business?.active_hours_start?.toString().slice(0, 5) || '';
+  const hoursEnd = business?.active_hours_end?.toString().slice(0, 5) || '';
+  const hoursText = hoursStart && hoursEnd ? `${hoursStart} - ${hoursEnd}` : '';
   const busGoal = business?.main_goal || 'vender';
   const isSales = busGoal !== 'agendar_citas';
   const personality = business?.bot_personality || 'persuasivo, cercano, profesional y entusiasta';
@@ -356,7 +377,13 @@ const buildSystemPrompt = (business, relevantKnowledge, allKnowledge, products =
     ? `=== COLECCIONES Y CATEGORÍAS REGISTRADAS EN EL CATÁLOGO ===\n${distinctCategories.map(c => `• ${c}`).join('\n')}\n=== FIN DE COLECCIONES ===`
     : '';
 
-  const relevantContext = buildKnowledgeContext(relevantKnowledge);
+  // Si la base de conocimiento es pequeña va completa: el buscador por palabras falla con
+  // preguntas redactadas distinto y, sin contexto, el modelo termina rellenando con inventos.
+  const allKnowledgeChars = (allKnowledge || []).reduce((n, k) => n + (k.title?.length || 0) + (k.content?.length || 0), 0);
+  const knowledgeForPrompt = allKnowledge?.length && allKnowledgeChars <= FULL_KNOWLEDGE_MAX_CHARS
+    ? allKnowledge
+    : relevantKnowledge;
+  const relevantContext = buildKnowledgeContext(knowledgeForPrompt);
   const hasKnowledge = !!relevantContext;
 
   const filteredProducts = rankAndFilterProducts(userMessage, products, subQueries);
@@ -380,17 +407,28 @@ const buildSystemPrompt = (business, relevantKnowledge, allKnowledge, products =
   const businessInfo = `
 Nombre del Negocio: ${busName}
 Categoría / Giro: ${busCategory}
-Ubicación / Ciudad: ${busCity}
-${business?.description ? `Descripción / Servicios: ${business.description}` : `Servicios y atención comercial oficial de ${busName}.`}
-Horario de Atención: ${business?.active_hours_start || '08:00'} - ${business?.active_hours_end || '20:00'}
+${busCity ? `Ubicación / Ciudad: ${busCity}` : ''}
+${business?.description ? `Descripción / Servicios: ${business.description}` : ''}
+${hoursText ? `Horario de Atención: ${hoursText}` : ''}
 ${business?.isOutsideHours ? `Estado de Atención: El local físico está fuera de su horario regular, pero tú atiendes amablemente 24/7 en WhatsApp, resuelves dudas sobre el catálogo y puedes agendar citas o tomar pedidos para el horario laboral.` : ''}
 ${business?.phone ? `Teléfono de Contacto: ${business.phone}` : ''}
 ${business?.address ? `Dirección Física: ${business.address}` : ''}
 ${business?.payment_or_booking_link ? `Enlace o Método de Pago / Agenda: ${business.payment_or_booking_link}` : ''}
-`.trim();
+`.replace(/\n{2,}/g, '\n').trim();
 
   return `Eres el ASESOR OFICIAL Y REPRESENTANTE DE ATENCIÓN por WhatsApp del negocio "${busName}".
 Tu misión principal es: ${mainGoalText}
+
+================================================================================
+🔒 FUENTE ÚNICA DE VERDAD (ESTA REGLA ESTÁ POR ENCIMA DE TODAS LAS DEMÁS)
+================================================================================
+Todo lo que sabes de "${busName}" está en estas secciones configuradas por el dueño:
+"DATOS DEL NEGOCIO CONFIGURADO", "CATÁLOGO OFICIAL", "BASE DE CONOCIMIENTO OFICIAL",
+"INSTRUCCIONES Y REGLAS PERSONALIZADAS" e "INSTRUCCIONES ESPECÍFICAS DE CIERRE".
+- Lo que NO aparezca ahí, NO lo sabes. No lo deduzcas, no lo supongas, no lo completes con conocimiento general ni con lo que "suelen tener" negocios parecidos.
+- Esto aplica a: precios, productos, marcas, modelos, características, stock, promociones, descuentos, envíos y sus costos, tiempos de entrega, garantías, horarios, dirección, medios de pago, políticas y cualquier dato concreto.
+- Si el cliente pregunta algo que no está registrado, responde con naturalidad que ese dato lo confirmas con un asesor del equipo (ej: "Eso te lo confirmo con un asesor del equipo en un momento 🙏") y, si aplica, retoma con una pregunta sobre lo que SÍ está registrado.
+- Los ejemplos de frases de este prompt son SOLO de estilo: nunca los uses como información del negocio.
 
 === 📅 FECHA Y HORA ACTUAL DEL SISTEMA (ZONA HORARIA ${tz}) ===
 Hoy es: ${currentDateStr}
@@ -550,16 +588,18 @@ ${busName === 'BotWA' || business?.id === '8fd9a59d-77d7-4db7-8637-9aaebca1158e'
      2. Solicita con amabilidad los datos indispensables:
         • Nombre completo
         • Ciudad y Dirección de entrega (o correo si es servicio digital)
-        • Cantidad y Método de pago preferido (${business?.payment_or_booking_link || 'Nequi / Bancolombia / Transferencia'}).
+        • Cantidad${business?.payment_or_booking_link ? ` y Método de pago (${business.payment_or_booking_link})` : ''}.
+        ${business?.payment_or_booking_link || business?.closing_instructions ? '' : '• ⛔ El dueño NO configuró medios de pago: NO menciones ninguno (ni Nequi, ni Bancolombia, ni otro); di que un asesor le confirma cómo pagar.'}
      3. Cuando el cliente entregue sus datos o confirme la compra, felicítalo con entusiasmo ("¡Excelente [Nombre]! Tu solicitud de [Producto] ha sido registrada con éxito ✨") e incluye SIEMPRE al final de tu respuesta:
         [LEAD_CALIENTE]
-        [NUEVO_PEDIDO: {"nombre": "Nombre Cliente", "producto": "Producto Confirmado", "cantidad": 1, "total": 120000, "direccion": "Dirección completa", "ciudad": "Ciudad", "metodo_pago": "Nequi / Transferencia", "notas": "Detalles del pedido"}]
-        [DATOS_CLIENTE: {"nombre": "Nombre Cliente", "producto": "Producto Confirmado", "ciudad": "Ciudad/Dirección", "metodo_pago": "Método de Pago"}]`}
+        [NUEVO_PEDIDO: {"nombre": "Nombre Cliente", "producto": "Producto Confirmado", "cantidad": 1, "total": 0, "direccion": "Dirección completa", "ciudad": "Ciudad", "metodo_pago": "Método de Pago", "notas": "Detalles del pedido"}]
+        [DATOS_CLIENTE: {"nombre": "Nombre Cliente", "producto": "Producto Confirmado", "ciudad": "Ciudad/Dirección", "metodo_pago": "Método de Pago"}]
+        (En "total" va el precio del CATÁLOGO OFICIAL × cantidad, solo números. Usa solo datos que el cliente dio de verdad: nunca rellenes con valores de ejemplo.)`}
 
 3. PROCESO DE AGENDAMIENTO DE CITAS Y RESERVAS EN CALENDARIO (${busName}):
    - Cuando el cliente requiera un servicio presencial, cita o reserva:
      1. Usa la fecha actual (${isoDateStr}) para calcular fechas exactas (ej: "mañana", "el viernes", "el lunes").
-     2. Horario de atención: ${business?.active_hours_start || '08:00'} a ${business?.active_hours_end || '20:00'}.
+     2. Horario de atención: ${hoursText || 'NO configurado — no propongas horas por tu cuenta; pregunta al cliente su preferencia y aclara que un asesor la confirma'}.
      3. Coordina qué día y hora prefiere dentro del horario hábil.
      4. Pide con cortesía su Nombre completo si aún no lo ha proporcionado.
      5. Al confirmar, felicítalo con entusiasmo ("¡Excelente [Nombre]! Te he reservado tu cita para [Servicio] el [Fecha] a las [Hora] 📅✨") e incluye SIEMPRE al final de tu respuesta:
@@ -734,7 +774,7 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
     );
 
     const subQueries = await generateSubQueries(userMessage, safeBusiness, formattedHistory);
-    const relevantKnowledge = await ragSearch(userMessage, knowledge, safeBusiness, formattedHistory);
+    const relevantKnowledge = await ragSearch(userMessage, knowledge, safeBusiness, formattedHistory, subQueries);
     const systemPrompt = buildSystemPrompt(safeBusiness, relevantKnowledge, knowledge, products, isFirstMessage, userMessage, subQueries, hasAlreadyGreeted);
 
     const messages = [

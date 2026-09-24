@@ -280,9 +280,24 @@ router.get('/global-bot/:userId', async (req, res) => {
 router.patch('/global-bot/:userId', async (req, res) => {
   const { userId } = req.params;
   const { bot_enabled } = req.body;
-  const { setGlobalBotStatus } = require('../whatsapp/sessionManager');
+  const { setGlobalBotStatus, getValidUserId } = require('../whatsapp/sessionManager');
 
   try {
+    // No se enciende un bot sin información: respondería inventando.
+    if (bot_enabled === true) {
+      const { checkBotReadiness } = require('../services/botReadiness');
+      const readiness = await checkBotReadiness(getValidUserId(userId));
+      if (!readiness.ready) {
+        return res.status(409).json({
+          success: false,
+          bot_enabled: false,
+          requires_setup: true,
+          missing: readiness.missing,
+          error: 'Antes de activar el bot debes cargarle la información de tu negocio.',
+        });
+      }
+    }
+
     const updatedStatus = await setGlobalBotStatus(userId, bot_enabled, global.io);
     res.json({ success: true, bot_enabled: updatedStatus });
   } catch (e) {
