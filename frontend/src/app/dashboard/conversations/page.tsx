@@ -318,7 +318,8 @@ export default function ConversationsPage() {
     }, 15000); // Respaldo lento: el tiempo real llega por Socket.io
 
     const socket = io(BACKEND, {
-      transports: ['websocket', 'polling'],
+      // El proxy de Vercel no soporta WebSockets: con BACKEND relativo solo polling.
+      transports: BACKEND ? ['websocket', 'polling'] : ['polling'],
       reconnectionAttempts: 10,
       reconnectionDelay: 2000,
     });

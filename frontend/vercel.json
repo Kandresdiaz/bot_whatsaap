@@ -2,7 +2,15 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://bot-whatsaap-tkjd.onrender.com/api/:path*"
+      "destination": "http://78.154.103.52:10688/api/:path*"
+    },
+    {
+      "source": "/socket.io/:path*",
+      "destination": "http://78.154.103.52:10688/socket.io/:path*"
+    },
+    {
+      "source": "/ping",
+      "destination": "http://78.154.103.52:10688/ping"
     }
   ]
 }

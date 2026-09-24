@@ -99,7 +99,8 @@ export default function ConnectPage() {
     let cancelled = false;
 
     const socket = io(BACKEND, {
-      transports: ['websocket', 'polling'],
+      // El proxy de Vercel no soporta WebSockets: con BACKEND relativo solo polling.
+      transports: BACKEND ? ['websocket', 'polling'] : ['polling'],
       reconnectionAttempts: 10,
       reconnectionDelay: 2000,
     });
