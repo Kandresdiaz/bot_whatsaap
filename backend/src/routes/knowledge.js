@@ -4,6 +4,7 @@ const multer = require('multer');
 const pdfParse = require('pdf-parse');
 const { supabase } = require('../db/supabase');
 const { ownsParam, ownsRow } = require('../auth/access');
+const { distributePdfKnowledge } = require('../ai/catalogExtractor');
 
 // El servidor tiene 512 MB compartidos con todas las sesiones de WhatsApp:
 // PDFs pequeños, de a uno a la vez y con tope de páginas y de texto.
@@ -155,7 +156,15 @@ router.post('/:businessId/upload', ownsParam('businessId'), uploadPdf, async (re
 
     const { data, error } = await supabase.from('knowledge_base').insert(rows).select();
 
+    // Reparte el catálogo en productos / FAQs / info sin tocar lo ya configurado.
+    // Si la IA falla, igual quedan los bloques de texto crudo guardados arriba.
+    let distributed = null;
     if (!error) {
+      try {
+        distributed = await distributePdfKnowledge(businessId, parsed.text || '', baseTitle);
+      } catch (e) {
+        console.error('[CATALOGO] Falló el reparto del PDF:', e.message);
+      }
       clearBusinessAiCache(businessId).catch(() => {});
     }
 
@@ -163,6 +172,7 @@ router.post('/:businessId/upload', ownsParam('businessId'), uploadPdf, async (re
       success: !error,
       items: data,
       item: data?.[0],
+      distributed,
       parts: rows.length,
       pages: parsed.numpages,
       truncated,
