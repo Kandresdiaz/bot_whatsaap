@@ -133,8 +133,12 @@ export default function KnowledgePage() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.success) {
         alert(data.error || `No se pudo procesar el PDF (HTTP ${res.status}).`);
-      } else if (data.truncated) {
-        alert(`El PDF es muy largo: se guardaron las primeras ${data.parts} partes. Sube el resto en otro archivo si lo necesitas.`);
+      } else {
+        const d = data.distributed;
+        const resumen = d
+          ? `✅ PDF leído: ${d.products} productos nuevos, ${d.faqs} preguntas frecuentes y ${d.info} datos del negocio.${d.skipped ? ` (${d.skipped} ya existían y no se tocaron)` : ''}`
+          : '✅ PDF guardado como conocimiento. No se pudo separar en productos; revisa el catálogo.';
+        alert(resumen + (data.truncated ? `\n\nEl PDF es muy largo: se guardaron las primeras ${data.parts} partes.` : ''));
       }
     } catch (e: any) {
       alert('Error al subir el PDF: ' + e.message);
