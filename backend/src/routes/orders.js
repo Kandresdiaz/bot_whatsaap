@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { supabase } = require('../db/supabase');
+const { ownsBody, ownsParam, ownsRow } = require('../auth/access');
 
 // Helper para resolver el business_id real a partir del user_id o business_id
 const resolveBusinessId = async (idOrUserId) => {
@@ -29,9 +30,6 @@ const resolveBusinessId = async (idOrUserId) => {
       .limit(1);
 
     if (bByUser && bByUser[0]?.id) return bByUser[0].id;
-
-    const { data: fallback } = await supabase.from('businesses').select('id').limit(1);
-    if (fallback && fallback[0]?.id) return fallback[0].id;
   } catch (e) {
     console.error('[Orders] Error resolviendo businessId:', e.message);
   }
@@ -39,7 +37,7 @@ const resolveBusinessId = async (idOrUserId) => {
 };
 
 // ─── 1. Listar pedidos de un negocio ─────────────────────────────────────────
-router.get('/:businessId', async (req, res) => {
+router.get('/:businessId', ownsParam('businessId'), async (req, res) => {
   try {
     const { businessId: rawId } = req.params;
     const { status, search, limit = 100 } = req.query;
@@ -52,9 +50,12 @@ router.get('/:businessId', async (req, res) => {
       .order('created_at', { ascending: false })
       .limit(parseInt(limit) || 100);
 
-    if (businessId && businessId !== '00000000-0000-0000-0000-000000000001') {
-      query = query.eq('business_id', businessId);
+    // Sin negocio resuelto no se lista nada: antes la consulta quedaba sin filtro
+    // y devolvía los registros de todos los negocios del SaaS.
+    if (!businessId || businessId === '00000000-0000-0000-0000-000000000001') {
+      return res.json({ success: true, orders: [] });
     }
+    query = query.eq('business_id', businessId);
 
     if (status && status !== 'all') {
       query = query.eq('status', status);
@@ -89,7 +90,7 @@ router.get('/:businessId', async (req, res) => {
 });
 
 // ─── 2. Crear un nuevo pedido manualmente o por bot ──────────────────────────
-router.post('/', async (req, res) => {
+router.post('/', ownsBody(), async (req, res) => {
   try {
     const {
       userId,
@@ -167,7 +168,7 @@ router.post('/', async (req, res) => {
 });
 
 // ─── 3. Actualizar pedido completo (PUT) ────────────────────────────────────
-router.put('/:id', async (req, res) => {
+router.put('/:id', ownsRow('orders'), async (req, res) => {
   try {
     const { id } = req.params;
     const {
@@ -227,7 +228,7 @@ router.put('/:id', async (req, res) => {
 });
 
 // ─── 4. Actualizar estado rápidamente (PATCH) ───────────────────────────────
-router.patch('/:id', async (req, res) => {
+router.patch('/:id', ownsRow('orders'), async (req, res) => {
   try {
     const { id } = req.params;
     const { status, notes, tracking_number } = req.body;
@@ -263,7 +264,7 @@ router.patch('/:id', async (req, res) => {
 });
 
 // ─── 5. Eliminar pedido (DELETE) ─────────────────────────────────────────────
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', ownsRow('orders'), async (req, res) => {
   try {
     const { id } = req.params;
     const { error } = await supabase.from('orders').delete().eq('id', id);

@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { BACKEND_URL } from '@/lib/config';
+import { apiFetch } from '@/lib/api';
 
 const DAYS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 const CATEGORIES = [
@@ -48,7 +49,7 @@ export default function BotConfigPage() {
   useEffect(() => {
     const targetId = effectiveUserId || user?.id || 'admin';
     if (!targetId) return;
-    fetch(`${BACKEND}/api/business/${targetId}`, { cache: 'no-store' })
+    apiFetch(`${BACKEND}/api/business/${targetId}`, { cache: 'no-store' })
       .then(r => r.json())
       .then(d => { if (d.business) setConfig((prev: any) => ({ ...prev, ...d.business })); });
   }, [effectiveUserId, user, BACKEND]);
@@ -67,7 +68,7 @@ export default function BotConfigPage() {
     if (!targetId) return;
     setLoading(true);
     try {
-      const res = await fetch(`${BACKEND}/api/business/${targetId}`, {
+      const res = await apiFetch(`${BACKEND}/api/business/${targetId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...config, is_configured: true }),

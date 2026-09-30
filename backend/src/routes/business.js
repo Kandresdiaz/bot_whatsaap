@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { supabase } = require('../db/supabase');
+const { ownsParam, requireAdmin } = require('../auth/access');
 const { seedDefaultProductsAndKB } = require('../db/seedHelper');
 
 const isUuid = (str) => typeof str === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
@@ -36,7 +37,7 @@ const DEFAULT_BOTWA_BUSINESS = {
 };
 
 // Endpoint de diagnóstico rápido
-router.get('/info/test-db', async (req, res) => {
+router.get('/info/test-db', requireAdmin, async (req, res) => {
   try {
     const q1 = await supabase.from('businesses').select('*');
     res.json({ success: true, count: q1.data?.length || 0, businesses: q1.data });
@@ -46,7 +47,7 @@ router.get('/info/test-db', async (req, res) => {
 });
 
 // Obtener o crear business del usuario (AISLAMIENTO TOTAL POR USUARIO)
-router.get('/:userId', async (req, res) => {
+router.get('/:userId', ownsParam('userId'), async (req, res) => {
   const { userId } = req.params;
   const targetUserId = resolveTargetUserId(userId);
 
@@ -134,7 +135,7 @@ router.get('/:userId', async (req, res) => {
 });
 
 // Crear o actualizar business del usuario
-router.post('/:userId', async (req, res) => {
+router.post('/:userId', ownsParam('userId'), async (req, res) => {
   const { userId } = req.params;
   const targetUserId = resolveTargetUserId(userId);
   const fields = { ...req.body };
@@ -239,7 +240,7 @@ router.post('/:userId', async (req, res) => {
 });
 
 // ── Endpoint para Campanita y Badges de Notificaciones (Pedidos y Citas) ──
-router.get('/badges/:userId', async (req, res) => {
+router.get('/badges/:userId', ownsParam('userId'), async (req, res) => {
   try {
     const { userId } = req.params;
 

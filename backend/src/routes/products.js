@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { supabase } = require('../db/supabase');
+const { ownsBody, ownsParam, ownsRow } = require('../auth/access');
 const { clearBusinessAiCache } = require('../ai/aiCache');
 
 // Helper para obtener el business_id real a partir del user_id o business_id
@@ -37,7 +38,7 @@ const resolveBusinessId = async (idOrUserId) => {
 };
 
 // ─── 1. Listar productos y servicios de un negocio ───────────────────────────
-router.get('/:businessId', async (req, res) => {
+router.get('/:businessId', ownsParam('businessId'), async (req, res) => {
   try {
     const { businessId: rawId } = req.params;
     const businessId = await resolveBusinessId(rawId);
@@ -61,7 +62,7 @@ router.get('/:businessId', async (req, res) => {
 });
 
 // ─── 2. Crear un nuevo producto o servicio ───────────────────────────────────
-router.post('/', async (req, res) => {
+router.post('/', ownsBody(), async (req, res) => {
   try {
     const { userId, businessId: rawId, name, description, price, currency, category, image_url, is_active } = req.body;
 
@@ -108,7 +109,7 @@ router.post('/', async (req, res) => {
 });
 
 // ─── 3. Actualizar un producto o servicio ───────────────────────────────────
-router.put('/:id', async (req, res) => {
+router.put('/:id', ownsRow('products_services'), async (req, res) => {
   try {
     const { id } = req.params;
     const { name, description, price, currency, category, image_url, is_active } = req.body;
@@ -154,7 +155,7 @@ router.put('/:id', async (req, res) => {
 });
 
 // ─── 4. Activar / Desactivar producto (toggle) ───────────────────────────────
-router.patch('/:id/toggle', async (req, res) => {
+router.patch('/:id/toggle', ownsRow('products_services'), async (req, res) => {
   try {
     const { id } = req.params;
     const { is_active } = req.body;
@@ -182,7 +183,7 @@ router.patch('/:id/toggle', async (req, res) => {
 });
 
 // ─── 5. Eliminar un producto o servicio ──────────────────────────────────────
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', ownsRow('products_services'), async (req, res) => {
   try {
     const { id } = req.params;
     const { data: prod } = await supabase.from('products_services').select('business_id').eq('id', id).single();

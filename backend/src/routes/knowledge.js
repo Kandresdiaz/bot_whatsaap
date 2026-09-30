@@ -3,6 +3,7 @@ const router = express.Router();
 const multer = require('multer');
 const pdfParse = require('pdf-parse');
 const { supabase } = require('../db/supabase');
+const { ownsParam, ownsRow } = require('../auth/access');
 
 // El servidor tiene 512 MB compartidos con todas las sesiones de WhatsApp:
 // PDFs pequeños, de a uno a la vez y con tope de páginas y de texto.
@@ -68,7 +69,7 @@ const resolveBusinessId = async (idOrUserId) => {
 };
 
 // Listar knowledge base de un business
-router.get('/:businessId', async (req, res) => {
+router.get('/:businessId', ownsParam('businessId'), async (req, res) => {
   try {
     const { businessId: rawId } = req.params;
     const businessId = await resolveBusinessId(rawId);
@@ -93,7 +94,7 @@ router.get('/:businessId', async (req, res) => {
 const { clearBusinessAiCache } = require('../ai/aiCache');
 
 // Agregar texto o FAQ
-router.post('/:businessId', async (req, res) => {
+router.post('/:businessId', ownsParam('businessId'), async (req, res) => {
   const { businessId } = req.params;
   const { type, title, content, file_url } = req.body;
 
@@ -121,7 +122,7 @@ const uploadPdf = (req, res, next) => {
   });
 };
 
-router.post('/:businessId/upload', uploadPdf, async (req, res) => {
+router.post('/:businessId/upload', ownsParam('businessId'), uploadPdf, async (req, res) => {
   const { businessId } = req.params;
 
   if (!req.file) return res.status(400).json({ success: false, error: 'No se recibió archivo' });
@@ -173,7 +174,7 @@ router.post('/:businessId/upload', uploadPdf, async (req, res) => {
 });
 
 // Activar/desactivar item
-router.patch('/:id/toggle', async (req, res) => {
+router.patch('/:id/toggle', ownsRow('knowledge_base'), async (req, res) => {
   const { id } = req.params;
   const { is_active } = req.body;
   const { data: item } = await supabase.from('knowledge_base').select('business_id').eq('id', id).single();
@@ -185,7 +186,7 @@ router.patch('/:id/toggle', async (req, res) => {
 });
 
 // Eliminar item
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', ownsRow('knowledge_base'), async (req, res) => {
   const { id } = req.params;
   const { data: item } = await supabase.from('knowledge_base').select('business_id').eq('id', id).single();
   await supabase.from('knowledge_base').delete().eq('id', id);
@@ -197,7 +198,7 @@ router.delete('/:id', async (req, res) => {
 
 // Generar preguntas frecuentes con IA a demanda
 const { generateFaqsFromChats } = require('../ai/faqGenerator');
-router.post('/generate-faqs/:userId', async (req, res) => {
+router.post('/generate-faqs/:userId', ownsParam('userId'), async (req, res) => {
   const { userId } = req.params;
   const result = await generateFaqsFromChats(userId);
   res.json(result);

@@ -7,6 +7,7 @@ import OnboardingWizardModal from '@/components/OnboardingWizardModal';
 import TrialActivationModal from '@/components/TrialActivationModal';
 
 import { BACKEND_URL } from '@/lib/config';
+import { apiFetch } from '@/lib/api';
 
 const BACKEND = BACKEND_URL;
 
@@ -36,7 +37,7 @@ export default function ConnectPage() {
 
   useEffect(() => {
     if (!effectiveUserId) return;
-    fetch(`${BACKEND}/api/billing/status/${effectiveUserId}`)
+    apiFetch(`${BACKEND}/api/billing/status/${effectiveUserId}`)
       .then(r => r.json())
       .then(d => {
         if (d.success && d.subscription) {
@@ -69,7 +70,7 @@ export default function ConnectPage() {
   // Cargar info del negocio al montar
   useEffect(() => {
     if (!effectiveUserId) return;
-    fetch(`${BACKEND}/api/business/${effectiveUserId}`, { cache: 'no-store' })
+    apiFetch(`${BACKEND}/api/business/${effectiveUserId}`, { cache: 'no-store' })
       .then(r => r.json())
       .then(d => {
         if (d.business) {
@@ -159,7 +160,7 @@ export default function ConnectPage() {
 
     const poll = async () => {
       try {
-        const r = await fetch(`${BACKEND}/api/sessions/status/${effectiveUserId}`, { signal: AbortSignal.timeout(8000) });
+        const r = await apiFetch(`${BACKEND}/api/sessions/status/${effectiveUserId}`, { signal: AbortSignal.timeout(8000) });
         if (!r.ok) return;
         const d = await r.json();
         if (cancelled) return;
@@ -227,7 +228,7 @@ export default function ConnectPage() {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 30000);
 
-      const res = await fetch(`${BACKEND}/api/sessions/start`, {
+      const res = await apiFetch(`${BACKEND}/api/sessions/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: effectiveUserId, force }),
@@ -282,7 +283,7 @@ export default function ConnectPage() {
     setPhone(null);
     setError(null);
     try {
-      await fetch(`${BACKEND}/api/sessions/stop`, {
+      await apiFetch(`${BACKEND}/api/sessions/stop`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: effectiveUserId }),
@@ -293,7 +294,7 @@ export default function ConnectPage() {
   // Guardar configuración del negocio desde el modal
   const handleSaveBusiness = async (updatedConfig: any) => {
     if (!effectiveUserId) return;
-    const r = await fetch(`${BACKEND}/api/business/${effectiveUserId}`, {
+    const r = await apiFetch(`${BACKEND}/api/business/${effectiveUserId}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...updatedConfig, is_configured: true }),

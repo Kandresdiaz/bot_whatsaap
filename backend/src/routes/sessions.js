@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { supabase } = require('../db/supabase');
+const { ownsBody, ownsParam } = require('../auth/access');
 const {
   createSession,
   disconnectSession,
@@ -14,7 +15,7 @@ const {
 } = require('../whatsapp/sessionManager');
 
 // Iniciar sesión (genera QR con Baileys)
-router.post('/start', async (req, res) => {
+router.post('/start', ownsBody(), async (req, res) => {
   const { userId, force } = req.body;
 
   if (!userId) {
@@ -152,7 +153,7 @@ router.post('/start', async (req, res) => {
 });
 
 // Obtener estado de la sesión
-router.get('/status/:userId', async (req, res) => {
+router.get('/status/:userId', ownsParam('userId'), async (req, res) => {
   const { userId } = req.params;
 
   try {
@@ -265,7 +266,7 @@ router.get('/status/:userId', async (req, res) => {
 });
 
 // Obtener estado del Bot Global
-router.get('/global-bot/:userId', async (req, res) => {
+router.get('/global-bot/:userId', ownsParam('userId'), async (req, res) => {
   const { userId } = req.params;
   const { getGlobalBotStatus } = require('../whatsapp/sessionManager');
   try {
@@ -277,7 +278,7 @@ router.get('/global-bot/:userId', async (req, res) => {
 });
 
 // Cambiar estado del Bot Global (Activar / Pausar)
-router.patch('/global-bot/:userId', async (req, res) => {
+router.patch('/global-bot/:userId', ownsParam('userId'), async (req, res) => {
   const { userId } = req.params;
   const { bot_enabled } = req.body;
   const { setGlobalBotStatus, getValidUserId } = require('../whatsapp/sessionManager');
@@ -306,7 +307,7 @@ router.patch('/global-bot/:userId', async (req, res) => {
 });
 
 // Desconectar sesión
-router.post('/stop', async (req, res) => {
+router.post('/stop', ownsBody(), async (req, res) => {
   const { userId } = req.body;
   if (userId) {
     try {
@@ -319,7 +320,7 @@ router.post('/stop', async (req, res) => {
 });
 
 // Enviar mensaje manual (intervención del dueño)
-router.post('/send', async (req, res) => {
+router.post('/send', ownsBody(), async (req, res) => {
   const { userId, sessionId, phone, message, conversationId } = req.body;
   const isUuid = (str) => typeof str === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
 

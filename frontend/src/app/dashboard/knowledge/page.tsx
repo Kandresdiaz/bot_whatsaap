@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { BACKEND_URL } from '@/lib/config';
+import { apiFetch } from '@/lib/api';
 
 type KBItem = { id: string; type: string; title: string; content: string; is_active: boolean; created_at: string };
 
@@ -18,7 +19,7 @@ export default function KnowledgePage() {
   useEffect(() => {
     const targetId = effectiveUserId || user?.id || 'admin';
     if (!targetId) return;
-    fetch(`${BACKEND}/api/business/${targetId}`)
+    apiFetch(`${BACKEND}/api/business/${targetId}`)
       .then(r => r.json())
       .then(d => {
         if (d.business?.id) {
@@ -49,7 +50,7 @@ export default function KnowledgePage() {
 
   const loadItems = async (bId: string) => {
     try {
-      const res = await fetch(`${BACKEND}/api/knowledge/${bId}`);
+      const res = await apiFetch(`${BACKEND}/api/knowledge/${bId}`);
       if (res.ok) {
         const data = await res.json();
         if (data.items && Array.isArray(data.items)) {
@@ -82,7 +83,7 @@ export default function KnowledgePage() {
   const addText = async () => {
     if (!businessId || !form.title || !form.content) return;
     setLoading(true);
-    await fetch(`${BACKEND}/api/knowledge/${businessId}`, {
+    await apiFetch(`${BACKEND}/api/knowledge/${businessId}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ type: 'text', title: form.title, content: form.content }),
@@ -95,7 +96,7 @@ export default function KnowledgePage() {
   const addFaq = async () => {
     if (!businessId || !form.question || !form.answer) return;
     setLoading(true);
-    await fetch(`${BACKEND}/api/knowledge/${businessId}`, {
+    await apiFetch(`${BACKEND}/api/knowledge/${businessId}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ type: 'faq', title: form.question, content: form.answer }),
@@ -108,7 +109,7 @@ export default function KnowledgePage() {
   const addImage = async () => {
     if (!businessId || !form.title || !form.imageUrl) return;
     setLoading(true);
-    await fetch(`${BACKEND}/api/knowledge/${businessId}`, {
+    await apiFetch(`${BACKEND}/api/knowledge/${businessId}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ type: 'image', title: form.title, content: form.imageDesc || form.title, file_url: form.imageUrl }),
@@ -128,7 +129,7 @@ export default function KnowledgePage() {
     const fd = new FormData();
     fd.append('file', file);
     try {
-      const res = await fetch(`${BACKEND}/api/knowledge/${businessId}/upload`, { method: 'POST', body: fd });
+      const res = await apiFetch(`${BACKEND}/api/knowledge/${businessId}/upload`, { method: 'POST', body: fd });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.success) {
         alert(data.error || `No se pudo procesar el PDF (HTTP ${res.status}).`);
@@ -144,7 +145,7 @@ export default function KnowledgePage() {
   };
 
   const toggleItem = async (id: string, current: boolean) => {
-    await fetch(`${BACKEND}/api/knowledge/${id}/toggle`, {
+    await apiFetch(`${BACKEND}/api/knowledge/${id}/toggle`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ is_active: !current }),
@@ -153,7 +154,7 @@ export default function KnowledgePage() {
   };
 
   const deleteItem = async (id: string) => {
-    await fetch(`${BACKEND}/api/knowledge/${id}`, { method: 'DELETE' });
+    await apiFetch(`${BACKEND}/api/knowledge/${id}`, { method: 'DELETE' });
     setItems(prev => prev.filter(i => i.id !== id));
   };
 
@@ -167,7 +168,7 @@ export default function KnowledgePage() {
     if (!user?.id) return;
     setGeneratingFaqs(true);
     try {
-      const r = await fetch(`${BACKEND}/api/knowledge/generate-faqs/${user.id}`, { method: 'POST' });
+      const r = await apiFetch(`${BACKEND}/api/knowledge/generate-faqs/${user.id}`, { method: 'POST' });
       const d = await r.json();
       if (d.success && Array.isArray(d.faqs)) {
         setSuggestedFaqs(d.faqs);
@@ -184,7 +185,7 @@ export default function KnowledgePage() {
   const approveFaq = async (faq: { title: string; content: string }) => {
     if (!businessId) return;
     setLoading(true);
-    await fetch(`${BACKEND}/api/knowledge/${businessId}`, {
+    await apiFetch(`${BACKEND}/api/knowledge/${businessId}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ type: 'faq', title: faq.title, content: faq.content }),

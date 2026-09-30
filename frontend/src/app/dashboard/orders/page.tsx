@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { io as socketIO } from 'socket.io-client';
 import { BACKEND_URL } from '@/lib/config';
+import { apiFetch } from '@/lib/api';
 
 export type Order = {
   id: string;
@@ -86,7 +87,7 @@ export default function OrdersPage() {
     const targetId = effectiveUserId || user?.id || 'admin';
     if (!targetId) return;
 
-    fetch(`${BACKEND}/api/business/${targetId}`)
+    apiFetch(`${BACKEND}/api/business/${targetId}`)
       .then(r => r.json())
       .then(d => {
         if (d.business?.id) {
@@ -99,7 +100,7 @@ export default function OrdersPage() {
       })
       .catch(() => setLoading(false));
 
-    fetch(`${BACKEND}/api/products/${targetId}`)
+    apiFetch(`${BACKEND}/api/products/${targetId}`)
       .then(r => r.json())
       .then(d => {
         if (d.products && Array.isArray(d.products)) {
@@ -113,7 +114,7 @@ export default function OrdersPage() {
   const loadOrders = async (bId: string) => {
     setLoading(true);
     try {
-      const res = await fetch(`${BACKEND}/api/orders/${bId}`);
+      const res = await apiFetch(`${BACKEND}/api/orders/${bId}`);
       const data = await res.json();
       if (data.orders && Array.isArray(data.orders)) {
         setOrders(data.orders);
@@ -241,13 +242,13 @@ export default function OrdersPage() {
 
       let res;
       if (editingOrder) {
-        res = await fetch(`${BACKEND}/api/orders/${editingOrder.id}`, {
+        res = await apiFetch(`${BACKEND}/api/orders/${editingOrder.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         });
       } else {
-        res = await fetch(`${BACKEND}/api/orders`, {
+        res = await apiFetch(`${BACKEND}/api/orders`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
@@ -280,7 +281,7 @@ export default function OrdersPage() {
   const handleQuickStatusChange = async (id: string, newStatus: Order['status']) => {
     setOrders(prev => prev.map(o => o.id === id ? { ...o, status: newStatus } : o));
     try {
-      await fetch(`${BACKEND}/api/orders/${id}`, {
+      await apiFetch(`${BACKEND}/api/orders/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus }),
@@ -298,7 +299,7 @@ export default function OrdersPage() {
     if (isEditModalOpen) setIsEditModalOpen(false);
 
     try {
-      await fetch(`${BACKEND}/api/orders/${id}`, { method: 'DELETE' });
+      await apiFetch(`${BACKEND}/api/orders/${id}`, { method: 'DELETE' });
       showToastMsg('🗑️ Pedido eliminado');
     } catch (_) {}
   };

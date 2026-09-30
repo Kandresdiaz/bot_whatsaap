@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { BACKEND_URL } from '@/lib/config';
+import { apiFetch } from '@/lib/api';
 
 export default function DashboardHome() {
   const { user, effectiveUserId, selectedClientName } = useAuth();
@@ -13,12 +14,12 @@ export default function DashboardHome() {
 
   useEffect(() => {
     if (!effectiveUserId) return;
-    fetch(`${BACKEND}/api/sessions/status/${effectiveUserId}`)
+    apiFetch(`${BACKEND}/api/sessions/status/${effectiveUserId}`)
       .then(r => r.json())
       .then(d => setSession(d.session))
       .catch(() => setSession(null));
 
-    fetch(`${BACKEND}/api/billing/status/${effectiveUserId}`)
+    apiFetch(`${BACKEND}/api/billing/status/${effectiveUserId}`)
       .then(r => r.json())
       .then(d => {
         if (d.success) {

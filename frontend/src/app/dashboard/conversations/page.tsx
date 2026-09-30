@@ -3,6 +3,7 @@ import { useEffect, useState, useRef, useMemo } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { io, Socket } from 'socket.io-client';
 import { BACKEND_URL } from '@/lib/config';
+import { apiFetch } from '@/lib/api';
 
 type Conversation = {
   id: string;
@@ -182,7 +183,7 @@ export default function ConversationsPage() {
     setNewPhoneModal(false);
 
     try {
-      const res = await fetch(`${BACKEND}/api/conversations/create`, {
+      const res = await apiFetch(`${BACKEND}/api/conversations/create`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: targetId, phone: clean, contactName: clean }),
@@ -203,7 +204,7 @@ export default function ConversationsPage() {
     if (!targetId) return;
     setSessionId(targetId);
     socketRef.current?.emit('join_session', targetId);
-    fetch(`${BACKEND}/api/sessions/status/${targetId}`)
+    apiFetch(`${BACKEND}/api/sessions/status/${targetId}`)
       .then(r => r.json())
       .then(d => {
         if (d.session?.id) {
@@ -217,7 +218,7 @@ export default function ConversationsPage() {
       })
       .catch(() => {});
 
-    fetch(`${BACKEND}/api/sessions/global-bot/${targetId}`)
+    apiFetch(`${BACKEND}/api/sessions/global-bot/${targetId}`)
       .then(r => r.json())
       .then(d => {
         if (d.success && typeof d.bot_enabled === 'boolean') {
@@ -232,7 +233,7 @@ export default function ConversationsPage() {
     const targetId = user?.id || sessionId || 'admin';
     const cleanP = conv.contact_phone ? conv.contact_phone.replace(/[^0-9]/g, '') : '';
     try {
-      const res = await fetch(`${BACKEND}/api/conversations/${conv.id}/messages?phone=${cleanP}&userId=${targetId}`);
+      const res = await apiFetch(`${BACKEND}/api/conversations/${conv.id}/messages?phone=${cleanP}&userId=${targetId}`);
       if (!res.ok) return;
       const data = await res.json();
       
@@ -255,7 +256,7 @@ export default function ConversationsPage() {
     const idToFetch = effectiveUserId || targetId || 'admin';
     if (!idToFetch) return;
     try {
-      const res = await fetch(`${BACKEND}/api/conversations/${idToFetch}`);
+      const res = await apiFetch(`${BACKEND}/api/conversations/${idToFetch}`);
       if (!res.ok) return;
       const data = await res.json();
       if (data.conversations && Array.isArray(data.conversations)) {
@@ -291,7 +292,7 @@ export default function ConversationsPage() {
     loadConversations(userIdToUse);
 
     const interval = setInterval(() => {
-      fetch(`${BACKEND}/api/sessions/status/${userIdToUse}`)
+      apiFetch(`${BACKEND}/api/sessions/status/${userIdToUse}`)
         .then(r => r.json())
         .then(d => {
           const currentStatus = d.session?.status || 'disconnected';
@@ -556,7 +557,7 @@ export default function ConversationsPage() {
     const targetId = sessionId || user?.id || 'admin';
     setSyncing(true);
     try {
-      await fetch(`${BACKEND}/api/conversations/sync/${targetId}`, { method: 'POST' });
+      await apiFetch(`${BACKEND}/api/conversations/sync/${targetId}`, { method: 'POST' });
       loadConversations(targetId);
     } catch (e) {
       console.error('Error al sincronizar:', e);
@@ -571,7 +572,7 @@ export default function ConversationsPage() {
     setTogglingGlobal(true);
     setGlobalBotEnabled(nextVal);
     try {
-      const res = await fetch(`${BACKEND}/api/sessions/global-bot/${user.id}`, {
+      const res = await apiFetch(`${BACKEND}/api/sessions/global-bot/${user.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ bot_enabled: nextVal }),
@@ -612,7 +613,7 @@ export default function ConversationsPage() {
   const toggleBot = async (conv: Conversation, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     const newVal = !conv.bot_active;
-    await fetch(`${BACKEND}/api/conversations/${conv.id}/toggle-bot`, {
+    await apiFetch(`${BACKEND}/api/conversations/${conv.id}/toggle-bot`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ bot_active: newVal, phone: conv.contact_phone, userId: user?.id }),
@@ -623,7 +624,7 @@ export default function ConversationsPage() {
 
   const blacklist = async (conv: Conversation, reason: string) => {
     const newVal = !conv.is_blacklisted;
-    await fetch(`${BACKEND}/api/conversations/${conv.id}/blacklist`, {
+    await apiFetch(`${BACKEND}/api/conversations/${conv.id}/blacklist`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ blacklisted: newVal, reason, phone: conv.contact_phone, userId: user?.id }),
@@ -640,7 +641,7 @@ export default function ConversationsPage() {
     setSendErrorToast(null);
 
     try {
-      const res = await fetch(`${BACKEND}/api/sessions/send`, {
+      const res = await apiFetch(`${BACKEND}/api/sessions/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -1,11 +1,12 @@
 const express = require('express');
 const router = express.Router();
 const { supabase } = require('../db/supabase');
+const { ownsBody, ownsParam, ownsQuery, ownsRow } = require('../auth/access');
 
 const isUuid = (str) => typeof str === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
 
 // Listar conversaciones de una sesión o usuario
-router.get('/:sessionId', async (req, res) => {
+router.get('/:sessionId', ownsParam('sessionId'), async (req, res) => {
   try {
     let { sessionId } = req.params;
     const { search, status } = req.query;
@@ -271,7 +272,7 @@ router.get('/:sessionId', async (req, res) => {
 });
 
 // Mensajes de una conversación
-router.get('/:conversationId/messages', async (req, res) => {
+router.get('/:conversationId/messages', ownsQuery(), ownsRow('conversations', 'conversationId'), async (req, res) => {
   try {
     const { conversationId } = req.params;
     const { phone: queryPhone, userId: queryUserId } = req.query;
@@ -416,7 +417,7 @@ router.get('/:conversationId/messages', async (req, res) => {
 });
 
 // Crear o buscar conversación para un número de teléfono
-router.post('/create', async (req, res) => {
+router.post('/create', ownsBody(), async (req, res) => {
   try {
     const { userId, phone, contactName } = req.body;
     if (!phone) {
@@ -478,7 +479,7 @@ router.post('/create', async (req, res) => {
 });
 
 // Sincronizar chats de la sesión activa
-router.post('/sync/:userId', async (req, res) => {
+router.post('/sync/:userId', ownsParam('userId'), async (req, res) => {
   try {
     const { userId } = req.params;
     const { getSession, syncChatsAndMessagesToDb, emitToUserRooms, getSessionUuid, storeChats } = require('../whatsapp/sessionManager');
@@ -518,7 +519,7 @@ router.post('/sync/:userId', async (req, res) => {
 });
 
 // Activar/desactivar bot en una conversación
-router.patch('/:conversationId/toggle-bot', async (req, res) => {
+router.patch('/:conversationId/toggle-bot', ownsBody(), ownsRow('conversations', 'conversationId'), async (req, res) => {
   try {
     const { conversationId } = req.params;
     const { bot_active, phone: reqPhone, userId } = req.body;
@@ -578,7 +579,7 @@ router.patch('/:conversationId/toggle-bot', async (req, res) => {
 });
 
 // Agregar a blacklist (amigos/familia)
-router.patch('/:conversationId/blacklist', async (req, res) => {
+router.patch('/:conversationId/blacklist', ownsBody(), ownsRow('conversations', 'conversationId'), async (req, res) => {
   try {
     const { conversationId } = req.params;
     const { blacklisted, reason, phone: reqPhone, userId } = req.body;
@@ -647,7 +648,7 @@ router.patch('/:conversationId/blacklist', async (req, res) => {
 });
 
 // Endpoint de diagnóstico transparente: estado de Baileys, chats en RAM y chats en DB
-router.get('/debug-info/:userId', async (req, res) => {
+router.get('/debug-info/:userId', ownsParam('userId'), async (req, res) => {
   try {
     const { userId } = req.params;
     const { getSession, getValidUserId, getUserStore, getSessionUuid } = require('../whatsapp/sessionManager');

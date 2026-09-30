@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { BACKEND_URL } from '@/lib/config';
+import { apiFetch } from '@/lib/api';
 
 const BACKEND = BACKEND_URL;
 
@@ -107,7 +108,7 @@ export default function ProductsPage() {
     const isPrimaryAdminSelf = user?.is_admin && (!effectiveUserId || effectiveUserId === 'admin');
     setLoading(true);
     try {
-      let res = await fetch(`${BACKEND}/api/products/${targetId}`);
+      let res = await apiFetch(`${BACKEND}/api/products/${targetId}`);
       if (res.ok) {
         let data = await res.json();
         if (data.products && Array.isArray(data.products)) {
@@ -187,13 +188,13 @@ export default function ProductsPage() {
 
       let res;
       if (editingProduct) {
-        res = await fetch(`${BACKEND}/api/products/${editingProduct.id}`, {
+        res = await apiFetch(`${BACKEND}/api/products/${editingProduct.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         });
       } else {
-        res = await fetch(`${BACKEND}/api/products`, {
+        res = await apiFetch(`${BACKEND}/api/products`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
@@ -221,7 +222,7 @@ export default function ProductsPage() {
     setProducts(prev => prev.map(p => p.id === prod.id ? { ...p, is_active: nextVal } : p));
 
     try {
-      await fetch(`${BACKEND}/api/products/${prod.id}/toggle`, {
+      await apiFetch(`${BACKEND}/api/products/${prod.id}/toggle`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ is_active: nextVal }),
@@ -236,7 +237,7 @@ export default function ProductsPage() {
     setProducts(prev => prev.filter(p => p.id !== prod.id));
 
     try {
-      await fetch(`${BACKEND}/api/products/${prod.id}`, { method: 'DELETE' });
+      await apiFetch(`${BACKEND}/api/products/${prod.id}`, { method: 'DELETE' });
       showToastMsg('🗑️ Producto eliminado del catálogo');
     } catch (_) {}
   };

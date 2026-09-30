@@ -4,6 +4,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { BACKEND_URL } from '@/lib/config';
+import { apiFetch } from '@/lib/api';
 import GuidedTour from '@/components/GuidedTour';
 import SectionGuideModal from '@/components/SectionGuideModal';
 
@@ -54,7 +55,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   // Cargar lista de clientes si es Admin
   useEffect(() => {
     if (!user?.is_admin) return;
-    fetch(`${BACKEND}/api/admin/clients`, { headers })
+    apiFetch(`${BACKEND}/api/admin/clients`, { headers })
       .then(r => r.json())
       .then(d => {
         if (d.clients && Array.isArray(d.clients)) {
@@ -67,7 +68,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   // Cargar estado de bot global para el usuario efectivo
   useEffect(() => {
     if (!effectiveUserId) return;
-    fetch(`${BACKEND}/api/sessions/global-bot/${effectiveUserId}`)
+    apiFetch(`${BACKEND}/api/sessions/global-bot/${effectiveUserId}`)
       .then(r => r.json())
       .then(d => {
         if (d.success && typeof d.bot_enabled === 'boolean') {
@@ -88,7 +89,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   // Cargar estado de suscripción y cuota de mensajes
   useEffect(() => {
     if (!effectiveUserId) return;
-    fetch(`${BACKEND}/api/billing/status/${effectiveUserId}`)
+    apiFetch(`${BACKEND}/api/billing/status/${effectiveUserId}`)
       .then(r => r.json())
       .then(d => {
         if (d.success) {
@@ -117,7 +118,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const loadBadges = useCallback(() => {
     if (!effectiveUserId) return;
-    fetch(`${BACKEND}/api/business/badges/${effectiveUserId}`)
+    apiFetch(`${BACKEND}/api/business/badges/${effectiveUserId}`)
       .then(r => r.json())
       .then(d => {
         if (d.success) {
@@ -216,7 +217,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   // Cargar estado de negocio y escuchar actualizaciones
   const loadBusiness = useCallback(() => {
     if (!effectiveUserId) return;
-    fetch(`${BACKEND}/api/business/${effectiveUserId}`, { cache: 'no-store' })
+    apiFetch(`${BACKEND}/api/business/${effectiveUserId}`, { cache: 'no-store' })
       .then(r => r.json())
       .then(d => {
         if (d.business) {
@@ -245,7 +246,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     if (!effectiveUserId) return;
     setCancelingSub(true);
     try {
-      const res = await fetch(`${BACKEND}/api/billing/cancel-subscription`, {
+      const res = await apiFetch(`${BACKEND}/api/billing/cancel-subscription`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: effectiveUserId }),
@@ -274,7 +275,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     setTogglingGlobal(true);
     setGlobalBotEnabled(nextVal);
     try {
-      const res = await fetch(`${BACKEND}/api/sessions/global-bot/${effectiveUserId}`, {
+      const res = await apiFetch(`${BACKEND}/api/sessions/global-bot/${effectiveUserId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ bot_enabled: nextVal }),

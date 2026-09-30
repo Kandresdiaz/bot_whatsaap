@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { io as socketIO } from 'socket.io-client';
 import { BACKEND_URL } from '@/lib/config';
+import { apiFetch } from '@/lib/api';
 
 type Appointment = {
   id: string;
@@ -84,7 +85,7 @@ export default function AppointmentsPage() {
     const targetId = effectiveUserId || user?.id || 'admin';
     if (!targetId) return;
 
-    fetch(`${BACKEND}/api/business/${targetId}`)
+    apiFetch(`${BACKEND}/api/business/${targetId}`)
       .then(r => r.json())
       .then(d => {
         if (d.business?.id) {
@@ -98,7 +99,7 @@ export default function AppointmentsPage() {
       .catch(() => setLoading(false));
 
     // Cargar nombres de servicios para sugerencias
-    fetch(`${BACKEND}/api/products/${targetId}`)
+    apiFetch(`${BACKEND}/api/products/${targetId}`)
       .then(r => r.json())
       .then(d => {
         if (d.products && Array.isArray(d.products)) {
@@ -113,7 +114,7 @@ export default function AppointmentsPage() {
   const loadAppointments = async (bId: string) => {
     setLoading(true);
     try {
-      const res = await fetch(`${BACKEND}/api/appointments/${bId}`);
+      const res = await apiFetch(`${BACKEND}/api/appointments/${bId}`);
       const data = await res.json();
       if (data.appointments && Array.isArray(data.appointments)) {
         setAppointments(data.appointments);
@@ -253,13 +254,13 @@ export default function AppointmentsPage() {
 
       let res;
       if (editingAppt) {
-        res = await fetch(`${BACKEND}/api/appointments/${editingAppt.id}`, {
+        res = await apiFetch(`${BACKEND}/api/appointments/${editingAppt.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         });
       } else {
-        res = await fetch(`${BACKEND}/api/appointments`, {
+        res = await apiFetch(`${BACKEND}/api/appointments`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
@@ -293,7 +294,7 @@ export default function AppointmentsPage() {
   const handleQuickStatusChange = async (id: string, newStatus: Appointment['status']) => {
     setAppointments(prev => prev.map(a => a.id === id ? { ...a, status: newStatus } : a));
     try {
-      await fetch(`${BACKEND}/api/appointments/${id}`, {
+      await apiFetch(`${BACKEND}/api/appointments/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus }),
@@ -311,7 +312,7 @@ export default function AppointmentsPage() {
     if (isEditModalOpen) setIsEditModalOpen(false);
 
     try {
-      await fetch(`${BACKEND}/api/appointments/${id}`, { method: 'DELETE' });
+      await apiFetch(`${BACKEND}/api/appointments/${id}`, { method: 'DELETE' });
       showToastMsg('🗑️ Cita eliminada');
     } catch (_) {}
   };
