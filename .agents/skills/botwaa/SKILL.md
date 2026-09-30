@@ -792,6 +792,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-30** | fix: exigir token y dueño en las rutas del panel (negocio, sesiones, chats, FAQs, productos, pedidos, citas) (`98440bf`) | Auto-deploy |
 
+| **2026-09-30** | feat: landing en /, origen de cada registro y aviso de fin de beta (`7001b0a`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
