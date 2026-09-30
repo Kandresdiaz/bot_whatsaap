@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { supabase } = require('../db/supabase');
-const { signToken } = require('../auth/token');
+const { signToken, verifyToken, bearerFrom } = require('../auth/token');
 
 const ADMIN_UUID = '00000000-0000-0000-0000-000000000001';
 
@@ -13,6 +13,22 @@ const checkIsAdmin = (email, dbUserIsAdmin) => {
   const adminList = rawAdminEmails.split(',').map(e => e.trim().toLowerCase());
   return adminList.includes(email.trim().toLowerCase());
 };
+
+// Origen del registro que manda el panel (utm_* y referrer de la primera visita).
+// Viene del navegador: se recorta y solo se aceptan textos.
+const cleanText = (val, max) => (typeof val === 'string' && val.trim() ? val.trim().slice(0, max) : null);
+const attributionColumns = (attribution) => {
+  if (!attribution || typeof attribution !== 'object') return {};
+  const cols = {
+    signup_source: cleanText(attribution.utm_source, 100),
+    signup_medium: cleanText(attribution.utm_medium, 100),
+    signup_campaign: cleanText(attribution.utm_campaign, 100),
+    signup_referrer: cleanText(attribution.referrer, 300),
+  };
+  return Object.fromEntries(Object.entries(cols).filter(([, v]) => v));
+};
+
+const HEARD_ABOUT_OPTIONS = ['instagram', 'tiktok', 'facebook', 'recomendacion', 'google', 'otro'];
 
 // ── Login con Email/Password ──────────────────────────────────────────────────
 router.post('/login', async (req, res) => {
@@ -107,11 +123,22 @@ router.post('/google', async (req, res) => {
       };
       if (id && id.length > 10) insertPayload.id = id;
 
-      const { data: newUser, error: createErr } = await supabase
+      const origin = attributionColumns(req.body?.attribution);
+      let { data: newUser, error: createErr } = await supabase
         .from('users')
-        .insert(insertPayload)
+        .insert({ ...insertPayload, ...origin })
         .select()
         .maybeSingle();
+
+      // Si aún no se corrió la migración 003 (columnas de origen), registrar sin el origen.
+      if (createErr && Object.keys(origin).length > 0 && /signup_/.test(createErr.message || '')) {
+        console.warn('[AUTH] Columnas de origen no existen (¿falta migración 003?). Registro sin origen.');
+        ({ data: newUser, error: createErr } = await supabase
+          .from('users')
+          .insert(insertPayload)
+          .select()
+          .maybeSingle());
+      }
 
       if (createErr) {
         console.error('[AUTH] Error insertando usuario Google en DB:', createErr.message);
@@ -177,6 +204,24 @@ router.post('/google', async (req, res) => {
     console.error('[AUTH] Error en /google route:', e.message);
     return res.status(500).json({ success: false, error: 'Error al procesar autenticación con Google: ' + e.message });
   }
+});
+
+// ── "¿Cómo nos conociste?" (onboarding, opcional) ─────────────────────────────
+router.post('/heard-about', async (req, res) => {
+  const session = verifyToken(bearerFrom(req));
+  if (!session) return res.status(401).json({ success: false, error: 'Sesión no válida' });
+
+  const answer = req.body?.heard_about;
+  if (!HEARD_ABOUT_OPTIONS.includes(answer)) {
+    return res.status(400).json({ success: false, error: 'Opción no válida' });
+  }
+
+  const { error } = await supabase.from('users').update({ heard_about: answer }).eq('id', session.uid);
+  if (error) {
+    console.error('[AUTH] Error guardando heard_about:', error.message);
+    return res.status(500).json({ success: false, error: 'No se pudo guardar' });
+  }
+  return res.json({ success: true });
 });
 
 // ── Registrar usuario (solo admin) ────────────────────────────────────────────

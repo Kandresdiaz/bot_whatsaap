@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { BACKEND_URL } from '@/lib/config';
+import { getAttribution } from '@/lib/attribution';
 
 export default function AuthCallbackPage() {
   const router = useRouter();
@@ -40,6 +41,8 @@ export default function AuthCallbackPage() {
             id: sessionUser.id,
             email: sessionUser.email,
             name: sessionUser.user_metadata?.full_name || sessionUser.user_metadata?.name || sessionUser.email?.split('@')[0],
+            // Solo se guarda si el usuario es nuevo (lo decide el backend).
+            attribution: getAttribution(),
           }),
         });
 

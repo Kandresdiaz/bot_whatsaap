@@ -12,6 +12,7 @@ export type User = {
   is_admin: boolean;
   paid_until?: string;
   status?: string;
+  created_at?: string;
 };
 
 type AuthContextType = {

@@ -18,7 +18,35 @@ type Client = {
   last_connected_at?: string;
   businesses?: { name: string; category: string }[];
   whatsapp_sessions?: { status: string; phone_number: string; last_connected_at?: string }[];
+  created_at?: string;
+  signup_source?: string | null;
+  signup_medium?: string | null;
+  signup_campaign?: string | null;
+  signup_referrer?: string | null;
+  heard_about?: string | null;
 };
+
+const HEARD_ABOUT_LABELS: Record<string, string> = {
+  instagram: 'Instagram', tiktok: 'TikTok', facebook: 'Facebook',
+  recomendacion: 'Recomendación', google: 'Google', otro: 'Otro',
+};
+
+// Origen del registro: primero lo que dijo la persona, luego UTM y por último el sitio que la refirió.
+function renderOrigin(c: Client) {
+  let referrerHost = '';
+  try {
+    if (c.signup_referrer) referrerHost = new URL(c.signup_referrer).host.replace(/^www\./, '');
+  } catch (_) {}
+  const utm = [c.signup_source, c.signup_medium, c.signup_campaign].filter(Boolean).join(' / ');
+  if (!c.heard_about && !utm && !referrerHost) return <span style={{ color: 'var(--text-muted)' }}>—</span>;
+  return (
+    <div style={{ fontSize: 11, lineHeight: 1.5 }}>
+      {c.heard_about && <div style={{ fontWeight: 700, color: '#f8fafc' }}>🗣️ {HEARD_ABOUT_LABELS[c.heard_about] || c.heard_about}</div>}
+      {utm && <div style={{ color: '#00CFFF' }} title="utm_source / utm_medium / utm_campaign">🔗 {utm}</div>}
+      {referrerHost && <div style={{ color: 'var(--text-muted)' }} title={c.signup_referrer || ''}>↩ {referrerHost}</div>}
+    </div>
+  );
+}
 
 const PLAN_PRICES: Record<string, number> = { starter: 120000, pro: 249000, business: 490000 };
 
@@ -235,7 +263,8 @@ export default function AdminClientsPage() {
     const matchesSearch = c.name.toLowerCase().includes(q) ||
       c.email.toLowerCase().includes(q) ||
       (c.phone && c.phone.includes(q)) ||
-      (c.whatsapp_phone && c.whatsapp_phone.includes(q));
+      (c.whatsapp_phone && c.whatsapp_phone.includes(q)) ||
+      [c.heard_about, c.signup_source, c.signup_referrer].some(v => v && v.toLowerCase().includes(q));
     const matchesStatus = statusFilter === 'all' || c.status === statusFilter;
 
     const botSt = c.whatsapp_status || c.whatsapp_sessions?.[0]?.status || 'disconnected';
@@ -396,6 +425,7 @@ export default function AdminClientsPage() {
                   <th style={{ padding: '12px 16px' }}>Cliente</th>
                   <th style={{ padding: '12px 16px' }}>Negocio</th>
                   <th style={{ padding: '12px 16px' }}>Plan</th>
+                  <th style={{ padding: '12px 16px' }}>Origen</th>
                   <th style={{ padding: '12px 16px' }}>Estado Cuenta</th>
                   <th style={{ padding: '12px 16px' }}>Estado del Bot & WhatsApp</th>
                   <th style={{ padding: '12px 16px' }}>Vence el</th>
@@ -417,6 +447,7 @@ export default function AdminClientsPage() {
                     <td style={{ padding: '12px 16px' }}>
                       <span className="badge badge-purple" style={{ textTransform: 'uppercase', fontSize: 10 }}>{c.plan}</span>
                     </td>
+                    <td style={{ padding: '12px 16px' }}>{renderOrigin(c)}</td>
                     <td style={{ padding: '12px 16px' }}>{statusBadge(c.status)}</td>
                     <td style={{ padding: '12px 16px' }}>{renderBotStatus(c)}</td>
                     <td style={{ padding: '12px 16px', fontSize: 12, color: 'var(--text-muted)' }}>

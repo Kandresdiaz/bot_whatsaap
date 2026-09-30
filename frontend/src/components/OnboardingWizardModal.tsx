@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
+import { BACKEND_URL } from '@/lib/config';
 
 interface BusinessConfig {
   name: string;
@@ -37,6 +38,24 @@ const CATEGORIES = [
   'Otro',
 ];
 
+// "¿Cómo nos conociste?": los valores deben coincidir con HEARD_ABOUT_OPTIONS en backend/src/routes/auth.js
+const HEARD_ABOUT = [
+  { value: 'instagram', label: 'Instagram' },
+  { value: 'tiktok', label: 'TikTok' },
+  { value: 'facebook', label: 'Facebook' },
+  { value: 'recomendacion', label: 'Me lo recomendaron' },
+  { value: 'google', label: 'Google' },
+  { value: 'otro', label: 'Otro' },
+];
+
+const isAdminSession = () => {
+  try {
+    return JSON.parse(localStorage.getItem('wbot_user') || '{}').is_admin === true;
+  } catch (_) {
+    return false;
+  }
+};
+
 const PERSONALITIES = [
   { value: 'profesional', label: '💼 Profesional', desc: 'Formal, directo y respetuoso' },
   { value: 'amigable', label: '😊 Amigable', desc: 'Cercano, cálido y enfocado en servicio' },
@@ -47,6 +66,10 @@ const PERSONALITIES = [
 export default function OnboardingWizardModal({ isOpen, onClose, onSave, initialConfig, isMandatory = false }: Props) {
   const [step, setStep] = useState(1);
   const [saving, setSaving] = useState(false);
+  const [heardAbout, setHeardAbout] = useState('');
+  // Solo se pregunta en la primera configuración, no cada vez que editan el negocio.
+  // El admin también abre este wizard para configurar negocios de clientes: ahí no aplica.
+  const askHeardAbout = !initialConfig?.is_configured && !isAdminSession();
 
   const getCleanInitial = (cfg?: Partial<BusinessConfig>) => {
     const isConfigured = Boolean(cfg?.is_configured);
@@ -118,6 +141,15 @@ export default function OnboardingWizardModal({ isOpen, onClose, onSave, initial
     setSaving(true);
     try {
       await onSave({ ...config, is_configured: true } as any);
+      if (askHeardAbout && heardAbout) {
+        // Opcional: si falla, no debe frenar la configuración del bot.
+        const token = localStorage.getItem('wbot_token') || '';
+        fetch(`${BACKEND_URL}/api/auth/heard-about`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ heard_about: heardAbout }),
+        }).catch(() => {});
+      }
       onClose();
     } catch (e: any) {
       console.error('Error guardando configuración del bot:', e);
@@ -415,6 +447,22 @@ export default function OnboardingWizardModal({ isOpen, onClose, onSave, initial
                   onChange={e => update('greeting_msg', e.target.value)}
                 />
               </div>
+
+              {askHeardAbout && (
+                <div>
+                  <label style={{ fontSize: 13, color: '#94A3B8', display: 'block', marginBottom: 6, fontWeight: 600 }}>
+                    ¿Cómo nos conociste? <span style={{ fontWeight: 400 }}>(opcional)</span>
+                  </label>
+                  <select
+                    className="input"
+                    value={heardAbout}
+                    onChange={e => setHeardAbout(e.target.value)}
+                  >
+                    <option value="">Prefiero no decir</option>
+                    {HEARD_ABOUT.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                </div>
+              )}
             </div>
           )}
 

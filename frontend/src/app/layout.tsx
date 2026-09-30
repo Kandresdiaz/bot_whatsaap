@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
+import AttributionCapture from "@/components/AttributionCapture";
 
 // Versión del Frontend: 1.1.3 (Persistencia F5 absoluta: consulta global de DB e hidratación inmediata de RAM)
 const inter = Inter({ subsets: ["latin"] });
@@ -42,6 +43,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <meta name="theme-color" content="#080E1F" />
       </head>
       <body className={inter.className}>
+        <AttributionCapture />
         <AuthProvider>
           {children}
         </AuthProvider>

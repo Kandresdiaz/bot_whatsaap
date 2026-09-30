@@ -220,8 +220,55 @@ const sendPaymentSuccessEmail = async ({ to, userName, planName = 'Máquina de V
   });
 };
 
+// ── 4. Aviso único: BotWA salió de beta (lo envía scripts/send-beta-ended-email.js) ──
+const escapeHtml = (str) => String(str).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+const sendBetaEndedEmail = async ({ to, userName }) => {
+  const html = `
+  <!DOCTYPE html>
+  <html>
+  <head>
+    <meta charset="utf-8">
+    <style>
+      body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #080E1F; color: #E2E8F0; margin: 0; padding: 24px; }
+      .container { max-width: 580px; margin: 0 auto; background: #0B132B; border: 1px solid rgba(0, 207, 255, 0.25); border-radius: 16px; padding: 32px; }
+      .logo { font-size: 26px; font-weight: 900; color: #00CFFF; margin-bottom: 20px; }
+      h1 { font-size: 22px; color: #FFFFFF; margin-top: 0; }
+      p { font-size: 15px; line-height: 1.6; color: #CBD5E1; }
+      .btn { display: inline-block; background: linear-gradient(135deg, #1A6BFF, #00CFFF); color: #080E1F !important; font-weight: 800; font-size: 15px; text-decoration: none; padding: 14px 28px; border-radius: 10px; margin: 20px 0; text-align: center; }
+      .footer { font-size: 12px; color: #64748B; margin-top: 32px; border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 16px; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="logo">🤖 BotWA</div>
+      <h1>BotWA ya salió de beta 🎉</h1>
+      <p>Hola${userName ? ` <strong>${escapeHtml(userName)}</strong>` : ''}, te escribimos porque probaste BotWA cuando todavía estaba en beta. Gracias por eso: tus pruebas nos ayudaron a llegar hasta aquí.</p>
+      <p>Hoy BotWA funciona de forma oficial. Tu cuenta, tu configuración y tus conversaciones siguen igual; no tienes que hacer nada para conservarlas.</p>
+      <p>Si dejaste tu bot a medias, puedes retomarlo donde lo dejaste: entra a tu panel, revisa los datos de tu negocio y conecta tu WhatsApp con el código QR.</p>
+
+      <center>
+        <a href="https://bot-whatsaap.vercel.app/dashboard" class="btn">Entrar a mi panel →</a>
+      </center>
+
+      <div class="footer">
+        <p>¿Tienes dudas? Responde a este correo o escríbenos por WhatsApp.<br>BotWA — Tu WhatsApp responde solo, 24/7.</p>
+      </div>
+    </div>
+  </body>
+  </html>
+  `;
+
+  return sendMailSafe({
+    to,
+    subject: 'BotWA ya salió de beta 🎉',
+    html,
+  });
+};
+
 module.exports = {
   sendTrialWelcomeEmail,
   sendTrialReminderEmail,
   sendPaymentSuccessEmail,
+  sendBetaEndedEmail,
 };

@@ -15,6 +15,10 @@ type ClientItem = {
   businesses?: { name: string }[];
 };
 
+// Día en que BotWA salió de beta. Quien se registró antes ve el aviso una vez.
+const OFFICIAL_LAUNCH_DATE = '2026-09-30T00:00:00-05:00';
+const BETA_NOTICE_KEY = 'botwa_beta_ended_notice_seen';
+
 const navItems = [
   { href: '/dashboard', icon: '🏠', label: 'Inicio', tourKey: 'nav-inicio' },
   { href: '/dashboard/connect', icon: '📱', label: 'Conectar WhatsApp', tourKey: 'nav-connect' },
@@ -140,6 +144,26 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [isTourOpen, setIsTourOpen] = useState(false);
   const [tourStep, setTourStep] = useState<number>(0);
   const [business, setBusiness] = useState<any>(null);
+  const [showBetaNotice, setShowBetaNotice] = useState(false);
+
+  // Aviso "BotWA ya salió de beta": solo clientes de antes del lanzamiento, una sola vez.
+  // Sin created_at (sesiones guardadas antes de este cambio) también es un usuario de antes.
+  useEffect(() => {
+    if (!user || user.is_admin) return;
+    const isBetaUser = !user.created_at || new Date(user.created_at) < new Date(OFFICIAL_LAUNCH_DATE);
+    try {
+      if (isBetaUser && localStorage.getItem(`${BETA_NOTICE_KEY}_${user.id}`) !== 'true') {
+        setShowBetaNotice(true);
+      }
+    } catch (_) {}
+  }, [user]);
+
+  const dismissBetaNotice = () => {
+    setShowBetaNotice(false);
+    try {
+      if (user) localStorage.setItem(`${BETA_NOTICE_KEY}_${user.id}`, 'true');
+    } catch (_) {}
+  };
 
   // Mapear ruta activa a sección
   const getSectionKeyFromPath = useCallback((path: string) => {
@@ -985,6 +1009,30 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <Link href="/pricing" className="btn btn-primary" style={{ padding: '6px 14px', fontSize: 12, textDecoration: 'none' }}>
               Reactivar Servicio Ahora →
             </Link>
+          </div>
+        )}
+
+        {showBetaNotice && (
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap',
+            background: 'linear-gradient(90deg, rgba(26,107,255,0.18) 0%, rgba(0,207,255,0.10) 100%)',
+            border: '1px solid rgba(0,207,255,0.4)', borderRadius: 12, padding: '14px 18px', marginBottom: 16,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, flex: 1, minWidth: 240 }}>
+              <span style={{ fontSize: 22, lineHeight: 1 }}>🎉</span>
+              <div style={{ fontSize: 13, color: '#e2e8f0', lineHeight: 1.5 }}>
+                <strong style={{ color: '#fff' }}>BotWA ya salió de beta.</strong>{' '}
+                Gracias por probarlo desde el principio: lo que viste en la beta ya funciona de forma oficial.
+                Tu bot, tu configuración y tus conversaciones siguen igual.
+              </div>
+            </div>
+            <button
+              onClick={dismissBetaNotice}
+              className="btn btn-primary"
+              style={{ padding: '6px 14px', fontSize: 12, whiteSpace: 'nowrap' }}
+            >
+              Entendido
+            </button>
           </div>
         )}
 

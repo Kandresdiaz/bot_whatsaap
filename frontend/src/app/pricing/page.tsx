@@ -1,110 +1,22 @@
 'use client';
-import { useState, useEffect, Suspense } from 'react';
+import { useState, Suspense } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { BACKEND_URL } from '@/lib/config';
-
-interface Plan {
-  id: string;
-  name: string;
-  priceCOP: number;
-  priceUSD: number;
-  period: string;
-  tag: string;
-  isPopular?: boolean;
-  description: string;
-  features: string[];
-  bonuses: { name: string; value: string }[];
-  totalValue: string;
-}
-
-const PLANS: Record<string, Plan> = {
-  starter: {
-    id: 'starter',
-    name: 'Vendedor Automático',
-    priceCOP: 120000,
-    priceUSD: 30,
-    period: 'mes',
-    tag: '🚀 Básico',
-    description: 'Responde, cotiza y atiende a tus clientes 24/7 sin perder ventas ni contratar personal.',
-    features: [
-      '1 Línea de WhatsApp conectada',
-      'Catálogo interactivo con IA RAG anti-alucinación',
-      'Respuestas automáticas en segundos',
-      'Hasta 1.500 mensajes IA / mes incluidos',
-      'Gestión de conversaciones en vivo en el Dashboard',
-      'Base de conocimiento (hasta 20 documentos/FAQs)',
-    ],
-    bonuses: [
-      { name: 'Plantilla de Catálogo y FAQ para tu nicho', value: '$45 USD' },
-      { name: 'Soporte técnico por WhatsApp', value: '$30 USD' },
-    ],
-    totalValue: '$190 USD',
-  },
-  pro: {
-    id: 'pro',
-    name: 'Máquina de Ventas Pro',
-    priceCOP: 249000,
-    priceUSD: 62,
-    period: 'mes',
-    tag: '⭐ MÁS POPULAR',
-    isPopular: true,
-    description: 'La suite completa de ventas por catálogo, fotos multimedia, citas y pedidos.',
-    features: [
-      '1 Línea de WhatsApp conectada',
-      'Catálogo con envío automático de Fotos Multimedia',
-      'Agendador interactivo de Citas y Pedidos',
-      'Panel centralizado de Citas y Pedidos en Dashboard',
-      'Hasta 5.000 mensajes IA / mes incluidos',
-      'Generador de FAQs con IA a demanda',
-      'Base de conocimiento ampliada (hasta 100 docs)',
-    ],
-    bonuses: [
-      { name: 'Plantillas de catálogo listas para tu nicho', value: '$45 USD' },
-      { name: 'Guía Anti-Baneo y Cierre Persuasivo', value: '$97 USD' },
-      { name: 'Configuración asistida de fotos y productos', value: '$60 USD' },
-    ],
-    totalValue: '$450 USD',
-  },
-  business: {
-    id: 'business',
-    name: 'Dominio Agencia / VIP',
-    priceCOP: 490000,
-    priceUSD: 120,
-    period: 'mes',
-    tag: '👑 ESCALA TOTAL',
-    description: 'Automatización total para franquicias, clínicas o empresas con múltiples líneas de WhatsApp.',
-    features: [
-      'Múltiples líneas de WhatsApp',
-      'Marca Blanca (White-Label con tu logo)',
-      'Prompting y RAG a la medida (Done-For-You)',
-      'Hasta 20.000 mensajes IA / mes',
-      'Base de conocimiento y catálogo ilimitados',
-      'Soporte prioritario 1 a 1 directo por WhatsApp',
-    ],
-    bonuses: [
-      { name: 'Todo lo incluido en el Plan Pro', value: '$450 USD' },
-      { name: 'Sesión 1 a 1 de optimización de embudo', value: '$200 USD' },
-      { name: 'Onboarding VIP asistido', value: '$100 USD' },
-    ],
-    totalValue: '$950 USD',
-  }
-};
+import { PLANS, FAQS, formatCOP, formatThousands } from '@/lib/plans';
 
 function PricingContent() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [selectedPlan, setSelectedPlan] = useState<string>('pro');
+  // Viene de la landing (/pricing?plan=...): resaltar ese plan en vez del más popular.
+  const chosenPlan = searchParams.get('plan');
+  const hasChosenPlan = Boolean(chosenPlan && PLANS[chosenPlan]);
   const [loadingCheckout, setLoadingCheckout] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string>('');
 
   const BACKEND = BACKEND_URL;
-
-  const formatCOP = (val: number) => {
-    return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(val);
-  };
 
   const handleStartTrial = async (planId: string) => {
     setErrorMessage('');
@@ -275,7 +187,7 @@ function PricingContent() {
           marginBottom: 60
         }}>
           {Object.values(PLANS).map((plan) => {
-            const isSelected = plan.isPopular;
+            const isSelected = hasChosenPlan ? plan.id === chosenPlan : plan.isPopular;
             const isLoading = loadingCheckout === plan.id;
 
             return (
@@ -305,7 +217,7 @@ function PricingContent() {
                     color: '#080E1F', fontWeight: 800, fontSize: 11, letterSpacing: '0.5px',
                     padding: '4px 14px', borderRadius: 20, textTransform: 'uppercase'
                   }}>
-                    ⭐ OPCIÓN MÁS RECOMENDADA
+                    {hasChosenPlan ? '✅ EL PLAN QUE ELEGISTE' : '⭐ OPCIÓN MÁS RECOMENDADA'}
                   </div>
                 )}
 
@@ -367,7 +279,7 @@ function PricingContent() {
                           CUPO DE MENSAJES IA
                         </div>
                         <div style={{ fontSize: 14, fontWeight: 900, color: '#00CFFF' }}>
-                          {plan.id === 'starter' ? '1.500 Mensajes / mes' : plan.id === 'pro' ? '5.000 Mensajes / mes' : '20.000 Mensajes / mes'}
+                          {formatThousands(plan.messagesPerMonth)} Mensajes / mes
                         </div>
                       </div>
                     </div>
@@ -493,24 +405,7 @@ function PricingContent() {
           </h2>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            {[
-              {
-                q: '¿Se me cobrará algo hoy al ingresar mi tarjeta?',
-                a: 'El costo de tu prueba es $0 COP. Para verificar que la tarjeta es real y activa, Mercado Pago podría realizar una retención temporal de seguridad (~$1 USD o ~$4.000 COP) que se anula y reembolsa automáticamente en segundos en tu extracto. El cobro real de tu plan solo ocurrirá al finalizar tu 7mo día de prueba si decides continuar.'
-              },
-              {
-                q: '¿Puedo pagar con Nequi o Bancolombia?',
-                a: '¡Sí! Puedes usar tu Tarjeta Débito Nequi Visa virtual (la que viene dentro de tu app Nequi con 16 dígitos y código de seguridad CVV), así como cualquier tarjeta Débito Mastercard/Visa de Bancolombia, Daviplata o cualquier banco colombiano.'
-              },
-              {
-                q: '¿Cómo cancelo si no deseo continuar después de los 7 días?',
-                a: 'Puedes cancelar tu suscripción con un solo clic directamente desde la sección de Facturación en tu Dashboard en cualquier momento antes de que finalicen los 7 días.'
-              },
-              {
-                q: '¿Qué pasa si mis clientes me escriben en la noche o festivos?',
-                a: 'El bot responde 24/7 los 365 días del año. Tu catálogo, información y agendamiento estarán siempre activos sin importar la hora ni el día.'
-              }
-            ].map((faq, idx) => (
+            {FAQS.map((faq, idx) => (
               <div key={idx} className="card" style={{ padding: 20 }}>
                 <div style={{ fontWeight: 700, fontSize: 15, color: '#00CFFF', marginBottom: 8 }}>
                   {faq.q}
