@@ -47,11 +47,7 @@ export default function AdminDashboardPage() {
 
   const getHeaders = () => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('wbot_token') || '' : '';
-    const adminKey = process.env.NEXT_PUBLIC_ADMIN_KEY || 'admin123';
-    const h: Record<string, string> = {
-      'Content-Type': 'application/json',
-      'x-admin-key': adminKey,
-    };
+    const h: Record<string, string> = { 'Content-Type': 'application/json' };
     if (token) h['Authorization'] = `Bearer ${token}`;
     return h;
   };

@@ -70,7 +70,7 @@ export default function ProductsPage() {
       id: 'prod_starter_120',
       business_id: '00000000-0000-0000-0000-000000000001',
       name: 'Plan Vendedor Automático (1.500 msgs/mes)',
-      description: 'Ideal para negocios pequeños o independientes (hasta 50 chats/día). Atención 24/7 en WhatsApp, respuestas inmediatas en <2s, catálogo inteligente con IA y base de FAQs. Incluye 7 días gratis ($0 COP hoy con tarjeta).',
+      description: 'Ideal para negocios pequeños o independientes (hasta 50 chats/día). Atención 24/7 en WhatsApp, respuestas inmediatas en segundos, catálogo inteligente con IA y base de FAQs. Incluye 7 días gratis ($0 COP hoy con tarjeta).',
       price: 120000,
       currency: 'COP',
       category: 'Planes BotWA',

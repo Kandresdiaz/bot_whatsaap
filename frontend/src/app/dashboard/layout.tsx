@@ -36,7 +36,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const [clientsList, setClientsList] = useState<ClientItem[]>([]);
   const BACKEND = BACKEND_URL;
-  const headers = { 'Content-Type': 'application/json', 'x-admin-key': process.env.NEXT_PUBLIC_ADMIN_KEY || 'admin123' };
+  const adminToken = typeof window !== 'undefined' ? localStorage.getItem('wbot_token') || '' : '';
+  const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` };
 
   // Cerrar menú móvil al navegar
   useEffect(() => {
@@ -929,6 +930,33 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {/* Sin tarjeta ni pago: todo se puede configurar, pero el bot no responde hasta activar */}
+        {subInfo && !user?.is_admin && !subInfo.is_trial_active && !subInfo.is_paid_active
+          && subInfo.status !== 'past_due' && user?.status !== 'paused' && (
+          <div style={{
+            background: 'linear-gradient(90deg, rgba(26,107,255,0.25) 0%, rgba(0,207,255,0.18) 100%)',
+            borderBottom: '1px solid rgba(0,207,255,0.4)',
+            padding: '12px 24px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: 10,
+            fontSize: 13,
+            marginBottom: 16
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 18 }}>🚀</span>
+              <span>
+                <strong>Tu bot aún no responde a tus clientes.</strong> Configura tu negocio y conecta WhatsApp con total libertad; para encenderlo solo falta activar tu prueba de 7 días gratis ($0 COP hoy).
+              </span>
+            </div>
+            <Link href="/pricing" className="btn btn-primary" style={{ padding: '7px 16px', fontSize: 12, textDecoration: 'none' }}>
+              Activar prueba gratis →
+            </Link>
           </div>
         )}
 

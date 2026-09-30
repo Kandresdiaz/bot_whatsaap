@@ -286,7 +286,7 @@ export default function DashboardHome() {
 
           <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '0 0 14px 0', lineHeight: 1.5 }}>
             {isTrial
-              ? '🎁 Tu prueba de 7 días incluye hasta 300 mensajes gratis para comprobar el impacto en tus ventas. Si alcanzas el tope, amplía tu plan para no detener el bot.'
+              ? '🎁 Tu prueba de 7 días incluye hasta 150 mensajes gratis para comprobar el impacto en tus ventas. Si alcanzas el tope, amplía tu plan para no detener el bot.'
               : '💡 Tu cuota mensual se reinicia el 1° de cada mes. Las preguntas frecuentes repetidas usan 0 tokens gracias a la caché inteligente en RAM.'}
           </p>
 

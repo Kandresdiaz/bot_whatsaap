@@ -31,7 +31,7 @@ const PLANS: Record<string, Plan> = {
     features: [
       '1 Línea de WhatsApp conectada',
       'Catálogo interactivo con IA RAG anti-alucinación',
-      'Respuestas automáticas en menos de 2 segundos',
+      'Respuestas automáticas en segundos',
       'Hasta 1.500 mensajes IA / mes incluidos',
       'Gestión de conversaciones en vivo en el Dashboard',
       'Base de conocimiento (hasta 20 documentos/FAQs)',
@@ -195,7 +195,7 @@ function PricingContent() {
               </span>
               <span style={{ color: 'rgba(255,255,255,0.2)' }}>•</span>
               <span style={{ color: '#c084fc', display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span>⚡</span> RESPUESTAS AUTOMÁTICAS EN MENOS DE 2 SEGUNDOS
+                <span>⚡</span> RESPUESTAS AUTOMÁTICAS EN SEGUNDOS
               </span>
               <span style={{ color: 'rgba(255,255,255,0.2)' }}>•</span>
             </div>
@@ -250,8 +250,8 @@ function PricingContent() {
           <p style={{
             fontSize: 16, color: 'var(--text-muted)', maxWidth: 720, margin: '0 auto', lineHeight: 1.5
           }}>
-            Atiende a tus clientes en 2 segundos, cotiza desde tu catálogo con fotos y agenda pedidos en automático. 
-            <strong> Ingresa tu tarjeta hoy y úsalo 7 días gratis con hasta 300 mensajes incluidos para cerrar tus primeras ventas. Si no te encanta, cancelas con 1 clic y no pagas $1.</strong>
+            Atiende a tus clientes en segundos, cotiza desde tu catálogo con fotos y agenda pedidos en automático. 
+            <strong> Ingresa tu tarjeta hoy y úsalo 7 días gratis con hasta 150 mensajes incluidos para cerrar tus primeras ventas. Si no te encanta, cancelas con 1 clic y no pagas $1.</strong>
           </p>
         </div>
 

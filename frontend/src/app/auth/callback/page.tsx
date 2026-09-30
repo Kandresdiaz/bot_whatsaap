@@ -29,9 +29,13 @@ export default function AuthCallbackPage() {
         addLog(`Usuario detectado: ${sessionUser.email} (ID: ${sessionUser.id})`);
         setStatus('Sincronizando usuario con el servidor backend...');
 
+        // El backend valida este token con Supabase: sin él no confía en el email enviado.
+        const { data: { session: currentSession } } = await supabase.auth.getSession();
+        const accessToken = currentSession?.access_token || '';
+
         const res = await fetch(`${backendUrl}/api/auth/google`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
           body: JSON.stringify({
             id: sessionUser.id,
             email: sessionUser.email,

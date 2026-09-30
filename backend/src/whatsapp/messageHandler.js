@@ -492,7 +492,7 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
     if (products.length === 0 && business?.id === PRIMARY_BOTWA_ID) {
       const { data: defaultProds } = await supabase.from('products_services').select('name, description, price, currency, category, image_url').eq('business_id', PRIMARY_BOTWA_ID).eq('is_active', true).limit(15);
       products = (defaultProds && defaultProds.length > 0) ? defaultProds : [
-        { name: 'Plan Vendedor Automático (1.500 msgs/mes)', description: 'Ideal para negocios pequeños o independientes (hasta 50 chats/día). Atención 24/7 en WhatsApp, respuestas inmediatas en <2s, catálogo inteligente con IA y base de FAQs. Incluye 7 días gratis ($0 COP hoy con tarjeta).', price: 120000, currency: 'COP', category: 'Planes BotWA' },
+        { name: 'Plan Vendedor Automático (1.500 msgs/mes)', description: 'Ideal para negocios pequeños o independientes (hasta 50 chats/día). Atención 24/7 en WhatsApp, respuestas inmediatas en segundos, catálogo inteligente con IA y base de FAQs. Incluye 7 días gratis ($0 COP hoy con tarjeta).', price: 120000, currency: 'COP', category: 'Planes BotWA' },
         { name: 'Plan Máquina de Ventas Pro (5.000 msgs/mes - ⭐ Más Recomendado)', description: 'Para tiendas y empresas en crecimiento (hasta 170 chats/día). Envío automático de fotos y multimedia del catálogo, agendador de citas y toma de pedidos con sincronización a tu panel, 5.000 msgs IA/mes y FAQs ampliadas. Incluye 7 días gratis ($0 COP hoy con tarjeta).', price: 249000, currency: 'COP', category: 'Planes BotWA' },
         { name: 'Plan Dominio Agencia / VIP (20.000 msgs/mes)', description: 'Para empresas consolidadas, clínicas o agencias (más de 650 chats/día). Múltiples líneas de WhatsApp conectadas, marca blanca con tu logo, prompting y embudo personalizado Done-For-You y soporte VIP 1 a 1. Incluye 7 días gratis ($0 COP hoy con tarjeta).', price: 490000, currency: 'COP', category: 'Planes BotWA' },
       ];
@@ -590,22 +590,33 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
     } catch (_) {}
   }
 
-  // ── 9.5 VERIFICACIÓN ESTRICTA DE CUOTA (Protección de Tokens Groq en Free Trial) ──
-  let isQuotaExceeded = false;
+  // ── 9.5 ACCESO Y CUOTA ─────────────────────────────────────────────────────
+  // Regla estándar para todos los usuarios: registrarse, configurar el negocio y conectar
+  // WhatsApp es libre; el bot solo responde con tarjeta registrada (prueba de 7 días, tope de
+  // 150 mensajes) o con un pago vigente. Al cliente final nunca se le habla de planes ni cuotas:
+  // si el bot no puede responder, calla y el dueño lo ve en su panel.
+  let blockReason = null;
   try {
     if (userId) {
       const { data: userProfile } = await supabase
         .from('users')
-        .select('id, is_admin, plan, subscription_status, status, trial_ends_at')
+        .select('id, is_admin, plan, subscription_status, status, trial_ends_at, paid_until')
         .eq('id', userId)
         .maybeSingle();
 
       // Los administradores NUNCA tienen límite
       if (userProfile && !userProfile.is_admin) {
-        const isTrial = userProfile.subscription_status === 'trialing' || userProfile.status === 'trial';
+        const now = Date.now();
+        const trialEnds = userProfile.trial_ends_at ? new Date(userProfile.trial_ends_at).getTime() : null;
+        const isPaused = userProfile.status === 'paused' || userProfile.status === 'cancelled';
+        const isTrialActive = userProfile.subscription_status === 'trialing' && (!trialEnds || trialEnds > now);
+        const isPaidActive = userProfile.subscription_status === 'active'
+          || (userProfile.paid_until && new Date(userProfile.paid_until).getTime() > now);
         const maxTrialMsgs = 150;
-        
-        if (isTrial) {
+
+        if (isPaused || (!isTrialActive && !isPaidActive)) {
+          blockReason = 'sin_plan';
+        } else if (isTrialActive && !isPaidActive) {
           const { getSessionUuid } = require('./sessionManager');
           const sessionUuid = await getSessionUuid(userId);
 
@@ -620,18 +631,19 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
             const userConvIds = (userConvs || []).map(c => c.id).filter(Boolean);
 
             if (userConvIds.length > 0) {
-              const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
+              // Los 150 mensajes cuentan desde que empezó la prueba (7 días antes de su fin)
+              const trialStart = new Date((trialEnds || now) - 7 * 24 * 60 * 60 * 1000).toISOString();
               // Contar mensajes emitidos ÚNICAMENTE en las conversaciones de este usuario
               const { count: msgsSent } = await supabase
                 .from('messages')
                 .select('id', { count: 'exact', head: true })
                 .in('conversation_id', userConvIds)
                 .eq('direction', 'outbound')
-                .gte('timestamp', startOfMonth);
+                .gte('timestamp', trialStart);
 
               if ((msgsSent || 0) >= maxTrialMsgs) {
                 console.warn(`[QUOTA PROTECT] 🛑 Usuario ${userId} superó el límite de prueba gratuita (${msgsSent}/${maxTrialMsgs} msgs). Bloqueando llamada a Groq.`);
-                isQuotaExceeded = true;
+                blockReason = 'tope_prueba';
               }
             }
           }
@@ -641,11 +653,11 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
   } catch (eQuota) {
     // Si hay cualquier error de red, NO bloqueamos el servicio para no interferir
     console.error('[QUOTA CHECK ERROR]', eQuota.message);
-    isQuotaExceeded = false;
+    blockReason = null;
   }
 
-  if (isQuotaExceeded) {
-    await sendText(sock, jid, '¡Hola! 👋 El asistente virtual ha alcanzado el límite de mensajes de su prueba gratuita de 150 mensajes. Para continuar atendiendo 24/7 sin interrupciones, puedes activar tu plan en: https://bot-whatsaap.vercel.app/pricing');
+  if (blockReason) {
+    console.log(`[ACCESS] Bot sin responder para usuario ${userId}: ${blockReason === 'sin_plan' ? 'sin tarjeta ni pago vigente' : 'tope de 150 mensajes de prueba'}`);
     return;
   }
 

@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { supabase } = require('../db/supabase');
+const { signToken } = require('../auth/token');
 
 const ADMIN_UUID = '00000000-0000-0000-0000-000000000001';
 
@@ -18,8 +19,9 @@ router.post('/login', async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) return res.status(400).json({ success: false, error: 'Email y contraseña requeridos' });
 
-  // Admin hardcodeado legacy o email configurado
-  if ((email === 'admin@bot.com' || checkIsAdmin(email, false)) && password === (process.env.ADMIN_PASSWORD || 'admin123')) {
+  // Admin hardcodeado legacy o email configurado (sin ADMIN_PASSWORD en .env, este acceso queda cerrado)
+  const adminPassword = process.env.ADMIN_PASSWORD;
+  if (adminPassword && (email === 'admin@bot.com' || checkIsAdmin(email, false)) && password === adminPassword) {
     try {
       const { data: u } = await supabase.from('users').select('id').eq('id', ADMIN_UUID).maybeSingle();
       if (!u) {
@@ -55,42 +57,33 @@ router.post('/login', async (req, res) => {
     return res.json({
       success: true,
       user: { id: ADMIN_UUID, email, name: 'Admin BotWA', is_admin: true, plan: 'business' },
-      token: Buffer.from(`${ADMIN_UUID}:${Date.now()}`).toString('base64'),
+      token: signToken({ userId: ADMIN_UUID, isAdmin: true }),
     });
   }
 
-  // Usuario normal desde Supabase
-  try {
-    const { data: user, error } = await supabase
-      .from('users')
-      .select('*')
-      .eq('email', email)
-      .maybeSingle();
-
-    if (!user || error) {
-      return res.status(401).json({ success: false, error: 'Credenciales inválidas' });
-    }
-
-    if (user.status === 'paused' || user.status === 'cancelled') {
-      return res.status(403).json({ success: false, error: 'Cuenta pausada. Contacta al administrador.' });
-    }
-
-    const isAdmin = checkIsAdmin(user.email, user.is_admin);
-    const finalUser = { ...user, is_admin: isAdmin };
-    const token = Buffer.from(`${user.id}:${Date.now()}`).toString('base64');
-    return res.json({ success: true, user: finalUser, token });
-  } catch (e) {
-    console.error('[AUTH] Error en login:', e.message);
-    return res.status(500).json({ success: false, error: 'Error del servidor' });
-  }
+  // Los clientes no tienen contraseña guardada: antes esta ruta dejaba entrar a cualquier
+  // cuenta solo con el email. Los clientes entran siempre con Google.
+  return res.status(401).json({ success: false, error: 'Credenciales inválidas. Si eres cliente, entra con el botón "Continuar con Google".' });
 });
 
 // ── Google OAuth Sync ─────────────────────────────────────────────────────────
 router.post('/google', async (req, res) => {
-  const { id, email, name } = req.body;
-  if (!email) {
-    return res.status(400).json({ success: false, error: 'Email es requerido para iniciar sesión con Google' });
+  // El email sale del token verificado por Supabase, nunca del body: si no, cualquiera
+  // podría enviar el email de otra persona (o del admin) y entrar a su cuenta.
+  const accessToken = (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
+  if (!accessToken) {
+    return res.status(401).json({ success: false, error: 'Sesión de Google no válida. Vuelve a iniciar sesión.' });
   }
+
+  const { data: authData, error: authErr } = await supabase.auth.getUser(accessToken);
+  const authUser = authData?.user;
+  if (authErr || !authUser?.email) {
+    return res.status(401).json({ success: false, error: 'Sesión de Google no válida. Vuelve a iniciar sesión.' });
+  }
+
+  const id = authUser.id;
+  const email = authUser.email;
+  const name = authUser.user_metadata?.full_name || authUser.user_metadata?.name || req.body?.name;
 
   try {
     // 1. Buscar si el usuario ya existe por email
@@ -178,7 +171,7 @@ router.post('/google', async (req, res) => {
       is_admin: isAdmin || user?.is_admin === true
     };
 
-    const token = Buffer.from(`${finalUser.id}:${Date.now()}`).toString('base64');
+    const token = signToken({ userId: finalUser.id, isAdmin: finalUser.is_admin });
     return res.json({ success: true, user: finalUser, token });
   } catch (e) {
     console.error('[AUTH] Error en /google route:', e.message);
@@ -190,7 +183,7 @@ router.post('/google', async (req, res) => {
 router.post('/register', async (req, res) => {
   const { email, name, phone, plan, adminKey } = req.body;
 
-  if (adminKey !== (process.env.ADMIN_PASSWORD || 'admin123')) {
+  if (!process.env.ADMIN_PASSWORD || adminKey !== process.env.ADMIN_PASSWORD) {
     return res.status(403).json({ success: false, error: 'No autorizado' });
   }
 

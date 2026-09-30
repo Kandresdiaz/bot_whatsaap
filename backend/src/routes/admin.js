@@ -1,29 +1,22 @@
 const express = require('express');
 const router = express.Router();
 const { supabase } = require('../db/supabase');
+const { verifyToken, bearerFrom } = require('../auth/token');
 
-// Middleware admin
+// Middleware admin: token de sesión firmado de un admin, o la clave ADMIN_PASSWORD del servidor
+// (para scripts). Antes aceptaba 'admin123' y cualquier token, y cualquiera podía activarse gratis.
 const isAdmin = (req, res, next) => {
   const key = req.headers['x-admin-key'];
-  const adminPass = process.env.ADMIN_PASSWORD || 'admin123';
-  if (key === adminPass || key === 'admin123' || key === 'true') {
+  if (process.env.ADMIN_PASSWORD && key === process.env.ADMIN_PASSWORD) {
     return next();
   }
 
-  // Soporte para token Bearer en Authorization
-  const authHeader = req.headers['authorization'];
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    try {
-      const token = authHeader.split(' ')[1];
-      const decoded = Buffer.from(token, 'base64').toString('utf-8');
-      const [userId] = decoded.split(':');
-      if (userId === '00000000-0000-0000-0000-000000000001' || userId) {
-        return next();
-      }
-    } catch (_) {}
+  const session = verifyToken(bearerFrom(req));
+  if (session?.adm) {
+    return next();
   }
 
-  return res.status(403).json({ success: false, error: 'No autorizado' });
+  return res.status(403).json({ success: false, error: 'No autorizado. Vuelve a iniciar sesión.' });
 };
 
 const calculatePaidUntil = (days, months, currentPaidUntil) => {
