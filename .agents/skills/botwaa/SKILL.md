@@ -802,6 +802,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-30** | chore: redeploy para activar visión con OpenRouter (`9d50ec6`) | Auto-deploy |
 
+| **2026-09-30** | Merge pull request #1 from Kandresdiaz/feat/pdf-catalogo-reparto (`a8ffce3`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
