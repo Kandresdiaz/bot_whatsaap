@@ -11,3 +11,31 @@ services:
         value: production
       - key: PORT
         value: 10000
+      # Node 22 trae WebSocket nativo (supabase-js realtime lo exige).
+      - key: NODE_VERSION
+        value: "22"
+      # Secretos: se pegan a mano en Render > Environment (no van al repo).
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: SUPER_ADMIN_EMAILS
+        sync: false
+      - key: ADMIN_WHATSAPP
+        sync: false
+      - key: MP_ACCESS_TOKEN
+        sync: false
+      - key: FRONTEND_URL
+        value: https://bot-whatsaap.vercel.app
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
