@@ -796,6 +796,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-30** | feat: correo automático al registrarse y sección Correos en el admin (`fe4fbf6`) | Auto-deploy |
 
+| **2026-09-30** | chore: el panel vuelve a apuntar al backend en Render (`044bd67`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
