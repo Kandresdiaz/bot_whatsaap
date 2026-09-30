@@ -794,6 +794,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-30** | feat: landing en /, origen de cada registro y aviso de fin de beta (`7001b0a`) | Auto-deploy |
 
+| **2026-09-30** | feat: correo automático al registrarse y sección Correos en el admin (`fe4fbf6`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
