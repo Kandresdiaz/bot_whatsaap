@@ -406,7 +406,7 @@ router.get('/status/:userId', async (req, res) => {
     if (user.is_admin) {
       messageLimit = 999999;
     } else if (isTrialActive) {
-      messageLimit = PLAN_LIMITS.trial; // 300 mensajes en prueba de 7 días
+      messageLimit = PLAN_LIMITS.trial; // 150 mensajes en prueba de 7 días
     } else if (user.subscription_status === 'none' || user.status === 'trial' || userPlanKey === 'free') {
       messageLimit = PLAN_LIMITS.free; // 100 mensajes gratis demo
     }
