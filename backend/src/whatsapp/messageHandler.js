@@ -47,6 +47,17 @@ const extractText = (msg) => {
     || '';
 };
 
+// ─── Devuelve el imageMessage (con caption y mimetype) si el mensaje trae una foto ──
+const getImageMessage = (msg) => {
+  let m = msg?.message;
+  if (!m) return null;
+  if (m.ephemeralMessage) m = m.ephemeralMessage.message;
+  if (m?.viewOnceMessage) m = m.viewOnceMessage.message;
+  if (m?.viewOnceMessageV2) m = m.viewOnceMessageV2.message;
+  if (m?.viewOnceMessageV2Extension) m = m.viewOnceMessageV2Extension.message;
+  return m?.imageMessage || null;
+};
+
 // ─── Enviar mensaje con Baileys (Human Pacing & Presencia 'Escribiendo...') ────
 const sendText = async (sock, jid, text) => {
   try {
@@ -661,9 +672,59 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
     return;
   }
 
+  // ── 9.8 Imagen del cliente: interpretarla y cruzarla con el catálogo ──────
+  let aiText = text;
+  const incomingImage = getImageMessage(msg);
+  if (incomingImage) {
+    const { analyzeImage, buildImageContext, isVisionEnabled } = require('../ai/vision');
+    const caption = (incomingImage.caption || '').trim();
+
+    // Responde con un texto fijo, lo guarda y avisa al panel: así el asesor toma la conversación
+    const handOffToAdvisor = async (replyText) => {
+      emitManualNeeded(userId, { conversationId: conversation?.id, contactName, message: text });
+      await randomDelay();
+      await sendText(sock, jid, replyText);
+      if (conversation?.id) {
+        await safeQuery(() => supabase.from('messages').insert({
+          conversation_id: conversation.id,
+          content: replyText,
+          direction: 'outbound',
+          sent_by: 'bot',
+          timestamp: new Date().toISOString(),
+        }));
+      }
+    };
+
+    let analysis = null;
+    if (isVisionEnabled()) {
+      try {
+        const { downloadMediaMessage } = require('@whiskeysockets/baileys');
+        const buffer = await downloadMediaMessage(msg, 'buffer', {}, { reuploadRequest: sock.updateMediaMessage });
+        analysis = await analyzeImage(buffer, incomingImage.mimetype, products, caption);
+      } catch (e) {
+        console.error('[MSG] Error descargando la imagen:', e.message);
+      }
+    }
+
+    if (!analysis) {
+      console.log(`[MSG] 🖼️ No se pudo interpretar la imagen de ${contactPhone}: se deriva a un asesor`);
+      await handOffToAdvisor('Recibí tu foto 📸 Un asesor la revisa y te responde en breve. 🙏');
+      return;
+    }
+
+    console.log(`[VISION] ${contactPhone}: ${analysis.tipo} | ${analysis.producto?.name || 'sin match'} (${analysis.confianza})`);
+
+    if (analysis.tipo === 'comprobante_pago') {
+      await handOffToAdvisor('¡Gracias! Recibí tu comprobante 🧾 Un asesor lo verifica y te confirma en breve. 🙏');
+      return;
+    }
+
+    aiText = buildImageContext(analysis, caption);
+  }
+
   // ── 10. RAG + Groq: generar respuesta ─────────────────────────────────────
   const { reply, isLeadHot, tokensUsed, imageName, newAppointmentData, cancelAppointmentData, newOrderData, clientData, ragChunksUsed } = await askGroq(
-    text, business, knowledge, history, products
+    aiText, business, knowledge, history, products
   );
 
   console.log(`[RAG] Chunks usados: ${ragChunksUsed} | Tokens: ${tokensUsed}`);

@@ -30,6 +30,8 @@ npm run dev
 
 ### backend/.env
 - `GROQ_API_KEY` → https://console.groq.com (gratis)
+- `OPENROUTER_API_KEY` → https://openrouter.ai/keys (visión: el bot interpreta fotos de clientes y las cruza con el catálogo; sin esta clave las fotos se derivan a un asesor)
+- `OPENROUTER_VISION_MODEL` → opcional, por defecto `google/gemini-2.5-flash`
 - `SUPABASE_URL` → URL del proyecto Supabase
 - `SUPABASE_SERVICE_KEY` → Supabase Dashboard > Settings > API > service_role key
 - `MP_ACCESS_TOKEN` → Mercado Pago Developers (Producción: `APP_USR-...`, Sandbox: `TEST-...`)
