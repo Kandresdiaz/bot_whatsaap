@@ -788,6 +788,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-30** | docs: corregir DOCUMENTACION.md con precios, planes y stack reales (`ecbc4ca`) | Auto-deploy |
 
+| **2026-09-30** | fix: cerrar accesos sin contraseña, exigir tarjeta o pago para que el bot responda y acortar el prompt (`2acb612`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
