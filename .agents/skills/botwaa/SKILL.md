@@ -786,6 +786,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-24** | ci: reiniciar el backend en Wispbyte al cambiar backend/ (reemplaza Render) (`0397098`) | Auto-deploy |
 
+| **2026-09-30** | docs: corregir DOCUMENTACION.md con precios, planes y stack reales (`ecbc4ca`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
