@@ -798,6 +798,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-30** | chore: el panel vuelve a apuntar al backend en Render (`044bd67`) | Auto-deploy |
 
+| **2026-09-30** | feat: el bot interpreta fotos de clientes con OpenRouter y las cruza con el catálogo (`db4621f`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
