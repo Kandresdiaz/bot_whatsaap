@@ -19,6 +19,12 @@ const createTransporter = () => {
   });
 };
 
+const escapeHtml = (str) => String(str).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+const isEmailConfigured = () => Boolean(
+  (process.env.SMTP_USER || process.env.EMAIL_USER) && (process.env.SMTP_PASS || process.env.EMAIL_PASS)
+);
+
 const sendMailSafe = async (mailOptions) => {
   const transporter = createTransporter();
   const fromAddress = process.env.SMTP_FROM || `"BotWA" <${process.env.SMTP_USER || 'soporte@botwa.com'}>`;
@@ -220,8 +226,54 @@ const sendPaymentSuccessEmail = async ({ to, userName, planName = 'Máquina de V
   });
 };
 
-// ── 4. Aviso único: BotWA salió de beta (lo envía scripts/send-beta-ended-email.js) ──
-const escapeHtml = (str) => String(str).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+// ── 0. Correo al registrarse (antes de activar la prueba) ───────────────────
+const sendSignupWelcomeEmail = async ({ to, userName }) => {
+  const html = `
+  <!DOCTYPE html>
+  <html>
+  <head>
+    <meta charset="utf-8">
+    <style>
+      body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #080E1F; color: #E2E8F0; margin: 0; padding: 24px; }
+      .container { max-width: 580px; margin: 0 auto; background: #0B132B; border: 1px solid rgba(0, 207, 255, 0.25); border-radius: 16px; padding: 32px; }
+      .logo { font-size: 26px; font-weight: 900; color: #00CFFF; margin-bottom: 20px; }
+      h1 { font-size: 22px; color: #FFFFFF; margin-top: 0; }
+      p { font-size: 15px; line-height: 1.6; color: #CBD5E1; }
+      .btn { display: inline-block; background: linear-gradient(135deg, #1A6BFF, #00CFFF); color: #080E1F !important; font-weight: 800; font-size: 15px; text-decoration: none; padding: 14px 28px; border-radius: 10px; margin: 20px 0; text-align: center; }
+      .footer { font-size: 12px; color: #64748B; margin-top: 32px; border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 16px; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="logo">🤖 BotWA</div>
+      <h1>¡Bienvenido a BotWA! 👋</h1>
+      <p>Hola${userName ? ` <strong>${escapeHtml(userName)}</strong>` : ''}, ya tienes tu cuenta. Te faltan 3 pasos para que tu WhatsApp empiece a responder solo:</p>
+      <ol style="color: #CBD5E1; font-size: 14px; line-height: 1.8;">
+        <li><strong>Configura tu negocio:</strong> qué vendes, precios, horarios y cómo cerrar la venta.</li>
+        <li><strong>Conecta tu WhatsApp</strong> escaneando el código QR, como en WhatsApp Web.</li>
+        <li><strong>Activa tu prueba de 7 días:</strong> registras tu tarjeta, pagas $0 hoy y tienes 150 mensajes para probarlo con clientes reales.</li>
+      </ol>
+
+      <center>
+        <a href="https://bot-whatsaap.vercel.app/dashboard/connect" class="btn">Configurar mi bot →</a>
+      </center>
+
+      <div class="footer">
+        <p>¿Te trabaste en algún paso? Responde a este correo o escríbenos por WhatsApp y te ayudamos.<br>BotWA — Tu WhatsApp responde solo, 24/7.</p>
+      </div>
+    </div>
+  </body>
+  </html>
+  `;
+
+  return sendMailSafe({
+    to,
+    subject: '¡Bienvenido a BotWA! Te faltan 3 pasos 👋',
+    html,
+  });
+};
+
+// ── 4. Aviso único: BotWA salió de beta (se envía desde el admin → Correos) ──
 
 const sendBetaEndedEmail = async ({ to, userName }) => {
   const html = `
@@ -271,4 +323,6 @@ module.exports = {
   sendTrialReminderEmail,
   sendPaymentSuccessEmail,
   sendBetaEndedEmail,
+  sendSignupWelcomeEmail,
+  isEmailConfigured,
 };

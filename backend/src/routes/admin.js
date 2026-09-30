@@ -415,4 +415,70 @@ router.get('/stats', isAdmin, async (req, res) => {
   }
 });
 
+// ── Correos ───────────────────────────────────────────────────────────────────
+const { isEmailConfigured, sendBetaEndedEmail, sendSignupWelcomeEmail } = require('../services/emailService');
+
+// Mismo corte que el aviso del panel (frontend/src/app/dashboard/layout.tsx).
+const OFFICIAL_LAUNCH_DATE = '2026-09-30T00:00:00-05:00';
+
+// Usuarios de la beta: registrados antes del lanzamiento, sin contar admins.
+const getBetaUsers = async () => {
+  const { data, error } = await supabase
+    .from('users')
+    .select('id, email, name, created_at, is_admin, beta_email_sent_at')
+    .lt('created_at', new Date(OFFICIAL_LAUNCH_DATE).toISOString())
+    .order('created_at', { ascending: true });
+  if (error) {
+    const migrationMissing = /beta_email_sent_at/.test(error.message || '');
+    return { error: migrationMissing ? 'Falta ejecutar la migración 004_aviso_beta.sql en Supabase.' : error.message };
+  }
+  return { users: (data || []).filter(u => !u.is_admin && u.email && u.email.includes('@')) };
+};
+
+router.get('/emails', isAdmin, async (req, res) => {
+  const beta = await getBetaUsers();
+  res.json({
+    success: true,
+    smtpConfigured: isEmailConfigured(),
+    launchDate: OFFICIAL_LAUNCH_DATE,
+    betaUsers: beta.users || [],
+    betaError: beta.error || null,
+  });
+});
+
+// Envía una muestra de una plantilla a un correo (para revisarla antes de enviarla a clientes).
+router.post('/emails/test', isAdmin, async (req, res) => {
+  const { to, template } = req.body || {};
+  if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
+    return res.status(400).json({ success: false, error: 'Correo no válido' });
+  }
+  if (!isEmailConfigured()) {
+    return res.status(400).json({ success: false, error: 'El servidor no tiene SMTP_USER y SMTP_PASS configurados.' });
+  }
+  const send = template === 'welcome' ? sendSignupWelcomeEmail : sendBetaEndedEmail;
+  const r = await send({ to, userName: 'Kevin' });
+  res.status(r.success ? 200 : 500).json(r);
+});
+
+// Envía el aviso de fin de beta a los usuarios de la beta que aún no lo han recibido.
+router.post('/emails/beta-announcement', isAdmin, async (req, res) => {
+  if (!isEmailConfigured()) {
+    return res.status(400).json({ success: false, error: 'El servidor no tiene SMTP_USER y SMTP_PASS configurados.' });
+  }
+  const beta = await getBetaUsers();
+  if (beta.error) return res.status(500).json({ success: false, error: beta.error });
+
+  const pending = beta.users.filter(u => !u.beta_email_sent_at);
+  const results = [];
+  for (const u of pending) {
+    const r = await sendBetaEndedEmail({ to: u.email, userName: u.name });
+    if (r.success) {
+      await supabase.from('users').update({ beta_email_sent_at: new Date().toISOString() }).eq('id', u.id);
+    }
+    results.push({ email: u.email, success: r.success, error: r.error || null });
+    await new Promise(resolve => setTimeout(resolve, 1500)); // Gmail limita envíos seguidos
+  }
+  res.json({ success: true, sent: results.filter(r => r.success).length, total: pending.length, results });
+});
+
 module.exports = router;

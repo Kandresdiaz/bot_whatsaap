@@ -10,6 +10,7 @@ const navItems = [
   { href: '/admin', icon: '📊', label: 'Dashboard Admin' },
   { href: '/admin/clients', icon: '👥', label: 'Clientes' },
   { href: '/admin/payments', icon: '💳', label: 'Historial de Pagos' },
+  { href: '/admin/emails', icon: '✉️', label: 'Correos' },
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {

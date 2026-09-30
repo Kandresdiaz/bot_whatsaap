@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { supabase } = require('../db/supabase');
 const { signToken, verifyToken, bearerFrom } = require('../auth/token');
+const { sendSignupWelcomeEmail } = require('../services/emailService');
 
 const ADMIN_UUID = '00000000-0000-0000-0000-000000000001';
 
@@ -154,6 +155,11 @@ router.post('/google', async (req, res) => {
         };
       } else {
         user = newUser;
+        // Correo de bienvenida automático. No se espera: si el SMTP falla, el login sigue.
+        if (!isAdmin) {
+          sendSignupWelcomeEmail({ to: email, userName: newUser?.name }).catch(e =>
+            console.error('[AUTH] Error enviando correo de bienvenida:', e.message));
+        }
       }
     } else {
       // Si ya existe pero ahora es admin via env variable
