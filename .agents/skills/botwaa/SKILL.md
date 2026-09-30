@@ -790,6 +790,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-30** | fix: cerrar accesos sin contraseña, exigir tarjeta o pago para que el bot responda y acortar el prompt (`2acb612`) | Auto-deploy |
 
+| **2026-09-30** | fix: exigir token y dueño en las rutas del panel (negocio, sesiones, chats, FAQs, productos, pedidos, citas) (`98440bf`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
