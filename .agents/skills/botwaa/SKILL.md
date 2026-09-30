@@ -800,6 +800,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-09-30** | feat: el bot interpreta fotos de clientes con OpenRouter y las cruza con el catálogo (`db4621f`) | Auto-deploy |
 
+| **2026-09-30** | chore: redeploy para activar visión con OpenRouter (`9d50ec6`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
