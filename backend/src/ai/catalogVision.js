@@ -14,9 +14,9 @@ const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const DEFAULT_MODEL = 'google/gemini-2.5-flash';
 const TIMEOUT_MS = 45000;
 
-const MAX_PAGES = 80;
+const MAX_PAGES = 300;
 const PAGE_CONCURRENCY = 3;
-const MAX_PRODUCTS = 120;
+const MAX_PRODUCTS = 300;
 const MAX_FAQS = 25;
 const MAX_INFO = 15;
 

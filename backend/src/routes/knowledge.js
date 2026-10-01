@@ -9,11 +9,13 @@ const { isVisionEnabled, MAX_PAGES } = require('../ai/catalogVision');
 const { countPageImages } = require('../ai/pdfPageImages');
 const { startCatalogJob, getJob } = require('../ai/catalogJobs');
 
-// El servidor tiene 512 MB compartidos con todas las sesiones de WhatsApp:
-// PDFs de a uno a la vez y con tope de páginas y de texto. El tope de tamaño da aire
-// para catálogos ilustrados, donde cada página es una imagen de varios cientos de KB.
-const MAX_PDF_BYTES = 15 * 1024 * 1024;
-const MAX_PDF_PAGES = 80;
+// El servidor tiene 512 MB compartidos con todas las sesiones de WhatsApp, así que los
+// PDFs se procesan de a uno. Los topes salen de una medición real, no de un número al
+// azar: un catálogo de 40 MB y 268 páginas llega a 182 MB de pico, porque las imágenes
+// se leen de a tres y nunca se decodifica el PDF entero. Con 40 MB entra cualquier
+// catálogo ilustrado normal sin que el usuario tenga que partirlo a mano.
+const MAX_PDF_BYTES = 40 * 1024 * 1024;
+const MAX_PDF_PAGES = 300;
 const MAX_PDF_QUEUE = 5;
 const CHUNK_CHARS = 1500;
 const MAX_CHUNKS_PER_PDF = 40;
@@ -120,7 +122,7 @@ router.post('/:businessId', ownsParam('businessId'), async (req, res) => {
 const uploadPdf = (req, res, next) => {
   upload.single('file')(req, res, (err) => {
     if (err?.code === 'LIMIT_FILE_SIZE') {
-      return res.status(413).json({ success: false, error: `El PDF supera el máximo de ${MAX_PDF_BYTES / 1024 / 1024} MB. Divídelo en archivos más pequeños.` });
+      return res.status(413).json({ success: false, error: `El PDF pesa más de ${MAX_PDF_BYTES / 1024 / 1024} MB, que es lo máximo que el servidor puede abrir sin quedarse sin memoria. Si es un catálogo escaneado, vuelve a exportarlo con las imágenes comprimidas.` });
     }
     if (err) return res.status(400).json({ success: false, error: err.message });
     next();
@@ -194,7 +196,7 @@ router.post('/:businessId/upload', ownsParam('businessId'), uploadPdf, async (re
     if (canReadImages) {
       const pagesToRead = Math.min(withImage, MAX_PAGES);
       const { started, reason } = startCatalogJob(businessId, buffer, baseTitle, pagesToRead);
-      visionJob = { started, reason: reason || null, pages: pagesToRead };
+      visionJob = { started, reason: reason || null, pages: pagesToRead, pagesLeft: withImage - pagesToRead };
     }
 
     res.json({

@@ -155,8 +155,8 @@ export default function KnowledgePage() {
 
   const uploadPdf = async () => {
     if (!businessId || !file) return;
-    if (file.size > 15 * 1024 * 1024) {
-      alert('El PDF supera el máximo de 15 MB. Divídelo en archivos más pequeños.');
+    if (file.size > 40 * 1024 * 1024) {
+      alert('El PDF pesa más de 40 MB, que es lo máximo que el servidor puede abrir. Si es un catálogo escaneado, vuelve a exportarlo con las imágenes comprimidas.');
       return;
     }
     const nombre = file.name;
@@ -177,6 +177,9 @@ export default function KnowledgePage() {
         }
         if (data.visionJob?.started) {
           partes.push(`Las ${data.visionJob.pages} páginas con fotos se están leyendo con IA: de ahí salen los productos con su imagen. El avance se ve en esta pantalla.`);
+          if (data.visionJob.pagesLeft > 0) {
+            partes.push(`Ojo: el catálogo tiene ${data.visionJob.pagesLeft} páginas más de las que se pueden leer de una vez. Sube el resto en un segundo archivo.`);
+          }
           setCatalogJob({ status: 'procesando', source: nombre, done: 0, total: data.visionJob.pages, products: 0, photos: 0, faqs: 0, info: 0, skipped: 0, error: null });
           followCatalogJob(businessId);
         } else if (data.visionJob) {
@@ -385,7 +388,7 @@ export default function KnowledgePage() {
                 <input id="pdf-input" type="file" accept=".pdf" style={{ display: 'none' }} onChange={e => setFile(e.target.files?.[0] || null)} />
               </div>
               <div style={{ background: 'rgba(124,58,237,0.08)', border: '1px solid rgba(124,58,237,0.2)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: 'var(--text-muted)' }}>
-                💡 Si el catálogo es de puras imágenes (cada página es un diseño con el nombre, el precio y la ficha técnica), la IA lee cada página y crea los productos <strong>con su foto</strong>, lista para que el bot se la envíe al cliente. Máximo 15 MB.
+                💡 Si el catálogo es de puras imágenes (cada página es un diseño con el nombre, el precio y la ficha técnica), la IA lee cada página y crea los productos <strong>con su foto</strong>, lista para que el bot se la envíe al cliente. Súbelo completo: hasta 40 MB y 300 páginas, no hace falta partirlo.
               </div>
               <button className="btn btn-primary" onClick={uploadPdf} disabled={loading || !file || !businessId}>
                 {loading ? 'Procesando...' : 'Subir PDF'}
