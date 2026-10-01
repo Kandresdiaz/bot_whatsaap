@@ -219,8 +219,8 @@ router.post('/:businessId/upload', ownsParam('businessId'), uploadPdf, async (re
 router.get('/:businessId/catalog-job', ownsParam('businessId'), (req, res) => {
   const job = getJob(req.params.businessId);
   if (!job) return res.json({ success: true, job: null });
-  const { status, source, done, total, products, photos, faqs, info, skipped, failed, failedPages, error } = job;
-  res.json({ success: true, job: { status, source, done, total, products, photos, faqs, info, skipped, failed, failedPages, error } });
+  const { status, source, done, total, products, photos, faqs, info, skipped, failed, failedPages, lastError, error } = job;
+  res.json({ success: true, job: { status, source, done, total, products, photos, faqs, info, skipped, failed, failedPages, lastError, error } });
 });
 
 // Activar/desactivar item

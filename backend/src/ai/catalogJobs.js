@@ -47,6 +47,7 @@ const startCatalogJob = (businessId, pdfBuffer, sourceName, totalPages = null) =
     skipped: 0,
     failed: 0,
     failedPages: [],
+    lastError: null,
     error: null,
     startedAt: Date.now(),
     finishedAt: null,
@@ -60,6 +61,7 @@ const startCatalogJob = (businessId, pdfBuffer, sourceName, totalPages = null) =
     job.products = p.products;
     job.photos = p.photos;
     job.failed = p.failed;
+    job.lastError = p.lastError;
   }, totalPages)
     .then((stats) => {
       Object.assign(job, stats, { status: 'listo' });
