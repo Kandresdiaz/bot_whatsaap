@@ -68,7 +68,8 @@ const startCatalogJob = (businessId, pdfBuffer, sourceName, totalPages = null) =
     job.noPrice = p.noPrice;
   }, totalPages)
     .then((stats) => {
-      Object.assign(job, stats, { status: 'listo' });
+      Object.assign(job, stats, { status: stats.fatalError ? 'error' : 'listo' });
+      if (stats.fatalError) job.error = stats.fatalError;
       job.done = job.total || stats.pages;
       clearBusinessAiCache(businessId).catch(() => {});
       console.log(`[CATALOGO] "${sourceName}": ${stats.products} productos (${stats.photos} con foto), ${stats.faqs} FAQs, ${stats.info} datos${stats.failed ? `, ${stats.failed} páginas sin leer: ${stats.failedPages.join(', ')}` : ''}.`);
