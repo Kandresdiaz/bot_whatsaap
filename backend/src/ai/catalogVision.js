@@ -23,22 +23,24 @@ const MAX_INFO = 15;
 const cleanKey = (k) => (k || '').trim().replace(/^['"]|['"]$/g, '');
 const isVisionEnabled = () => Boolean(cleanKey(process.env.OPENROUTER_API_KEY));
 
-const buildPrompt = (business) => `Esta imagen es UNA página de un catálogo de "${business?.name || 'un negocio'}"${business?.category ? ` (${business.category})` : ''}. Lee TODO lo que está escrito en ella: títulos, referencias, precios y fichas técnicas.
+const buildPrompt = (business) => `Esta imagen es UNA página de un catálogo de "${business?.name || 'un negocio'}"${business?.category ? ` (${business.category})` : ''}. Lee TODO lo que está escrito en ella: título, referencia, precios y fichas técnicas.
 
 Responde SOLO un JSON:
 {"tipo":"producto|portada|informacion|otro",
- "productos":[{"nombre":"","descripcion":"","precio":<número o 0>,"categoria":""}],
+ "distribucion":"un_modelo|varios_modelos",
+ "productos":[{"nombre":"","variante":"","descripcion":"","precio":<número o 0>,"categoria":""}],
  "faqs":[{"pregunta":"","respuesta":""}],
  "info":[{"titulo":"","contenido":""}]}
 
 Reglas:
-- "nombre": el nombre del producto tal como aparece, con su referencia o modelo si lo tiene (ej. "ELFO EB-1S", "WH2001").
-- "precio": solo el número del precio impreso en la página, sin puntos ni símbolos (1'560.000 → 1560000). Si la página no muestra precio, 0.
-- "descripcion": todas las especificaciones visibles (batería, motor, autonomía, velocidad, tiempo de carga, peso, medidas, carga máxima, llantas, colores disponibles...). Copia los valores exactos. NUNCA inventes ni completes datos que no estén en la imagen.
-- "categoria": el tipo de producto según la página (ej. "Bicimoto eléctrica", "Bicicleta eléctrica", "Motocicleta eléctrica").
+- Una página suele presentar UN modelo (un título grande, ej. "CAMELLITO") con una foto principal y, a veces, fotos pequeñas del mismo modelo en otros colores: eso es "un_modelo". Si la página muestra varios modelos distintos, cada uno con su propio título, es "varios_modelos".
+- "nombre": el título grande del modelo, con su referencia si la tiene (ej. "ELFO EB-1S", "CAMELLITO PLUS", "WH2001"). Sin palabras genéricas como "Bicimoto eléctrica" o "Patineta eléctrica": eso va en "categoria".
+- Si el mismo modelo se ofrece en versiones con precio propio (por ejemplo batería de plomo ácido y batería de litio), devuelve UN producto por versión: mismo "nombre", y en "variante" lo que las distingue (ej. "Batería de plomo ácido 48V/20AH"). Cada versión lleva SU precio y SUS especificaciones: no mezcles los datos de una con los de otra. Si hay una sola versión, "variante" va vacía.
+- "precio": solo el número impreso para ESA versión, sin puntos ni símbolos (1'560.000 → 1560000). Si la página no muestra precio, 0.
+- "descripcion": todas las especificaciones visibles de esa versión (batería, motor, autonomía, velocidad, tiempo de carga, peso, medidas, carga máxima, llantas, colores...). Copia los valores exactos. NUNCA inventes ni completes datos que no estén en la imagen.
+- "categoria": el tipo de producto según la página (ej. "Bicimoto eléctrica", "Patineta eléctrica").
 - Si la página es una portada, un separador o solo publicidad, devuelve tipo "portada" y todas las listas vacías.
-- "faqs" e "info": solo si la página trae condiciones, garantías, requisitos, sedes o políticas escritas. Si no, listas vacías.
-- Si en la página hay varios productos distintos con nombre propio, devuélvelos todos.`;
+- "faqs" e "info": solo si la página trae condiciones, garantías, requisitos, sedes o políticas escritas. Si no, listas vacías.`;
 
 /**
  * Lee una página del catálogo con el modelo de visión.
@@ -108,7 +110,7 @@ const buildCatalogFromPdfImages = async (businessId, pdfBuffer, sourceName = 'Ca
   const total = knownPages != null ? knownPages : (await countPageImages(pdfBuffer, MAX_PAGES)).withImage;
   const existing = await loadExistingKeys(businessId);
 
-  const stats = { products: 0, photos: 0, faqs: 0, info: 0, pages: 0, skipped: 0, failed: 0, failedPages: [], lastError: null };
+  const stats = { products: 0, photos: 0, faqs: 0, info: 0, pages: 0, skipped: 0, failed: 0, failedPages: [], lastError: null, enriched: 0, noPrice: 0 };
   let done = 0;
 
   // Los productos se guardan página por página: si el proceso se corta a la mitad,
@@ -118,27 +120,39 @@ const buildCatalogFromPdfImages = async (businessId, pdfBuffer, sourceName = 'Ca
     const faqs = Array.isArray(parsed?.faqs) ? parsed.faqs : [];
     const info = Array.isArray(parsed?.info) ? parsed.info : [];
 
-    // Nuevos en esta página (los repetidos no gastan una subida de foto).
+    // Nombre visible: si la página trae varias versiones del mismo modelo (plomo / litio),
+    // cada una lleva su variante en el nombre; sin eso la segunda se descartaría por repetida.
+    const visible = productos.map(p => {
+      const base = String(p?.nombre || '').trim();
+      const variante = String(p?.variante || '').trim();
+      return { ...p, nombre: variante && !norm(base).includes(norm(variante)) ? `${base} (${variante.slice(0, 50)})` : base };
+    });
+
+    // Cada producto de la página es nuevo, o ya existe. Si ya existe y no tiene foto, se
+    // le completa; nunca se cambia una foto que ya tenga.
     const nuevos = [];
-    for (const p of productos) {
-      const key = norm(p?.nombre);
+    const sinFoto = [];
+    for (const p of visible) {
+      const key = norm(p.nombre);
       if (!key) continue;
-      if (existing.products.has(key)) { stats.skipped++; continue; }
+      if (existing.products.has(key)) {
+        const info = existing.productInfo.get(key);
+        if (info && !info.image_url) sinFoto.push({ key, info }); else stats.skipped++;
+        continue;
+      }
       if (stats.products + nuevos.length >= MAX_PRODUCTS) break;
       existing.products.add(key);
       nuevos.push(p);
     }
 
-    // La foto de la página solo se le asigna al producto cuando la página muestra uno
-    // solo. Con varios no se sabe cuál es cuál, y una foto equivocada en una venta es
+    // La foto es de la PÁGINA. Se comparte entre todos los productos de la página solo
+    // cuando la página es de un único modelo (sus versiones se ven igual). Con varios
+    // modelos distintos no se sabe cuál es cuál, y una foto equivocada en una venta es
     // peor que no tener foto.
+    const comparteFoto = parsed?.distribucion === 'un_modelo' || visible.length === 1;
     let imageUrl = null;
-    if (nuevos.length === 1 && imageBuffer) {
-      imageUrl = await uploadPublicImage(
-        `${businessId}/${Date.now()}-p${page}.jpg`,
-        imageBuffer,
-        'image/jpeg',
-      );
+    if (comparteFoto && imageBuffer && (nuevos.length || sinFoto.length)) {
+      imageUrl = await uploadPublicImage(`${businessId}/${Date.now()}-p${page}.jpg`, imageBuffer, 'image/jpeg');
     }
 
     if (nuevos.length) {
@@ -149,8 +163,23 @@ const buildCatalogFromPdfImages = async (businessId, pdfBuffer, sourceName = 'Ca
         rows.forEach(r => existing.products.delete(norm(r.name)));
       } else {
         stats.products += rows.length;
-        if (imageUrl) stats.photos++;
+        if (imageUrl) stats.photos += rows.length;
+        if (parsed?.tipo === 'producto') stats.noPrice += rows.filter(r => !r.price).length;
       }
+    }
+
+    if (imageUrl) {
+      for (const { info } of sinFoto) {
+        const { error } = await supabase.from('products_services')
+          .update({ image_url: imageUrl, updated_at: new Date().toISOString() })
+          .eq('id', info.id).eq('business_id', businessId);
+        if (error) { console.error(`[CATALOGO] Página ${page}: no se pudo completar la foto:`, error.message); continue; }
+        info.image_url = imageUrl;
+        stats.enriched++;
+        stats.photos++;
+      }
+    } else {
+      stats.skipped += sinFoto.length;
     }
 
     const kbRows = [];
@@ -185,14 +214,15 @@ const buildCatalogFromPdfImages = async (businessId, pdfBuffer, sourceName = 'Ca
     // una página que no se leyó es un producto que no está en el catálogo, y eso el
     // usuario tiene que saberlo en vez de quedarse contando a mano.
     let parsed = null;
-    for (let intento = 1; intento <= 2 && !parsed; intento++) {
+    for (let intento = 1; intento <= 3 && !parsed; intento++) {
       try {
         parsed = await readPage(buffer, business);
       } catch (e) {
         stats.lastError = e.message;
         console.error(`[CATALOGO] Página ${page}, intento ${intento}: ${e.message}`);
       }
-      if (!parsed && intento === 1) await new Promise(r => setTimeout(r, 1500));
+      // Espera creciente: un límite de velocidad del proveedor (429) se pasa esperando.
+      if (!parsed && intento < 3) await new Promise(r => setTimeout(r, intento * 3000));
     }
 
     if (parsed) {
@@ -209,7 +239,7 @@ const buildCatalogFromPdfImages = async (businessId, pdfBuffer, sourceName = 'Ca
     }
 
     done++;
-    onProgress({ done, total, products: stats.products, photos: stats.photos, failed: stats.failed, lastError: stats.lastError });
+    onProgress({ done, total, products: stats.products, photos: stats.photos, failed: stats.failed, lastError: stats.lastError, enriched: stats.enriched, noPrice: stats.noPrice });
   });
 
   stats.failedPages.sort((a, b) => a - b);

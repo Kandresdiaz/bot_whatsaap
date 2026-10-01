@@ -27,11 +27,13 @@ const toPrice = (v) => {
 /** Nombres de producto y títulos de conocimiento que el negocio ya tiene, normalizados. */
 const loadExistingKeys = async (businessId) => {
   const [{ data: products }, { data: kb }] = await Promise.all([
-    supabase.from('products_services').select('name').eq('business_id', businessId),
+    supabase.from('products_services').select('id, name, image_url').eq('business_id', businessId),
     supabase.from('knowledge_base').select('title, type').eq('business_id', businessId),
   ]);
   return {
     products: new Set((products || []).map(p => norm(p.name))),
+    // id y foto de cada producto existente: permite completar la foto que falta sin pisar nada
+    productInfo: new Map((products || []).map(p => [norm(p.name), { id: p.id, image_url: p.image_url }])),
     kb: new Set((kb || []).filter(k => k.type === 'faq' || k.type === 'text').map(k => norm(k.title))),
   };
 };
