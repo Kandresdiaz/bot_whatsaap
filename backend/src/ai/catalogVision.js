@@ -74,7 +74,14 @@ const readPage = async (buffer, business) => {
       }),
     });
     if (!res.ok) {
-      throw new Error(`OpenRouter respondió ${res.status}: ${(await res.text()).replace(/\s+/g, ' ').slice(0, 160)}`);
+      const err = new Error(`OpenRouter respondió ${res.status}: ${(await res.text()).replace(/\s+/g, ' ').slice(0, 160)}`);
+      // Sin saldo (402) o llave rechazada (401/403): reintentar no sirve y solo gasta tiempo.
+      if (res.status === 402) {
+        err.fatal = 'La cuenta de OpenRouter no tiene saldo. Recarga créditos en openrouter.ai → Settings → Credits y vuelve a subir el PDF.';
+      } else if (res.status === 401 || res.status === 403) {
+        err.fatal = 'OpenRouter rechazó la llave (OPENROUTER_API_KEY). Revisa que sea correcta y esté activa.';
+      }
+      throw err;
     }
     const json = await res.json();
     const choice = json?.choices?.[0];
@@ -112,6 +119,7 @@ const buildCatalogFromPdfImages = async (businessId, pdfBuffer, sourceName = 'Ca
 
   const stats = { products: 0, photos: 0, faqs: 0, info: 0, pages: 0, skipped: 0, failed: 0, failedPages: [], lastError: null, enriched: 0, noPrice: 0 };
   let done = 0;
+  let fatal = null;
 
   // Los productos se guardan página por página: si el proceso se corta a la mitad,
   // lo ya leído queda en el catálogo.
@@ -208,6 +216,9 @@ const buildCatalogFromPdfImages = async (businessId, pdfBuffer, sourceName = 'Ca
   };
 
   await forEachPageImage(pdfBuffer, { maxPages: MAX_PAGES, concurrency: PAGE_CONCURRENCY }, async ({ page, buffer }) => {
+    // Con un error que no se arregla reintentando se deja de llamar al modelo: las demás
+    // páginas se saltan al instante en vez de gastar 3 intentos y esperas cada una.
+    if (fatal) return;
     stats.pages++;
     // Casi todos los fallos son pasajeros (timeout, un 429 del proveedor), así que la
     // página se reintenta una vez antes de darla por perdida. Y si se pierde, se anota:
@@ -220,6 +231,7 @@ const buildCatalogFromPdfImages = async (businessId, pdfBuffer, sourceName = 'Ca
       } catch (e) {
         stats.lastError = e.message;
         console.error(`[CATALOGO] Página ${page}, intento ${intento}: ${e.message}`);
+        if (e.fatal) { fatal = fatal || e.fatal; break; }
       }
       // Espera creciente: un límite de velocidad del proveedor (429) se pasa esperando.
       if (!parsed && intento < 3) await new Promise(r => setTimeout(r, intento * 3000));
@@ -243,6 +255,7 @@ const buildCatalogFromPdfImages = async (businessId, pdfBuffer, sourceName = 'Ca
   });
 
   stats.failedPages.sort((a, b) => a - b);
+  stats.fatalError = fatal;
   return stats;
 };
 
