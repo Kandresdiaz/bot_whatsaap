@@ -5,11 +5,15 @@ const pdfParse = require('pdf-parse');
 const { supabase } = require('../db/supabase');
 const { ownsParam, ownsRow } = require('../auth/access');
 const { distributePdfKnowledge } = require('../ai/catalogExtractor');
+const { isVisionEnabled, MAX_PAGES } = require('../ai/catalogVision');
+const { countPageImages } = require('../ai/pdfPageImages');
+const { startCatalogJob, getJob } = require('../ai/catalogJobs');
 
 // El servidor tiene 512 MB compartidos con todas las sesiones de WhatsApp:
-// PDFs pequeños, de a uno a la vez y con tope de páginas y de texto.
-const MAX_PDF_BYTES = 5 * 1024 * 1024;
-const MAX_PDF_PAGES = 60;
+// PDFs de a uno a la vez y con tope de páginas y de texto. El tope de tamaño da aire
+// para catálogos ilustrados, donde cada página es una imagen de varios cientos de KB.
+const MAX_PDF_BYTES = 15 * 1024 * 1024;
+const MAX_PDF_PAGES = 80;
 const MAX_PDF_QUEUE = 5;
 const CHUNK_CHARS = 1500;
 const MAX_CHUNKS_PER_PDF = 40;
@@ -139,14 +143,27 @@ router.post('/:businessId/upload', ownsParam('businessId'), uploadPdf, async (re
     req.file.buffer = null;
     const parsed = await enqueuePdfJob(() => pdfParse(buffer, { max: MAX_PDF_PAGES }));
 
+    const baseTitle = req.file.originalname.replace(/\.pdf$/i, '');
     const allChunks = splitIntoChunks(parsed.text || '');
-    if (allChunks.length === 0) {
-      return res.status(422).json({ success: false, error: 'No se encontró texto en el PDF (¿es un escaneo o solo imágenes?).' });
+
+    // Catálogos "de diseño": el nombre, el precio y la ficha técnica están dentro de la
+    // imagen de cada página, así que pdf-parse no devuelve nada. Esas páginas las lee el
+    // modelo de visión, que además deja la foto de cada producto en el catálogo.
+    const { withImage } = await enqueuePdfJob(() => countPageImages(buffer, MAX_PAGES));
+    const canReadImages = withImage > 0 && isVisionEnabled();
+
+    if (allChunks.length === 0 && !canReadImages) {
+      return res.status(422).json({
+        success: false,
+        error: withImage > 0
+          ? 'El PDF es solo imágenes y la lectura por IA no está disponible (falta OPENROUTER_API_KEY).'
+          : 'No se encontró texto ni imágenes aprovechables en el PDF.',
+      });
     }
+
     const chunks = allChunks.slice(0, MAX_CHUNKS_PER_PDF);
     const truncated = allChunks.length > chunks.length || parsed.numpages > MAX_PDF_PAGES;
 
-    const baseTitle = req.file.originalname.replace(/\.pdf$/i, '');
     const rows = chunks.map((content, i) => ({
       business_id: businessId,
       type: 'file',
@@ -154,18 +171,30 @@ router.post('/:businessId/upload', ownsParam('businessId'), uploadPdf, async (re
       content,
     }));
 
-    const { data, error } = await supabase.from('knowledge_base').insert(rows).select();
+    let data = null;
+    let error = null;
+    if (rows.length) {
+      ({ data, error } = await supabase.from('knowledge_base').insert(rows).select());
+    }
 
-    // Reparte el catálogo en productos / FAQs / info sin tocar lo ya configurado.
+    // Reparte el texto del catálogo en productos / FAQs / info sin tocar lo ya configurado.
     // Si la IA falla, igual quedan los bloques de texto crudo guardados arriba.
     let distributed = null;
-    if (!error) {
+    if (!error && rows.length) {
       try {
         distributed = await distributePdfKnowledge(businessId, parsed.text || '', baseTitle);
       } catch (e) {
         console.error('[CATALOGO] Falló el reparto del PDF:', e.message);
       }
-      clearBusinessAiCache(businessId).catch(() => {});
+    }
+    if (!error) clearBusinessAiCache(businessId).catch(() => {});
+
+    // La lectura de las páginas tarda minutos: se responde ya y el panel consulta el avance.
+    let visionJob = null;
+    if (canReadImages) {
+      const pagesToRead = Math.min(withImage, MAX_PAGES);
+      const { started, reason } = startCatalogJob(businessId, buffer, baseTitle, pagesToRead);
+      visionJob = { started, reason: reason || null, pages: pagesToRead };
     }
 
     res.json({
@@ -173,6 +202,7 @@ router.post('/:businessId/upload', ownsParam('businessId'), uploadPdf, async (re
       items: data,
       item: data?.[0],
       distributed,
+      visionJob,
       parts: rows.length,
       pages: parsed.numpages,
       truncated,
@@ -181,6 +211,14 @@ router.post('/:businessId/upload', ownsParam('businessId'), uploadPdf, async (re
   } catch (err) {
     res.status(500).json({ success: false, error: 'Error procesando PDF: ' + err.message });
   }
+});
+
+// Avance de la lectura del catálogo por imágenes (el panel lo consulta tras subir el PDF)
+router.get('/:businessId/catalog-job', ownsParam('businessId'), (req, res) => {
+  const job = getJob(req.params.businessId);
+  if (!job) return res.json({ success: true, job: null });
+  const { status, source, done, total, products, photos, faqs, info, skipped, error } = job;
+  res.json({ success: true, job: { status, source, done, total, products, photos, faqs, info, skipped, error } });
 });
 
 // Activar/desactivar item

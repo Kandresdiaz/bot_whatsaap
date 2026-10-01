@@ -6,6 +6,20 @@ import { apiFetch } from '@/lib/api';
 
 type KBItem = { id: string; type: string; title: string; content: string; is_active: boolean; created_at: string };
 
+// Avance de la lectura de un catálogo ilustrado (el backend va página por página con el modelo de visión)
+type CatalogJob = {
+  status: 'procesando' | 'listo' | 'error';
+  source: string;
+  done: number;
+  total: number;
+  products: number;
+  photos: number;
+  faqs: number;
+  info: number;
+  skipped: number;
+  error: string | null;
+};
+
 export default function KnowledgePage() {
   const { user, effectiveUserId } = useAuth();
   const [businessId, setBusinessId] = useState<string | null>(null);
@@ -14,6 +28,7 @@ export default function KnowledgePage() {
   const [form, setForm] = useState({ title: '', content: '', question: '', answer: '', imageUrl: '', imageDesc: '' });
   const [loading, setLoading] = useState(false);
   const [file, setFile] = useState<File | null>(null);
+  const [catalogJob, setCatalogJob] = useState<CatalogJob | null>(null);
   const BACKEND = BACKEND_URL;
 
   useEffect(() => {
@@ -119,13 +134,34 @@ export default function KnowledgePage() {
     setLoading(false);
   };
 
+  // El backend lee las páginas ilustradas en segundo plano (tarda minutos), así que
+  // aquí se consulta el avance hasta que termina.
+  const followCatalogJob = (bId: string) => {
+    const timer = setInterval(async () => {
+      try {
+        const r = await apiFetch(`${BACKEND}/api/knowledge/${bId}/catalog-job`);
+        const d = await r.json();
+        if (!d.job) return;
+        setCatalogJob(d.job);
+        if (d.job.status !== 'procesando') {
+          clearInterval(timer);
+          loadItems(bId);
+        }
+      } catch (_) {
+        clearInterval(timer);
+      }
+    }, 4000);
+  };
+
   const uploadPdf = async () => {
     if (!businessId || !file) return;
-    if (file.size > 5 * 1024 * 1024) {
-      alert('El PDF supera el máximo de 5 MB. Divídelo en archivos más pequeños.');
+    if (file.size > 15 * 1024 * 1024) {
+      alert('El PDF supera el máximo de 15 MB. Divídelo en archivos más pequeños.');
       return;
     }
+    const nombre = file.name;
     setLoading(true);
+    setCatalogJob(null);
     const fd = new FormData();
     fd.append('file', file);
     try {
@@ -135,10 +171,22 @@ export default function KnowledgePage() {
         alert(data.error || `No se pudo procesar el PDF (HTTP ${res.status}).`);
       } else {
         const d = data.distributed;
-        const resumen = d
-          ? `✅ PDF leído: ${d.products} productos nuevos, ${d.faqs} preguntas frecuentes y ${d.info} datos del negocio.${d.skipped ? ` (${d.skipped} ya existían y no se tocaron)` : ''}`
-          : '✅ PDF guardado como conocimiento. No se pudo separar en productos; revisa el catálogo.';
-        alert(resumen + (data.truncated ? `\n\nEl PDF es muy largo: se guardaron las primeras ${data.parts} partes.` : ''));
+        const partes: string[] = [];
+        if (d) {
+          partes.push(`Del texto del PDF: ${d.products} productos, ${d.faqs} preguntas frecuentes y ${d.info} datos del negocio.${d.skipped ? ` (${d.skipped} ya existían y no se tocaron)` : ''}`);
+        }
+        if (data.visionJob?.started) {
+          partes.push(`Las ${data.visionJob.pages} páginas con fotos se están leyendo con IA: de ahí salen los productos con su imagen. El avance se ve en esta pantalla.`);
+          setCatalogJob({ status: 'procesando', source: nombre, done: 0, total: data.visionJob.pages, products: 0, photos: 0, faqs: 0, info: 0, skipped: 0, error: null });
+          followCatalogJob(businessId);
+        } else if (data.visionJob) {
+          partes.push(data.visionJob.reason === 'servidor_ocupado'
+            ? 'Hay otro catálogo procesándose ahora mismo. Vuelve a subirlo en unos minutos.'
+            : 'Ya hay una lectura de catálogo en curso para este negocio.');
+        }
+        if (!partes.length) partes.push('PDF guardado como conocimiento. No se pudo separar en productos; revisa el catálogo.');
+        if (data.truncated) partes.push(`El PDF es muy largo: se guardaron las primeras ${data.parts} partes del texto.`);
+        alert('✅ ' + partes.join('\n\n'));
       }
     } catch (e: any) {
       alert('Error al subir el PDF: ' + e.message);
@@ -336,9 +384,43 @@ export default function KnowledgePage() {
                 </p>
                 <input id="pdf-input" type="file" accept=".pdf" style={{ display: 'none' }} onChange={e => setFile(e.target.files?.[0] || null)} />
               </div>
+              <div style={{ background: 'rgba(124,58,237,0.08)', border: '1px solid rgba(124,58,237,0.2)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: 'var(--text-muted)' }}>
+                💡 Si el catálogo es de puras imágenes (cada página es un diseño con el nombre, el precio y la ficha técnica), la IA lee cada página y crea los productos <strong>con su foto</strong>, lista para que el bot se la envíe al cliente. Máximo 15 MB.
+              </div>
               <button className="btn btn-primary" onClick={uploadPdf} disabled={loading || !file || !businessId}>
                 {loading ? 'Procesando...' : 'Subir PDF'}
               </button>
+
+              {catalogJob && (
+                <div style={{ border: '1px solid var(--border)', borderRadius: 10, padding: '12px 14px', fontSize: 13 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, gap: 8 }}>
+                    <strong>
+                      {catalogJob.status === 'procesando' && `Leyendo "${catalogJob.source}" con IA...`}
+                      {catalogJob.status === 'listo' && `✅ Catálogo leído: "${catalogJob.source}"`}
+                      {catalogJob.status === 'error' && `⚠️ La lectura se interrumpió`}
+                    </strong>
+                    {catalogJob.total > 0 && (
+                      <span style={{ color: 'var(--text-muted)' }}>{catalogJob.done}/{catalogJob.total} páginas</span>
+                    )}
+                  </div>
+                  <div style={{ height: 6, borderRadius: 3, background: 'rgba(124,58,237,0.15)', overflow: 'hidden' }}>
+                    <div style={{
+                      height: '100%',
+                      width: `${catalogJob.total ? Math.round((catalogJob.done / catalogJob.total) * 100) : 0}%`,
+                      background: 'var(--accent)',
+                      transition: 'width 0.4s',
+                    }} />
+                  </div>
+                  <p style={{ marginTop: 8, color: 'var(--text-muted)' }}>
+                    {catalogJob.products} productos creados · {catalogJob.photos} con foto
+                    {catalogJob.skipped ? ` · ${catalogJob.skipped} ya existían y no se tocaron` : ''}
+                  </p>
+                  {catalogJob.status === 'listo' && (
+                    <p style={{ marginTop: 4, color: 'var(--text-muted)' }}>Revísalos en la sección <strong>Productos</strong>.</p>
+                  )}
+                  {catalogJob.error && <p style={{ marginTop: 4, color: '#ef4444' }}>{catalogJob.error}</p>}
+                </div>
+              )}
             </div>
           )}
 

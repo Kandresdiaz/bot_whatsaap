@@ -3,6 +3,7 @@
 // modifica ni borra lo que el usuario ya configuró.
 const Groq = require('groq-sdk');
 const { supabase } = require('../db/supabase');
+const { norm, parseJson, loadExistingKeys, buildProductRow } = require('./catalogUtils');
 
 const MODEL = 'llama-3.3-70b-versatile';
 const WINDOW_CHARS = 9000;
@@ -10,21 +11,6 @@ const MAX_WINDOWS = 4;
 const MAX_PRODUCTS = 80;
 const MAX_FAQS = 20;
 const MAX_INFO = 10;
-
-const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
-
-const parseJson = (raw) => {
-  const match = String(raw || '').replace(/<think>[\s\S]*?<\/think>/gi, '').match(/\{[\s\S]*\}/);
-  if (!match) return null;
-  try { return JSON.parse(match[0]); } catch (_) { return null; }
-};
-
-const toPrice = (v) => {
-  if (typeof v === 'number') return v > 0 ? v : 0;
-  // "$ 12.500.000", "12,500,000" → 12500000
-  const digits = String(v || '').replace(/[^\d]/g, '');
-  return digits ? Number(digits) : 0;
-};
 
 const extractWindow = async (client, text, business) => {
   const res = await client.chat.completions.create({
@@ -85,42 +71,27 @@ const distributePdfKnowledge = async (businessId, text, sourceName = 'PDF') => {
   }
   if (okWindows === 0) return null;
 
-  const [{ data: existingProducts }, { data: existingKb }] = await Promise.all([
-    supabase.from('products_services').select('name').eq('business_id', businessId),
-    supabase.from('knowledge_base').select('title, type').eq('business_id', businessId),
-  ]);
-  const seenProducts = new Set((existingProducts || []).map(p => norm(p.name)));
-  const seenKb = new Set((existingKb || []).filter(k => k.type === 'faq' || k.type === 'text').map(k => norm(k.title)));
+  const existing = await loadExistingKeys(businessId);
 
   let skipped = 0;
   const productRows = [];
   for (const p of found.productos) {
-    const name = String(p?.nombre || '').trim().slice(0, 120);
-    const key = norm(name);
+    const key = norm(p?.nombre);
     if (!key) continue;
-    if (seenProducts.has(key)) { skipped++; continue; }
-    seenProducts.add(key);
-    productRows.push({
-      business_id: businessId,
-      name,
-      description: String(p.descripcion || '').trim().slice(0, 600),
-      price: toPrice(p.precio),
-      currency: 'COP',
-      category: String(p.categoria || '').trim().slice(0, 60) || 'General',
-      is_active: true,
-      updated_at: new Date().toISOString(),
-    });
+    if (existing.products.has(key)) { skipped++; continue; }
+    existing.products.add(key);
+    productRows.push(buildProductRow(businessId, p));
     if (productRows.length >= MAX_PRODUCTS) break;
   }
 
   const kbRows = [];
-  const pushKb = (type, title, content, max) => {
+  const pushKb = (type, title, content) => {
     const t = String(title || '').trim().slice(0, 200);
     const c = String(content || '').trim().slice(0, 1500);
     const key = norm(t);
     if (!key || !c) return;
-    if (seenKb.has(key)) { skipped++; return; }
-    seenKb.add(key);
+    if (existing.kb.has(key)) { skipped++; return; }
+    existing.kb.add(key);
     kbRows.push({ business_id: businessId, type, title: t, content: c });
   };
   found.faqs.slice(0, MAX_FAQS).forEach(f => pushKb('faq', f?.pregunta, f?.respuesta));
