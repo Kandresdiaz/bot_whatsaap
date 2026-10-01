@@ -45,6 +45,8 @@ const startCatalogJob = (businessId, pdfBuffer, sourceName, totalPages = null) =
     faqs: 0,
     info: 0,
     skipped: 0,
+    failed: 0,
+    failedPages: [],
     error: null,
     startedAt: Date.now(),
     finishedAt: null,
@@ -57,12 +59,13 @@ const startCatalogJob = (businessId, pdfBuffer, sourceName, totalPages = null) =
     job.total = p.total;
     job.products = p.products;
     job.photos = p.photos;
+    job.failed = p.failed;
   }, totalPages)
     .then((stats) => {
       Object.assign(job, stats, { status: 'listo' });
       job.done = job.total || stats.pages;
       clearBusinessAiCache(businessId).catch(() => {});
-      console.log(`[CATALOGO] "${sourceName}": ${stats.products} productos (${stats.photos} con foto), ${stats.faqs} FAQs, ${stats.info} datos.`);
+      console.log(`[CATALOGO] "${sourceName}": ${stats.products} productos (${stats.photos} con foto), ${stats.faqs} FAQs, ${stats.info} datos${stats.failed ? `, ${stats.failed} páginas sin leer: ${stats.failedPages.join(', ')}` : ''}.`);
     })
     .catch((e) => {
       job.status = 'error';

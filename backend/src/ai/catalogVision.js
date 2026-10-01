@@ -98,7 +98,7 @@ const buildCatalogFromPdfImages = async (businessId, pdfBuffer, sourceName = 'Ca
   const total = knownPages != null ? knownPages : (await countPageImages(pdfBuffer, MAX_PAGES)).withImage;
   const existing = await loadExistingKeys(businessId);
 
-  const stats = { products: 0, photos: 0, faqs: 0, info: 0, pages: 0, skipped: 0 };
+  const stats = { products: 0, photos: 0, faqs: 0, info: 0, pages: 0, skipped: 0, failed: 0, failedPages: [] };
   let done = 0;
 
   // Los productos se guardan página por página: si el proceso se corta a la mitad,
@@ -170,16 +170,38 @@ const buildCatalogFromPdfImages = async (businessId, pdfBuffer, sourceName = 'Ca
 
   await forEachPageImage(pdfBuffer, { maxPages: MAX_PAGES, concurrency: PAGE_CONCURRENCY }, async ({ page, buffer }) => {
     stats.pages++;
-    try {
-      const parsed = await readPage(buffer, business);
-      if (parsed) await savePage(page, parsed, buffer);
-    } catch (e) {
-      console.error(`[CATALOGO] Página ${page} falló:`, e.message);
+    // Casi todos los fallos son pasajeros (timeout, un 429 del proveedor), así que la
+    // página se reintenta una vez antes de darla por perdida. Y si se pierde, se anota:
+    // una página que no se leyó es un producto que no está en el catálogo, y eso el
+    // usuario tiene que saberlo en vez de quedarse contando a mano.
+    let parsed = null;
+    for (let intento = 1; intento <= 2 && !parsed; intento++) {
+      try {
+        parsed = await readPage(buffer, business);
+      } catch (e) {
+        console.error(`[CATALOGO] Página ${page}, intento ${intento}:`, e.message);
+      }
+      if (!parsed && intento === 1) await new Promise(r => setTimeout(r, 1500));
     }
+
+    if (parsed) {
+      try {
+        await savePage(page, parsed, buffer);
+      } catch (e) {
+        console.error(`[CATALOGO] Página ${page}: error guardando:`, e.message);
+        stats.failed++;
+        if (stats.failedPages.length < 30) stats.failedPages.push(page);
+      }
+    } else {
+      stats.failed++;
+      if (stats.failedPages.length < 30) stats.failedPages.push(page);
+    }
+
     done++;
-    onProgress({ done, total, products: stats.products, photos: stats.photos });
+    onProgress({ done, total, products: stats.products, photos: stats.photos, failed: stats.failed });
   });
 
+  stats.failedPages.sort((a, b) => a - b);
   return stats;
 };
 

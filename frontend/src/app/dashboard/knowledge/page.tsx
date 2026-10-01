@@ -17,6 +17,8 @@ type CatalogJob = {
   faqs: number;
   info: number;
   skipped: number;
+  failed: number;
+  failedPages: number[];
   error: string | null;
 };
 
@@ -180,7 +182,7 @@ export default function KnowledgePage() {
           if (data.visionJob.pagesLeft > 0) {
             partes.push(`Ojo: el catálogo tiene ${data.visionJob.pagesLeft} páginas más de las que se pueden leer de una vez. Sube el resto en un segundo archivo.`);
           }
-          setCatalogJob({ status: 'procesando', source: nombre, done: 0, total: data.visionJob.pages, products: 0, photos: 0, faqs: 0, info: 0, skipped: 0, error: null });
+          setCatalogJob({ status: 'procesando', source: nombre, done: 0, total: data.visionJob.pages, products: 0, photos: 0, faqs: 0, info: 0, skipped: 0, failed: 0, failedPages: [], error: null });
           followCatalogJob(businessId);
         } else if (data.visionJob) {
           partes.push(data.visionJob.reason === 'servidor_ocupado'
@@ -418,8 +420,15 @@ export default function KnowledgePage() {
                     {catalogJob.products} productos creados · {catalogJob.photos} con foto
                     {catalogJob.skipped ? ` · ${catalogJob.skipped} ya existían y no se tocaron` : ''}
                   </p>
+                  {catalogJob.failed > 0 && (
+                    <p style={{ marginTop: 4, color: '#f59e0b' }}>
+                      ⚠️ {catalogJob.failed} {catalogJob.failed === 1 ? 'página no se pudo leer' : 'páginas no se pudieron leer'}
+                      {catalogJob.failedPages?.length ? ` (${catalogJob.failedPages.join(', ')})` : ''}
+                      {catalogJob.status === 'listo' ? '. Vuelve a subir el PDF y solo esas se agregarán: las que ya están no se duplican.' : ''}
+                    </p>
+                  )}
                   {catalogJob.status === 'listo' && (
-                    <p style={{ marginTop: 4, color: 'var(--text-muted)' }}>Revísalos en la sección <strong>Productos</strong>.</p>
+                    <p style={{ marginTop: 4, color: 'var(--text-muted)' }}>Revísalos en la sección <strong>Catálogo Productos</strong>.</p>
                   )}
                   {catalogJob.error && <p style={{ marginTop: 4, color: '#ef4444' }}>{catalogJob.error}</p>}
                 </div>
