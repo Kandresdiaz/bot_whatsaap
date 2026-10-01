@@ -814,6 +814,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-10-01** | Merge pull request #6 from Kandresdiaz/fix/restaurar-deploy (`3be10a3`) | Auto-deploy |
 
+| **2026-10-01** | Merge pull request #7 from Kandresdiaz/fix/motor-variantes (`bfdd937`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
