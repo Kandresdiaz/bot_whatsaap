@@ -40,10 +40,14 @@ Reglas:
 - "faqs" e "info": solo si la página trae condiciones, garantías, requisitos, sedes o políticas escritas. Si no, listas vacías.
 - Si en la página hay varios productos distintos con nombre propio, devuélvelos todos.`;
 
-/** Lee una página del catálogo con el modelo de visión. */
+/**
+ * Lee una página del catálogo con el modelo de visión.
+ * Si algo sale mal LANZA un error con la causa en claro (en vez de devolver null), para
+ * que el reintento la registre y el panel pueda decirle al usuario por qué faltan productos.
+ */
 const readPage = async (buffer, business) => {
   const apiKey = cleanKey(process.env.OPENROUTER_API_KEY);
-  if (!apiKey) return null;
+  if (!apiKey) throw new Error('falta OPENROUTER_API_KEY');
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
@@ -55,7 +59,9 @@ const readPage = async (buffer, business) => {
       body: JSON.stringify({
         model: (process.env.OPENROUTER_VISION_MODEL || DEFAULT_MODEL).trim(),
         temperature: 0.1,
-        max_tokens: 1200,
+        // Gemini 2.5 "piensa" antes de responder y esos tokens salen del mismo tope: con
+        // un tope justo la respuesta se corta a la mitad y el JSON queda ilegible.
+        max_tokens: 4000,
         messages: [{
           role: 'user',
           content: [
@@ -66,14 +72,18 @@ const readPage = async (buffer, business) => {
       }),
     });
     if (!res.ok) {
-      console.error(`[CATALOGO] OpenRouter respondió ${res.status}: ${(await res.text()).slice(0, 200)}`);
-      return null;
+      throw new Error(`OpenRouter respondió ${res.status}: ${(await res.text()).replace(/\s+/g, ' ').slice(0, 160)}`);
     }
     const json = await res.json();
-    return parseJson(json?.choices?.[0]?.message?.content);
+    const choice = json?.choices?.[0];
+    const parsed = parseJson(choice?.message?.content);
+    if (!parsed) {
+      const raw = String(choice?.message?.content || '').replace(/\s+/g, ' ');
+      throw new Error(`respuesta sin JSON válido (finish_reason=${choice?.finish_reason || '?'}, ${raw.length} caracteres: "${raw.slice(0, 80)}")`);
+    }
+    return parsed;
   } catch (e) {
-    console.error('[CATALOGO] Error leyendo página:', e.name === 'AbortError' ? 'timeout' : e.message);
-    return null;
+    throw e.name === 'AbortError' ? new Error(`el modelo no respondió en ${TIMEOUT_MS / 1000} s`) : e;
   } finally {
     clearTimeout(timer);
   }
@@ -98,7 +108,7 @@ const buildCatalogFromPdfImages = async (businessId, pdfBuffer, sourceName = 'Ca
   const total = knownPages != null ? knownPages : (await countPageImages(pdfBuffer, MAX_PAGES)).withImage;
   const existing = await loadExistingKeys(businessId);
 
-  const stats = { products: 0, photos: 0, faqs: 0, info: 0, pages: 0, skipped: 0 };
+  const stats = { products: 0, photos: 0, faqs: 0, info: 0, pages: 0, skipped: 0, failed: 0, failedPages: [], lastError: null };
   let done = 0;
 
   // Los productos se guardan página por página: si el proceso se corta a la mitad,
@@ -170,16 +180,39 @@ const buildCatalogFromPdfImages = async (businessId, pdfBuffer, sourceName = 'Ca
 
   await forEachPageImage(pdfBuffer, { maxPages: MAX_PAGES, concurrency: PAGE_CONCURRENCY }, async ({ page, buffer }) => {
     stats.pages++;
-    try {
-      const parsed = await readPage(buffer, business);
-      if (parsed) await savePage(page, parsed, buffer);
-    } catch (e) {
-      console.error(`[CATALOGO] Página ${page} falló:`, e.message);
+    // Casi todos los fallos son pasajeros (timeout, un 429 del proveedor), así que la
+    // página se reintenta una vez antes de darla por perdida. Y si se pierde, se anota:
+    // una página que no se leyó es un producto que no está en el catálogo, y eso el
+    // usuario tiene que saberlo en vez de quedarse contando a mano.
+    let parsed = null;
+    for (let intento = 1; intento <= 2 && !parsed; intento++) {
+      try {
+        parsed = await readPage(buffer, business);
+      } catch (e) {
+        stats.lastError = e.message;
+        console.error(`[CATALOGO] Página ${page}, intento ${intento}: ${e.message}`);
+      }
+      if (!parsed && intento === 1) await new Promise(r => setTimeout(r, 1500));
     }
+
+    if (parsed) {
+      try {
+        await savePage(page, parsed, buffer);
+      } catch (e) {
+        console.error(`[CATALOGO] Página ${page}: error guardando:`, e.message);
+        stats.failed++;
+        if (stats.failedPages.length < 30) stats.failedPages.push(page);
+      }
+    } else {
+      stats.failed++;
+      if (stats.failedPages.length < 30) stats.failedPages.push(page);
+    }
+
     done++;
-    onProgress({ done, total, products: stats.products, photos: stats.photos });
+    onProgress({ done, total, products: stats.products, photos: stats.photos, failed: stats.failed, lastError: stats.lastError });
   });
 
+  stats.failedPages.sort((a, b) => a - b);
   return stats;
 };
 

@@ -17,6 +17,9 @@ type CatalogJob = {
   faqs: number;
   info: number;
   skipped: number;
+  failed: number;
+  failedPages: number[];
+  lastError: string | null;
   error: string | null;
 };
 
@@ -40,6 +43,7 @@ export default function KnowledgePage() {
         if (d.business?.id) {
           setBusinessId(d.business.id);
           loadItems(d.business.id);
+          restoreCatalogJob(d.business.id);
         }
       });
   }, [effectiveUserId, user, BACKEND]);
@@ -153,6 +157,18 @@ export default function KnowledgePage() {
     }, 4000);
   };
 
+  // Si se recarga la página mientras el servidor lee un catálogo (o justo después de que
+  // terminó), se recupera el estado en vez de dejar al usuario sin saber qué pasó.
+  const restoreCatalogJob = async (bId: string) => {
+    try {
+      const r = await apiFetch(`${BACKEND}/api/knowledge/${bId}/catalog-job`);
+      const d = await r.json();
+      if (!d.job) return;
+      setCatalogJob(d.job);
+      if (d.job.status === 'procesando') followCatalogJob(bId);
+    } catch (_) {}
+  };
+
   const uploadPdf = async () => {
     if (!businessId || !file) return;
     if (file.size > 40 * 1024 * 1024) {
@@ -180,7 +196,7 @@ export default function KnowledgePage() {
           if (data.visionJob.pagesLeft > 0) {
             partes.push(`Ojo: el catálogo tiene ${data.visionJob.pagesLeft} páginas más de las que se pueden leer de una vez. Sube el resto en un segundo archivo.`);
           }
-          setCatalogJob({ status: 'procesando', source: nombre, done: 0, total: data.visionJob.pages, products: 0, photos: 0, faqs: 0, info: 0, skipped: 0, error: null });
+          setCatalogJob({ status: 'procesando', source: nombre, done: 0, total: data.visionJob.pages, products: 0, photos: 0, faqs: 0, info: 0, skipped: 0, failed: 0, failedPages: [], lastError: null, error: null });
           followCatalogJob(businessId);
         } else if (data.visionJob) {
           partes.push(data.visionJob.reason === 'servidor_ocupado'
@@ -418,8 +434,20 @@ export default function KnowledgePage() {
                     {catalogJob.products} productos creados · {catalogJob.photos} con foto
                     {catalogJob.skipped ? ` · ${catalogJob.skipped} ya existían y no se tocaron` : ''}
                   </p>
+                  {catalogJob.failed > 0 && (
+                    <p style={{ marginTop: 4, color: '#f59e0b' }}>
+                      ⚠️ {catalogJob.failed} {catalogJob.failed === 1 ? 'página no se pudo leer' : 'páginas no se pudieron leer'}
+                      {catalogJob.failedPages?.length ? ` (${catalogJob.failedPages.join(', ')})` : ''}
+                      {catalogJob.status === 'listo' ? '. Vuelve a subir el PDF y solo esas se agregarán: las que ya están no se duplican.' : ''}
+                    </p>
+                  )}
+                  {catalogJob.lastError && (catalogJob.failed > 0 || catalogJob.status === 'error') && (
+                    <p style={{ marginTop: 4, color: 'var(--text-muted)', fontSize: 12 }}>
+                      Motivo del último fallo: {catalogJob.lastError}
+                    </p>
+                  )}
                   {catalogJob.status === 'listo' && (
-                    <p style={{ marginTop: 4, color: 'var(--text-muted)' }}>Revísalos en la sección <strong>Productos</strong>.</p>
+                    <p style={{ marginTop: 4, color: 'var(--text-muted)' }}>Revísalos en la sección <strong>Catálogo Productos</strong>.</p>
                   )}
                   {catalogJob.error && <p style={{ marginTop: 4, color: '#ef4444' }}>{catalogJob.error}</p>}
                 </div>
