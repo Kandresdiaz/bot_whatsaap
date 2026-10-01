@@ -812,6 +812,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-10-01** | Merge pull request #5 from Kandresdiaz/feat/pdf-catalogo-reparto (`8d24e88`) | Auto-deploy |
 
+| **2026-10-01** | Merge pull request #6 from Kandresdiaz/fix/restaurar-deploy (`3be10a3`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
