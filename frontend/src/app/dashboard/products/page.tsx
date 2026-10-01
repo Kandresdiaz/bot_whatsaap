@@ -231,6 +231,32 @@ export default function ProductsPage() {
     } catch (_) {}
   };
 
+  // Vaciar todo el catálogo (para volver a importar un PDF desde cero)
+  const handleClearAll = async () => {
+    if (products.length === 0) return;
+    if (!confirm(`Vas a borrar los ${products.length} productos del catálogo. Las preguntas frecuentes y el conocimiento NO se tocan.\n\nEsto no se puede deshacer. ¿Continuar?`)) return;
+    const typed = prompt('Para confirmar, escribe BORRAR en mayúsculas:');
+    if (typed !== 'BORRAR') { showToastMsg('Cancelado: no se borró nada'); return; }
+
+    const targetId = effectiveUserId || user?.id || 'admin';
+    try {
+      const res = await apiFetch(`${BACKEND}/api/products/all/${targetId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirm: 'BORRAR' }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        showToastMsg(`⚠️ ${data.error || 'No se pudo vaciar el catálogo'}`);
+        return;
+      }
+      setProducts([]);
+      showToastMsg(`🗑️ Catálogo vaciado: ${data.deleted} productos`);
+    } catch (_) {
+      showToastMsg('⚠️ No se pudo vaciar el catálogo');
+    }
+  };
+
   // Eliminar producto
   const handleDelete = async (prod: Product) => {
     if (!confirm(`¿Estás seguro de eliminar "${prod.name}" del catálogo?`)) return;
@@ -289,13 +315,24 @@ export default function ProductsPage() {
           </p>
         </div>
 
-        <button
-          className="btn btn-primary btn-mobile-full"
-          onClick={openCreateModal}
-          style={{ fontSize: 13, padding: '10px 18px', display: 'flex', alignItems: 'center', gap: 8 }}
-        >
-          ➕ Agregar Producto / Servicio
-        </button>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          {products.length > 0 && (
+            <button
+              className="btn btn-ghost btn-mobile-full"
+              onClick={handleClearAll}
+              style={{ fontSize: 13, padding: '10px 18px', display: 'flex', alignItems: 'center', gap: 8, color: '#ef4444' }}
+            >
+              🗑️ Vaciar catálogo
+            </button>
+          )}
+          <button
+            className="btn btn-primary btn-mobile-full"
+            onClick={openCreateModal}
+            style={{ fontSize: 13, padding: '10px 18px', display: 'flex', alignItems: 'center', gap: 8 }}
+          >
+            ➕ Agregar Producto / Servicio
+          </button>
+        </div>
       </div>
 
       {/* Tarjetas de Métricas */}

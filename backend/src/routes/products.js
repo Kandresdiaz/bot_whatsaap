@@ -183,6 +183,37 @@ router.patch('/:id/toggle', ownsRow('products_services'), async (req, res) => {
 });
 
 // ─── 5. Eliminar un producto o servicio ──────────────────────────────────────
+// Vaciar el catálogo completo de un negocio (para volver a importar un PDF desde cero).
+// Borra SOLO productos: las preguntas frecuentes y el conocimiento no se tocan. Exige la
+// palabra BORRAR en el cuerpo para que ninguna llamada accidental pueda vaciar un catálogo.
+router.delete('/all/:businessId', ownsParam('businessId'), async (req, res) => {
+  try {
+    if (req.body?.confirm !== 'BORRAR') {
+      return res.status(400).json({ success: false, error: 'Falta la confirmación.' });
+    }
+    const businessId = await resolveBusinessId(req.params.businessId);
+    if (!businessId) return res.status(404).json({ success: false, error: 'Negocio no encontrado.' });
+
+    const { data, error } = await supabase
+      .from('products_services')
+      .delete()
+      .eq('business_id', businessId)
+      .select('id');
+
+    if (error) {
+      console.error('[DELETE Catálogo Error]:', error.message);
+      return res.status(500).json({ success: false, error: error.message });
+    }
+
+    clearBusinessAiCache(businessId).catch(() => {});
+    console.log(`[CATALOGO] Catálogo vaciado: ${data?.length || 0} productos del negocio ${businessId}`);
+    return res.json({ success: true, deleted: data?.length || 0 });
+  } catch (err) {
+    console.error('[DELETE Catálogo Crash Safe]:', err.message);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 router.delete('/:id', ownsRow('products_services'), async (req, res) => {
   try {
     const { id } = req.params;
