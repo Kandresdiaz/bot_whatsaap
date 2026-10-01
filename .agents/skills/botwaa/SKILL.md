@@ -818,6 +818,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-10-01** | Merge pull request #8 from Kandresdiaz/feat/vaciar-catalogo (`377587a`) | Auto-deploy |
 
+| **2026-10-01** | Merge pull request #9 from Kandresdiaz/fix/parar-sin-saldo (`6519517`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
