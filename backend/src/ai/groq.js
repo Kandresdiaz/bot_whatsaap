@@ -421,12 +421,29 @@ ${business?.payment_or_booking_link ? `Enlace o Método de Pago / Agenda: ${busi
   const orderRules = isBotwa
     ? `- Nunca pidas nombre, dirección ni cuentas bancarias. Para cerrar, envía siempre el link de la prueba de 7 días gratis: https://bot-whatsaap.vercel.app/pricing
 - Si el cliente elige un plan: "¡Excelente elección! Activa tus 7 días gratis ($0 hoy) aquí: https://bot-whatsaap.vercel.app/pricing [LEAD_CALIENTE]"`
-    : `- Cuando el cliente decida comprar: confirma producto y precio en $ COP y pide nombre completo, ciudad y dirección (o correo si es digital) y cantidad${business?.payment_or_booking_link ? `, e indica el método de pago: ${business.payment_or_booking_link}` : ''}.
-${business?.payment_or_booking_link || business?.closing_instructions ? '' : '- El dueño NO configuró medios de pago: no menciones ninguno; di que un asesor le confirma cómo pagar.\n'}- Cuando entregue sus datos, confírmale el pedido con entusiasmo y añade al final:
+    : `- Cuando el cliente decida comprar: confirma producto y precio en $ COP y pide ${business?.closing_instructions
+        ? 'SOLO los datos que piden las INSTRUCCIONES DE CIERRE DEL DUEÑO (no pidas dirección, ciudad ni cantidad si ellas no lo piden)'
+        : 'nombre completo, ciudad y dirección (o correo si es digital) y cantidad'}. Pídelos en un solo mensaje corto.
+- Medios de pago: ${business?.payment_or_booking_link
+        ? `indica este: ${business.payment_or_booking_link}`
+        : 'solo los que aparezcan en las instrucciones del dueño o la base de conocimiento; si no hay ninguno, no inventes: di que un asesor le confirma cómo pagar'}.
+- Cuando entregue sus datos, confírmale el pedido con entusiasmo y añade al final (una sola vez: no repitas las etiquetas en mensajes siguientes del mismo pedido):
 [LEAD_CALIENTE]
-[NUEVO_PEDIDO: {"nombre": "...", "producto": "...", "cantidad": 1, "total": 0, "direccion": "...", "ciudad": "...", "metodo_pago": "...", "notas": "..."}]
-[DATOS_CLIENTE: {"nombre": "...", "producto": "...", "ciudad": "...", "metodo_pago": "..."}]
-("total" = precio del catálogo × cantidad, solo números. Usa solo datos que el cliente dio: nunca valores de ejemplo.)`;
+[NUEVO_PEDIDO: {"nombre": "...", "telefono": "...", "producto": "...", "cantidad": 1, "total": 0, "direccion": "...", "ciudad": "...", "metodo_pago": "...", "notas": "..."}]
+("total" = precio del catálogo × cantidad, solo números. Usa solo datos que el cliente dio; deja "" lo que no dio: nunca valores de ejemplo ni supuestos. En "notas" pon lo relevante: contado/financiado, color, versión, etc.)`;
+
+  const dayNames = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+  let activeDays = business?.active_days;
+  if (typeof activeDays === 'string') {
+    try { activeDays = JSON.parse(activeDays); } catch (_) { activeDays = null; }
+  }
+  const daysText = Array.isArray(activeDays) && activeDays.length > 0 && activeDays.length < 7
+    ? activeDays.slice().sort((a, b) => a - b).map(d => dayNames[d]).filter(Boolean).join(', ')
+    : '';
+  const closedDaysText = daysText
+    ? dayNames.filter((_, i) => !activeDays.includes(i)).join(', ')
+    : '';
+  const duration = parseInt(business?.appointment_duration, 10);
 
   return `Eres el asesor de atención por WhatsApp de "${busName}" (${busCategory}).
 Misión: ${mainGoalText}
@@ -475,9 +492,10 @@ ${business.closing_instructions}
 ## PEDIDOS
 ${orderRules}
 
-## CITAS
+## CITAS (${isSales ? 'visitas al punto de venta, demostraciones, servicio técnico o asesorías' : 'objetivo principal del negocio'})
 - Horario: ${hoursText || 'NO configurado: no propongas horas; pregunta su preferencia y aclara que un asesor la confirma'}.
-- Acuerda día y hora dentro del horario y pide su nombre si no lo tienes. Al confirmar, felicítalo y añade al final:
+${daysText ? `- Días de atención: ${daysText}. Cerrado: ${closedDaysText}. Nunca agendes en un día cerrado: ofrece el día hábil más cercano.\n` : ''}${duration > 0 ? `- Cada cita dura ${duration} minutos: la última debe terminar antes del cierre.\n` : ''}- Nunca agendes en una fecha u hora que ya pasó.
+${isSales ? '- Si el cliente quiere ver, probar o revisar algo en persona, ofrécele agendar la visita.\n' : ''}- Acuerda día y hora dentro del horario y pide su nombre si no lo tienes. Al confirmar, repite día y hora, felicítalo y añade al final (una sola vez por cita):
 [LEAD_CALIENTE]
 [NUEVA_CITA: {"nombre": "...", "servicio": "...", "fecha": "YYYY-MM-DD", "hora": "HH:MM:00"}]
 - Si pide cancelar su cita, confírmalo con calidez en menos de 3 líneas y añade al final:
@@ -490,7 +508,10 @@ Si pide foto de un producto del catálogo que tenga imagen, añade al final: [EN
 // ─── Respuesta Asistente Humana (Fallback Contextual de Alto Nivel) ───────────
 const buildHumanAssistantReply = (userMessage, business, products = [], chatHistory = [], knowledge = []) => {
   const busName = business?.name || 'BotWA';
-  const busCategory = business?.category || 'nuestros servicios';
+  // "Otro"/"General" son opciones del formulario, no un giro: dicho al cliente suena roto
+  const busCategory = business?.category && !/^(otro|otros|general)$/i.test(business.category.trim())
+    ? business.category
+    : 'nuestros productos y servicios';
   const isSales = business?.main_goal !== 'agendar_citas';
   const validHistory = Array.isArray(chatHistory) ? chatHistory.filter(m => m && m.content) : [];
   const hasHistory = validHistory.length > 0;
@@ -690,7 +711,8 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
       }
     }
 
-    if (!fullReply) {
+    const usedFallback = !fullReply;
+    if (usedFallback) {
       fullReply = buildHumanAssistantReply(userMessage, safeBusiness, products, chatHistory, knowledge);
     }
 
@@ -748,7 +770,7 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
       .trim();
 
     // Guardar respuesta en caché Redis/RAM para consumo 0 tokens en siguientes consultas iguales
-    if (reply && isFirstOrIsolated) {
+    if (reply && isFirstOrIsolated && !usedFallback) {
       setCachedAiResponse(safeBusiness?.id, userMessage, {
         reply,
         isLeadHot,
@@ -769,7 +791,8 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
       cancelAppointmentData,
       newOrderData,
       clientData,
-      ragChunksUsed: relevantKnowledge.length
+      ragChunksUsed: relevantKnowledge.length,
+      usedFallback,
     };
   } catch (err) {
     console.error('[Groq] Error en askGroq:', err.message);
@@ -790,6 +813,7 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
       newAppointmentData: null,
       clientData: null,
       ragChunksUsed: 0,
+      usedFallback: true,
     };
   }
 };

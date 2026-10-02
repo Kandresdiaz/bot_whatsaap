@@ -2,6 +2,7 @@ const { supabase } = require('../db/supabase');
 const { askGroq } = require('../ai/groq');
 const { notifyLead } = require('./notifier');
 const { handleAppointmentFlow } = require('./appointmentFlow');
+const { isOutsideHours } = require('../services/businessHours');
 
 // ─── ANTI-BAN: delays aleatorios humanizados ──────────────────────────────────
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
@@ -446,20 +447,9 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
 
   // ── 6. Horario de atención (Modo Asistente Virtual 24/7) ─────────────────
   try {
-    const now = new Date();
-    const local = new Date(now.toLocaleString('en-US', { timeZone: business.timezone || 'America/Bogota' }));
-    const hour = local.getHours();
-    const day = local.getDay();
-    let activeDays = business.active_days || [0, 1, 2, 3, 4, 5, 6];
-    if (typeof activeDays === 'string') {
-      try { activeDays = JSON.parse(activeDays); } catch (_) { activeDays = [0, 1, 2, 3, 4, 5, 6]; }
-    }
-    const start = parseInt(business.active_hours_start?.toString().split(':')[0] || '0');
-    const end = parseInt(business.active_hours_end?.toString().split(':')[0] || '24');
-
-    if (Array.isArray(activeDays) && (!activeDays.includes(day) || hour < start || hour >= end)) {
+    if (isOutsideHours(business)) {
       business.isOutsideHours = true;
-      console.log(`[MSG] 🌙 Negocio fuera de horario físico (${hour}:00, rango: ${start}:00-${end}:00). El bot IA responde en modo 24/7.`);
+      console.log(`[MSG] 🌙 Negocio fuera de horario físico (${business.active_hours_start}-${business.active_hours_end}). El bot IA responde en modo 24/7.`);
     }
   } catch (e) {
     console.error('[MSG] Error verificando horario:', e.message);
@@ -738,17 +728,25 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
   // ── 12. Registrar Cita Automática en Base de Datos (si aplica) ────────────
   if (newAppointmentData && conversation?.id && business?.id) {
     try {
-      const { data: newAppt } = await supabase.from('appointments').insert({
+      const apptDate = newAppointmentData.fecha || new Date().toISOString().split('T')[0];
+      const apptTime = newAppointmentData.hora || '10:00:00';
+      // La IA a veces repite la etiqueta al seguir conversando: la misma cita no se guarda dos veces
+      const { data: sameAppt } = await supabase.from('appointments').select('id')
+        .eq('conversation_id', conversation.id).eq('status', 'confirmed')
+        .eq('appointment_date', apptDate).eq('appointment_time', apptTime).limit(1);
+
+      const { data: newAppt } = sameAppt?.length ? { data: null } : await supabase.from('appointments').insert({
         conversation_id: conversation.id,
         business_id: business.id,
         client_name: capturedName || contactName,
         client_phone: contactPhone,
         service: newAppointmentData.servicio || 'Servicio General',
-        appointment_date: newAppointmentData.fecha || new Date().toISOString().split('T')[0],
-        appointment_time: newAppointmentData.hora || '10:00:00',
+        appointment_date: apptDate,
+        appointment_time: apptTime,
         status: 'confirmed',
         notes: `Cita agendada por Bot IA para ${business.name}`,
       }).select().limit(1);
+      if (sameAppt?.length) console.log('[MSG] Cita repetida por la IA, no se duplica.');
 
       if (newAppt && newAppt.length > 0 && global.io) {
         const { emitToUserRooms } = require('./sessionManager');
@@ -797,8 +795,15 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
       const itemsList = orderDetails.producto || orderDetails.items || 'Pedido por WhatsApp';
       const address = orderDetails.direccion || orderDetails.ciudad || '';
       const city = orderDetails.ciudad || '';
-      const payMethod = orderDetails.metodo_pago || 'Nequi / Transferencia';
+      const payMethod = orderDetails.metodo_pago || 'Por confirmar';
       const orderTotal = orderDetails.total || orderDetails.precio || 0;
+      const extraNotes = [orderDetails.notas, orderDetails.telefono && `Tel. que dio: ${orderDetails.telefono}`].filter(Boolean).join(' · ');
+
+      // Mismo pedido repetido por la IA en las últimas horas de esta conversación: no se duplica
+      const since = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
+      const { data: sameOrder } = await supabase.from('orders').select('id')
+        .eq('conversation_id', conversation.id).eq('items', itemsList).gte('created_at', since).limit(1);
+      if (sameOrder?.length) throw Object.assign(new Error('pedido repetido'), { duplicate: true });
 
       const { data: newOrder } = await supabase.from('orders').insert({
         conversation_id: conversation.id,
@@ -812,7 +817,7 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
         city: city,
         payment_method: payMethod,
         status: 'pending',
-        notes: `Pedido capturado por Bot IA en WhatsApp (${business.name})`,
+        notes: `Pedido capturado por Bot IA en WhatsApp (${business.name})${extraNotes ? ` · ${extraNotes}` : ''}`,
       }).select().limit(1);
 
       if (newOrder && newOrder.length > 0 && global.io) {
@@ -820,7 +825,8 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
         emitToUserRooms(global.io, userId, 'new_order', newOrder[0]);
       }
     } catch (eOrder) {
-      console.error('[MSG] Error guardando pedido automático:', eOrder.message);
+      if (eOrder.duplicate) console.log('[MSG] Pedido repetido por la IA, no se duplica.');
+      else console.error('[MSG] Error guardando pedido automático:', eOrder.message);
     }
   }
 
