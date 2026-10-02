@@ -826,6 +826,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-10-02** | Merge pull request #12 from Kandresdiaz/fix/google-503 (`7bf7c00`) | Auto-deploy |
 
+| **2026-10-02** | Merge pull request #13 from Kandresdiaz/fix/corte-seguridad (`4bcb983`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
