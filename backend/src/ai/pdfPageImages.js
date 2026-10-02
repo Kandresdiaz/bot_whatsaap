@@ -126,7 +126,7 @@ const pageImage = async (page) => {
  * @returns {Promise<{totalPages:number, processed:number}>}
  */
 const forEachPageImage = async (pdfBuffer, opts, onPage) => {
-  const { maxPages = 80, concurrency = 3 } = opts || {};
+  const { maxPages = 80, concurrency = 3, shouldStop = null } = opts || {};
   const doc = await PDFDocument.load(pdfBuffer, {
     ignoreEncryption: true,
     updateMetadata: false,
@@ -138,7 +138,9 @@ const forEachPageImage = async (pdfBuffer, opts, onPage) => {
   let next = 0;
   let processed = 0;
   const worker = async () => {
-    while (next < limit) {
+    // shouldStop deja de sacar imágenes en cuanto el trabajo se cortó: no tiene sentido
+    // extraer las páginas que ya no se van a leer.
+    while (next < limit && !(shouldStop && shouldStop())) {
       const i = next++;
       let buffer = null;
       try {
