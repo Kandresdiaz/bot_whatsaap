@@ -17,7 +17,6 @@ const TIMEOUT_MS = 45000;
 
 // Google AI Studio (Gemini directo): tiene plan gratuito, con límites por minuto y por día.
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
-const GEMINI_DEFAULT_MODEL = 'gemini-2.5-flash';
 
 const MAX_PAGES = 300;
 const PAGE_CONCURRENCY = 3;
@@ -124,17 +123,97 @@ const throttle = async () => {
   if (wait) await sleep(wait);
 };
 
-const readPageGoogle = async (buffer, business) => {
-  const apiKey = cleanKey(process.env.GEMINI_API_KEY);
-  const model = (process.env.GEMINI_VISION_MODEL || GEMINI_DEFAULT_MODEL).trim();
+// ── Elección del modelo de Google ───────────────────────────────────────────────────────
+// Google retira modelos y los quita a las cuentas nuevas (gemini-2.5-flash ya devuelve 404
+// para llaves recientes), y las cuotas gratuitas son POR MODELO. Fijar un nombre en el
+// código lo rompe tarde o temprano, así que se le pregunta a Google qué modelos tiene esta
+// llave, se usa el Flash más nuevo y, si uno no sirve (retirado, sin plan gratuito o con la
+// cuota del día agotada), se pasa al siguiente en vez de detener el trabajo.
+const COOLDOWN_QUOTA_MS = 3 * 60 * 60 * 1000;
+const COOLDOWN_GONE_MS = 24 * 60 * 60 * 1000;
+const MSG_QUOTA = 'Se agotó la cuota gratuita de Gemini de hoy (o tu cuenta no tiene plan gratuito para estos modelos). Lo ya leído quedó guardado: vuelve a subir el mismo PDF mañana y continúa donde quedó, sin repetir lo hecho.';
+const MSG_GONE = 'Google no ofrece ningún modelo Gemini Flash disponible para esta llave. Revisa la llave en aistudio.google.com/apikey.';
+const MSG_KEY = 'Google rechazó la llave (GEMINI_API_KEY). Revisa que sea correcta y esté activa en aistudio.google.com/apikey.';
+
+let googleModel = null;
+let modelsCache = null;
+const unusable = new Map();   // modelo -> momento hasta el que no se vuelve a intentar
+let lastModelProblem = MSG_GONE;
+
+const isUsable = (name) => (unusable.get(name) || 0) <= Date.now();
+const markUnusable = (name, ms, why) => {
+  unusable.set(name, Date.now() + ms);
+  lastModelProblem = why;
+  if (googleModel === name) googleModel = null;
+};
+
+const listGoogleModels = async (apiKey) => {
+  if (modelsCache && Date.now() - modelsCache.at < 10 * 60 * 1000) return modelsCache.models;
+  const res = await fetch(`${GEMINI_BASE}?pageSize=1000`, {
+    headers: { 'x-goog-api-key': apiKey },
+    signal: AbortSignal.timeout(15000),
+  });
+  if (!res.ok) {
+    const body = (await res.text()).replace(/\s+/g, ' ');
+    const err = new Error(`Google respondió ${res.status} al listar modelos: ${body.slice(0, 160)}`);
+    if ((res.status === 400 && /API key not valid|API_KEY_INVALID/i.test(body)) || res.status === 401 || res.status === 403) err.fatal = MSG_KEY;
+    throw err;
+  }
+  const json = await res.json();
+  modelsCache = { models: json.models || [], at: Date.now() };
+  return modelsCache.models;
+};
+
+// Flash primero (de la versión más nueva a la más vieja) y Flash-Lite al final: suele tener
+// más cuota gratuita, así que sirve de respaldo.
+const pickGoogleModel = (models) => {
+  const found = [];
+  for (const m of models) {
+    if (!(m.supportedGenerationMethods || []).includes('generateContent')) continue;
+    const name = String(m.name || '').replace(/^models\//, '');
+    const hit = name.match(/^gemini-(\d+(?:\.\d+)?)-flash(-lite)?$/);
+    if (!hit || !isUsable(name)) continue;
+    found.push({ name, version: parseFloat(hit[1]), tier: hit[2] ? 1 : 0 });
+  }
+  found.sort((a, b) => a.tier - b.tier || b.version - a.version);
+  return found[0]?.name || null;
+};
+
+const resolveGoogleModel = async (apiKey) => {
+  const forced = (process.env.GEMINI_VISION_MODEL || '').trim();
+  if (forced) return forced;
+  if (googleModel && isUsable(googleModel)) return googleModel;
+
+  let models = null;
+  try {
+    models = await listGoogleModels(apiKey);
+  } catch (e) {
+    if (e.fatal) throw e;
+    console.error(`[CATALOGO] No se pudo consultar la lista de modelos de Google: ${e.message}`);
+  }
+  // Sin lista (falla de red): el alias de Google que siempre apunta al Flash vigente.
+  if (!models) return 'gemini-flash-latest';
+
+  const picked = pickGoogleModel(models);
+  if (!picked) {
+    const err = new Error('no queda ningún modelo Gemini utilizable');
+    err.fatal = lastModelProblem;
+    throw err;
+  }
+  googleModel = picked;
+  console.log(`[CATALOGO] Modelo de Google elegido: ${picked}`);
+  return picked;
+};
+
+const callGoogle = async (apiKey, model, buffer, business) => {
   await throttle();
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
-    const generationConfig = { temperature: 0.1, maxOutputTokens: 4000, responseMimeType: 'application/json' };
+    const generationConfig = { temperature: 0.1, maxOutputTokens: 8192, responseMimeType: 'application/json' };
     // Leer texto de una imagen no necesita "pensar": se apaga para ahorrar cuota y evitar cortes.
-    if (/2\.5-flash/.test(model)) generationConfig.thinkingConfig = { thinkingBudget: 0 };
+    if (/^gemini-2\.5-flash/.test(model)) generationConfig.thinkingConfig = { thinkingBudget: 0 };
 
     const res = await fetch(`${GEMINI_BASE}/${model}:generateContent`, {
       method: 'POST',
@@ -152,17 +231,25 @@ const readPageGoogle = async (buffer, business) => {
 
     if (!res.ok) {
       const body = (await res.text()).replace(/\s+/g, ' ');
-      const err = new Error(`Google respondió ${res.status}: ${body.slice(0, 200)}`);
-      if (res.status === 429) {
+      const err = new Error(`Google respondió ${res.status} (${model}): ${body.slice(0, 200)}`);
+      const forced = Boolean((process.env.GEMINI_VISION_MODEL || '').trim());
+
+      if (res.status === 404) {
+        // Modelo retirado o no disponible para esta cuenta: se pasa al siguiente.
+        if (forced) err.fatal = `El modelo ${model} (GEMINI_VISION_MODEL) no está disponible para tu llave. Quita esa variable para que se elija uno automáticamente.`;
+        else { markUnusable(model, COOLDOWN_GONE_MS, MSG_GONE); err.switchModel = true; }
+      } else if (res.status === 429) {
         if (/PerDay/i.test(body) || /limit:\s*0/i.test(body)) {
-          err.fatal = 'Se agotó la cuota gratuita de Gemini de hoy (o tu cuenta no tiene plan gratuito para este modelo). Lo ya leído quedó guardado: vuelve a subir el mismo PDF mañana y continúa donde quedó, sin repetir lo hecho.';
+          // Cuota del día agotada, o este modelo no tiene plan gratuito: las cuotas son por modelo.
+          if (forced) err.fatal = MSG_QUOTA;
+          else { markUnusable(model, COOLDOWN_QUOTA_MS, MSG_QUOTA); err.switchModel = true; }
         } else {
           // Límite por minuto: basta esperar lo que el propio Google indica.
           const m = body.match(/"retryDelay":\s*"(\d+(?:\.\d+)?)s"/);
           err.retryAfterMs = Math.min(65000, (m ? Number(m[1]) : 20) * 1000 + 1000);
         }
       } else if ((res.status === 400 && /API key not valid|API_KEY_INVALID/i.test(body)) || res.status === 401 || res.status === 403) {
-        err.fatal = 'Google rechazó la llave (GEMINI_API_KEY). Revisa que sea correcta y esté activa en aistudio.google.com/apikey.';
+        err.fatal = MSG_KEY;
       }
       throw err;
     }
@@ -182,6 +269,23 @@ const readPageGoogle = async (buffer, business) => {
     clearTimeout(timer);
   }
 };
+
+// Cambiar de modelo no cuenta como un intento fallido de la página: se prueba el siguiente
+// de inmediato, hasta 4 veces, y solo entonces se da el error.
+const readPageGoogle = async (buffer, business) => {
+  const apiKey = cleanKey(process.env.GEMINI_API_KEY);
+  for (let cambios = 0; ; cambios++) {
+    const model = await resolveGoogleModel(apiKey);
+    try {
+      return await callGoogle(apiKey, model, buffer, business);
+    } catch (e) {
+      if (e.switchModel && cambios < 4) continue;
+      throw e;
+    }
+  }
+};
+
+const _resetGoogleState = () => { googleModel = null; modelsCache = null; unusable.clear(); lastModelProblem = MSG_GONE; nextSlot = 0; };
 
 const readPage = (buffer, business) => (provider() === 'google' ? readPageGoogle(buffer, business) : readPageOpenRouter(buffer, business));
 
@@ -362,4 +466,4 @@ const buildCatalogFromPdfImages = async (businessId, pdfBuffer, sourceName = 'Ca
   return stats;
 };
 
-module.exports = { buildCatalogFromPdfImages, isVisionEnabled, MAX_PAGES };
+module.exports = { buildCatalogFromPdfImages, isVisionEnabled, MAX_PAGES, _resetGoogleState };
