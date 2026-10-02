@@ -5,6 +5,7 @@
 //   3. guarda el producto con su foto, más las FAQs e información que encuentre.
 //
 // Solo AGREGA: lo que el usuario ya tenía configurado no se toca.
+const crypto = require('crypto');
 const { supabase } = require('../db/supabase');
 const { uploadPublicImage } = require('../db/storage');
 const { forEachPageImage, countPageImages } = require('./pdfPageImages');
@@ -14,6 +15,10 @@ const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const DEFAULT_MODEL = 'google/gemini-2.5-flash';
 const TIMEOUT_MS = 45000;
 
+// Google AI Studio (Gemini directo): tiene plan gratuito, con límites por minuto y por día.
+const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
+const GEMINI_DEFAULT_MODEL = 'gemini-2.5-flash';
+
 const MAX_PAGES = 300;
 const PAGE_CONCURRENCY = 3;
 const MAX_PRODUCTS = 300;
@@ -21,7 +26,16 @@ const MAX_FAQS = 25;
 const MAX_INFO = 15;
 
 const cleanKey = (k) => (k || '').trim().replace(/^['"]|['"]$/g, '');
-const isVisionEnabled = () => Boolean(cleanKey(process.env.OPENROUTER_API_KEY));
+// Si hay llave de Google se usa esa (plan gratuito); si no, OpenRouter (de pago).
+const provider = () => {
+  if (cleanKey(process.env.GEMINI_API_KEY)) return 'google';
+  if (cleanKey(process.env.OPENROUTER_API_KEY)) return 'openrouter';
+  return null;
+};
+const isVisionEnabled = () => provider() !== null;
+
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+const pageHash = (buffer) => crypto.createHash('sha1').update(buffer).digest('hex').slice(0, 16);
 
 const buildPrompt = (business) => `Esta imagen es UNA página de un catálogo de "${business?.name || 'un negocio'}"${business?.category ? ` (${business.category})` : ''}. Lee TODO lo que está escrito en ella: título, referencia, precios y fichas técnicas.
 
@@ -47,7 +61,7 @@ Reglas:
  * Si algo sale mal LANZA un error con la causa en claro (en vez de devolver null), para
  * que el reintento la registre y el panel pueda decirle al usuario por qué faltan productos.
  */
-const readPage = async (buffer, business) => {
+const readPageOpenRouter = async (buffer, business) => {
   const apiKey = cleanKey(process.env.OPENROUTER_API_KEY);
   if (!apiKey) throw new Error('falta OPENROUTER_API_KEY');
 
@@ -98,6 +112,79 @@ const readPage = async (buffer, business) => {
   }
 };
 
+// El plan gratuito de Google permite unas 10 peticiones por minuto: se espacian las llamadas
+// para no toparse con el límite en vez de fallar y reintentar. VISION_RPM lo ajusta.
+let nextSlot = 0;
+const throttle = async () => {
+  const rpm = Number(process.env.VISION_RPM) || 8;
+  const interval = Math.ceil(60000 / rpm);
+  const now = Date.now();
+  const wait = Math.max(0, nextSlot - now);
+  nextSlot = Math.max(now, nextSlot) + interval;
+  if (wait) await sleep(wait);
+};
+
+const readPageGoogle = async (buffer, business) => {
+  const apiKey = cleanKey(process.env.GEMINI_API_KEY);
+  const model = (process.env.GEMINI_VISION_MODEL || GEMINI_DEFAULT_MODEL).trim();
+  await throttle();
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  try {
+    const generationConfig = { temperature: 0.1, maxOutputTokens: 4000, responseMimeType: 'application/json' };
+    // Leer texto de una imagen no necesita "pensar": se apaga para ahorrar cuota y evitar cortes.
+    if (/2\.5-flash/.test(model)) generationConfig.thinkingConfig = { thinkingBudget: 0 };
+
+    const res = await fetch(`${GEMINI_BASE}/${model}:generateContent`, {
+      method: 'POST',
+      signal: controller.signal,
+      // La llave va en un encabezado, no en la URL, para que no quede en ningún registro.
+      headers: { 'x-goog-api-key': apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [
+          { text: buildPrompt(business) },
+          { inline_data: { mime_type: 'image/jpeg', data: buffer.toString('base64') } },
+        ] }],
+        generationConfig,
+      }),
+    });
+
+    if (!res.ok) {
+      const body = (await res.text()).replace(/\s+/g, ' ');
+      const err = new Error(`Google respondió ${res.status}: ${body.slice(0, 200)}`);
+      if (res.status === 429) {
+        if (/PerDay/i.test(body) || /limit:\s*0/i.test(body)) {
+          err.fatal = 'Se agotó la cuota gratuita de Gemini de hoy (o tu cuenta no tiene plan gratuito para este modelo). Lo ya leído quedó guardado: vuelve a subir el mismo PDF mañana y continúa donde quedó, sin repetir lo hecho.';
+        } else {
+          // Límite por minuto: basta esperar lo que el propio Google indica.
+          const m = body.match(/"retryDelay":\s*"(\d+(?:\.\d+)?)s"/);
+          err.retryAfterMs = Math.min(65000, (m ? Number(m[1]) : 20) * 1000 + 1000);
+        }
+      } else if ((res.status === 400 && /API key not valid|API_KEY_INVALID/i.test(body)) || res.status === 401 || res.status === 403) {
+        err.fatal = 'Google rechazó la llave (GEMINI_API_KEY). Revisa que sea correcta y esté activa en aistudio.google.com/apikey.';
+      }
+      throw err;
+    }
+
+    const json = await res.json();
+    const cand = json?.candidates?.[0];
+    const text = (cand?.content?.parts || []).map(p => p.text || '').join('');
+    const parsed = parseJson(text);
+    if (!parsed) {
+      const raw = text.replace(/\s+/g, ' ');
+      throw new Error(`respuesta sin JSON válido (finishReason=${cand?.finishReason || json?.promptFeedback?.blockReason || '?'}, ${raw.length} caracteres: "${raw.slice(0, 80)}")`);
+    }
+    return parsed;
+  } catch (e) {
+    throw e.name === 'AbortError' ? new Error(`el modelo no respondió en ${TIMEOUT_MS / 1000} s`) : e;
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
+const readPage = (buffer, business) => (provider() === 'google' ? readPageGoogle(buffer, business) : readPageOpenRouter(buffer, business));
+
 /**
  * Procesa el PDF completo. Avisa el progreso por `onProgress` para que el panel pueda
  * mostrar una barra mientras tanto (el proceso tarda minutos, no cabe en una petición HTTP).
@@ -117,13 +204,17 @@ const buildCatalogFromPdfImages = async (businessId, pdfBuffer, sourceName = 'Ca
   const total = knownPages != null ? knownPages : (await countPageImages(pdfBuffer, MAX_PAGES)).withImage;
   const existing = await loadExistingKeys(businessId);
 
-  const stats = { products: 0, photos: 0, faqs: 0, info: 0, pages: 0, skipped: 0, failed: 0, failedPages: [], lastError: null, enriched: 0, noPrice: 0 };
+  const stats = { products: 0, photos: 0, faqs: 0, info: 0, pages: 0, skipped: 0, failed: 0, failedPages: [], lastError: null, enriched: 0, noPrice: 0, alreadyRead: 0 };
   let done = 0;
   let fatal = null;
+  const report = () => onProgress({
+    done, total, products: stats.products, photos: stats.photos, failed: stats.failed,
+    lastError: stats.lastError, enriched: stats.enriched, noPrice: stats.noPrice, alreadyRead: stats.alreadyRead,
+  });
 
   // Los productos se guardan página por página: si el proceso se corta a la mitad,
   // lo ya leído queda en el catálogo.
-  const savePage = async (page, parsed, imageBuffer) => {
+  const savePage = async (page, parsed, imageBuffer, hash) => {
     const productos = Array.isArray(parsed?.productos) ? parsed.productos : [];
     const faqs = Array.isArray(parsed?.faqs) ? parsed.faqs : [];
     const info = Array.isArray(parsed?.info) ? parsed.info : [];
@@ -160,7 +251,7 @@ const buildCatalogFromPdfImages = async (businessId, pdfBuffer, sourceName = 'Ca
     const comparteFoto = parsed?.distribucion === 'un_modelo' || visible.length === 1;
     let imageUrl = null;
     if (comparteFoto && imageBuffer && (nuevos.length || sinFoto.length)) {
-      imageUrl = await uploadPublicImage(`${businessId}/${Date.now()}-p${page}.jpg`, imageBuffer, 'image/jpeg');
+      imageUrl = await uploadPublicImage(`${businessId}/${hash}.jpg`, imageBuffer, 'image/jpeg');
     }
 
     if (nuevos.length) {
@@ -220,26 +311,38 @@ const buildCatalogFromPdfImages = async (businessId, pdfBuffer, sourceName = 'Ca
     // páginas se saltan al instante en vez de gastar 3 intentos y esperas cada una.
     if (fatal) return;
     stats.pages++;
+
+    // Página ya leída en una subida anterior: la foto de su producto ya está en el catálogo
+    // con el hash de la imagen en el nombre. No se vuelve a gastar IA en ella.
+    const hash = pageHash(buffer);
+    if (existing.pageHashes.has(hash)) {
+      stats.alreadyRead++;
+      done++;
+      report();
+      return;
+    }
     // Casi todos los fallos son pasajeros (timeout, un 429 del proveedor), así que la
     // página se reintenta una vez antes de darla por perdida. Y si se pierde, se anota:
     // una página que no se leyó es un producto que no está en el catálogo, y eso el
     // usuario tiene que saberlo en vez de quedarse contando a mano.
     let parsed = null;
+    let lastWait = 0;
     for (let intento = 1; intento <= 3 && !parsed; intento++) {
       try {
         parsed = await readPage(buffer, business);
       } catch (e) {
         stats.lastError = e.message;
+        lastWait = e.retryAfterMs || 0;
         console.error(`[CATALOGO] Página ${page}, intento ${intento}: ${e.message}`);
         if (e.fatal) { fatal = fatal || e.fatal; break; }
       }
       // Espera creciente: un límite de velocidad del proveedor (429) se pasa esperando.
-      if (!parsed && intento < 3) await new Promise(r => setTimeout(r, intento * 3000));
+      if (!parsed && intento < 3 && !fatal) await sleep(lastWait || intento * 3000);
     }
 
     if (parsed) {
       try {
-        await savePage(page, parsed, buffer);
+        await savePage(page, parsed, buffer, hash);
       } catch (e) {
         console.error(`[CATALOGO] Página ${page}: error guardando:`, e.message);
         stats.failed++;
@@ -251,7 +354,7 @@ const buildCatalogFromPdfImages = async (businessId, pdfBuffer, sourceName = 'Ca
     }
 
     done++;
-    onProgress({ done, total, products: stats.products, photos: stats.photos, failed: stats.failed, lastError: stats.lastError, enriched: stats.enriched, noPrice: stats.noPrice });
+    report();
   });
 
   stats.failedPages.sort((a, b) => a - b);

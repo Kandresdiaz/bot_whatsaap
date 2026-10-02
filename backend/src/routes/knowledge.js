@@ -158,7 +158,7 @@ router.post('/:businessId/upload', ownsParam('businessId'), uploadPdf, async (re
       return res.status(422).json({
         success: false,
         error: withImage > 0
-          ? 'El PDF es solo imágenes y la lectura por IA no está disponible (falta OPENROUTER_API_KEY).'
+          ? 'El PDF es solo imágenes y la lectura por IA no está disponible (falta GEMINI_API_KEY u OPENROUTER_API_KEY).'
           : 'No se encontró texto ni imágenes aprovechables en el PDF.',
       });
     }
@@ -219,8 +219,8 @@ router.post('/:businessId/upload', ownsParam('businessId'), uploadPdf, async (re
 router.get('/:businessId/catalog-job', ownsParam('businessId'), (req, res) => {
   const job = getJob(req.params.businessId);
   if (!job) return res.json({ success: true, job: null });
-  const { status, source, done, total, products, photos, faqs, info, skipped, failed, failedPages, lastError, enriched, noPrice, error } = job;
-  res.json({ success: true, job: { status, source, done, total, products, photos, faqs, info, skipped, failed, failedPages, lastError, enriched, noPrice, error } });
+  const { status, source, done, total, products, photos, faqs, info, skipped, failed, failedPages, lastError, enriched, noPrice, alreadyRead, error } = job;
+  res.json({ success: true, job: { status, source, done, total, products, photos, faqs, info, skipped, failed, failedPages, lastError, enriched, noPrice, alreadyRead, error } });
 });
 
 // Activar/desactivar item
