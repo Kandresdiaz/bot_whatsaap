@@ -219,11 +219,19 @@ router.get('/:sessionId', ownsParam('sessionId'), async (req, res) => {
       const disabledPhonesFromDb = new Set();
       const blacklistedPhonesFromDb = new Set();
 
-      // Consultar en DB todos los números que tengan bot_active = false o is_blacklisted = true
-      const { data: disabledRows } = await supabase
-        .from('conversations')
-        .select('contact_phone, bot_active, is_blacklisted')
-        .or('bot_active.eq.false,is_blacklisted.eq.true');
+      // Consultar los números con bot_active = false o is_blacklisted = true SOLO dentro de las
+      // sesiones de este usuario. Antes se consultaba toda la tabla del SaaS y se marcaba el chat
+      // como pausado (y se envenenaba el cache en RAM) con la pausa de cualquier otro negocio que
+      // tuviera el mismo número: por eso "activo el bot y no contesta".
+      let disabledRows = [];
+      if (sessionList.length > 0) {
+        const { data: dr } = await supabase
+          .from('conversations')
+          .select('contact_phone, bot_active, is_blacklisted')
+          .in('session_id', sessionList)
+          .or('bot_active.eq.false,is_blacklisted.eq.true');
+        disabledRows = dr || [];
+      }
 
       if (disabledRows && disabledRows.length > 0) {
         for (const r of disabledRows) {

@@ -2223,18 +2223,28 @@ const setGlobalBotStatus = async (userId, bot_enabled, io = null) => {
 
 const disabledBotPhones = new Set();
 
+// Estado "bot pausado para este contacto" guardado en RAM.
+//
+// IMPORTANTE: debe ser SIEMPRE por usuario. Antes también se guardaba una clave "pelada"
+// (solo el número, sin usuario) y el handler la consultaba sin userId. Como el GET de
+// conversaciones re-siembra este set recorriendo TODA la tabla de conversaciones del SaaS,
+// bastaba con que cualquier otro negocio tuviera ese número en pausa para que el bot dejara
+// de responderle a este usuario aunque acabara de activarlo. Resultado: "activo el bot y no
+// contesta". Ahora la clave pelada solo se usa como respaldo cuando no hay userId (no debería
+// ocurrir en el flujo de mensajes, que siempre tiene userId).
 const setContactBotStatus = (phone, botActive, userId = null) => {
   const cleanPhone = (phone || '').toString().replace('ram_', '').replace(/[^0-9]/g, '');
   if (!cleanPhone) return;
   const validUserId = userId ? getValidUserId(userId) : null;
-  const userKey = validUserId ? `${validUserId}_${cleanPhone}` : null;
+  const key = validUserId ? `${validUserId}_${cleanPhone}` : cleanPhone;
 
   if (botActive === false) {
-    disabledBotPhones.add(cleanPhone);
-    if (userKey) disabledBotPhones.add(userKey);
+    disabledBotPhones.add(key);
   } else {
+    disabledBotPhones.delete(key);
+    // Si antes quedó una clave pelada envenenada (versión anterior), límpiala también para
+    // que reactivar el bot surta efecto de inmediato.
     disabledBotPhones.delete(cleanPhone);
-    if (userKey) disabledBotPhones.delete(userKey);
   }
 };
 
@@ -2242,7 +2252,9 @@ const isContactBotDisabled = (phone, userId = null) => {
   const cleanPhone = (phone || '').toString().replace('ram_', '').replace(/[^0-9]/g, '');
   if (!cleanPhone) return false;
   const validUserId = userId ? getValidUserId(userId) : null;
-  if (validUserId && disabledBotPhones.has(`${validUserId}_${cleanPhone}`)) return true;
+  // Con userId SOLO se mira la clave por usuario: la pausa de otro negocio no silencia a este.
+  if (validUserId) return disabledBotPhones.has(`${validUserId}_${cleanPhone}`);
+  // Sin userId (compatibilidad), respaldo a la clave pelada.
   return disabledBotPhones.has(cleanPhone);
 };
 

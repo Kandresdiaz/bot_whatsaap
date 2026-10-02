@@ -310,7 +310,7 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
     const status = await getGlobalBotStatus(userId);
     if (typeof status === 'boolean') isGlobalBotEnabled = status;
 
-    if (isContactBotDisabled(contactPhone)) {
+    if (isContactBotDisabled(contactPhone, userId)) {
       console.log(`[MSG Filter] 🛑 Bot desactivado en RAM para contacto: ${contactPhone}`);
       return;
     }
