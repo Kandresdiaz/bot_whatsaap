@@ -34,6 +34,11 @@ const loadExistingKeys = async (businessId) => {
     products: new Set((products || []).map(p => norm(p.name))),
     // id y foto de cada producto existente: permite completar la foto que falta sin pisar nada
     productInfo: new Map((products || []).map(p => [norm(p.name), { id: p.id, image_url: p.image_url }])),
+    // Huella de cada página que ya se leyó: la foto de un producto se guarda con el hash de la
+    // imagen en el nombre, así que si ya está aquí no hace falta pagar IA para leerla de nuevo.
+    pageHashes: new Set((products || [])
+      .map(p => (String(p.image_url || '').match(/\/([0-9a-f]{16})\.jpg(?:\?|$)/) || [])[1])
+      .filter(Boolean)),
     kb: new Set((kb || []).filter(k => k.type === 'faq' || k.type === 'text').map(k => norm(k.title))),
   };
 };

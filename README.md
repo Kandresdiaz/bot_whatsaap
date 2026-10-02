@@ -30,6 +30,7 @@ npm run dev
 
 ### backend/.env
 - `GROQ_API_KEY` → https://console.groq.com (gratis)
+- `GEMINI_API_KEY` → https://aistudio.google.com/apikey (**gratis**, sin tarjeta en la mayoría de regiones). Lee los catálogos en PDF que son puras imágenes. Tiene límite por minuto y por día: el motor espacia las llamadas (`VISION_RPM`, por defecto 8) y, si se acaba la cuota del día, se detiene y guarda lo leído; al volver a subir el mismo PDF continúa donde quedó sin gastar IA en lo ya hecho. Opcional: `GEMINI_VISION_MODEL` (por defecto `gemini-2.5-flash`). Si existe, tiene prioridad sobre OpenRouter para leer catálogos.
 - `OPENROUTER_API_KEY` → https://openrouter.ai/keys (visión: el bot interpreta las fotos que envían los clientes y lee los catálogos en PDF que son puras imágenes; sin esta clave las fotos se derivan a un asesor y esos catálogos no se pueden importar)
 - `OPENROUTER_VISION_MODEL` → opcional, por defecto `google/gemini-2.5-flash`
 - `SUPABASE_URL` → URL del proyecto Supabase

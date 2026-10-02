@@ -22,6 +22,7 @@ type CatalogJob = {
   lastError: string | null;
   enriched: number;
   noPrice: number;
+  alreadyRead: number;
   error: string | null;
 };
 
@@ -198,7 +199,7 @@ export default function KnowledgePage() {
           if (data.visionJob.pagesLeft > 0) {
             partes.push(`Ojo: el catálogo tiene ${data.visionJob.pagesLeft} páginas más de las que se pueden leer de una vez. Sube el resto en un segundo archivo.`);
           }
-          setCatalogJob({ status: 'procesando', source: nombre, done: 0, total: data.visionJob.pages, products: 0, photos: 0, faqs: 0, info: 0, skipped: 0, failed: 0, failedPages: [], lastError: null, enriched: 0, noPrice: 0, error: null });
+          setCatalogJob({ status: 'procesando', source: nombre, done: 0, total: data.visionJob.pages, products: 0, photos: 0, faqs: 0, info: 0, skipped: 0, failed: 0, failedPages: [], lastError: null, enriched: 0, noPrice: 0, alreadyRead: 0, error: null });
           followCatalogJob(businessId);
         } else if (data.visionJob) {
           partes.push(data.visionJob.reason === 'servidor_ocupado'
@@ -437,6 +438,11 @@ export default function KnowledgePage() {
                     {catalogJob.enriched ? ` (a ${catalogJob.enriched} ya existentes se les completó la foto)` : ''}
                     {catalogJob.skipped ? ` · ${catalogJob.skipped} ya existían y no se tocaron` : ''}
                   </p>
+                  {catalogJob.alreadyRead > 0 && (
+                    <p style={{ marginTop: 4, color: 'var(--text-muted)' }}>
+                      ♻️ {catalogJob.alreadyRead} {catalogJob.alreadyRead === 1 ? 'página ya estaba leída' : 'páginas ya estaban leídas'} de una subida anterior: no se gastó IA en {catalogJob.alreadyRead === 1 ? 'ella' : 'ellas'}.
+                    </p>
+                  )}
                   {catalogJob.noPrice > 0 && (
                     <p style={{ marginTop: 4, color: '#f59e0b' }}>
                       ⚠️ {catalogJob.noPrice} {catalogJob.noPrice === 1 ? 'producto quedó' : 'productos quedaron'} sin precio. Revísalos en el catálogo: puede que la página no lo muestre o que no se leyó bien.
