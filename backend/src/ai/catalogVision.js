@@ -132,18 +132,27 @@ const throttle = async () => {
 const COOLDOWN_QUOTA_MS = 3 * 60 * 60 * 1000;
 const COOLDOWN_GONE_MS = 24 * 60 * 60 * 1000;
 const MSG_QUOTA = 'Se agotó la cuota gratuita de Gemini de hoy (o tu cuenta no tiene plan gratuito para estos modelos). Lo ya leído quedó guardado: vuelve a subir el mismo PDF mañana y continúa donde quedó, sin repetir lo hecho.';
+// Saturación temporal (503 "alta demanda"): el modelo descansa un rato y se usa otro, o se espera.
+const timing = { overloadMs: 90 * 1000, maxWaitMs: 30 * 1000 };
+const MSG_BUSY = 'Los modelos de Google están saturados en este momento (alta demanda). Lo ya leído quedó guardado: vuelve a subir el mismo PDF en unos minutos y continúa donde quedó, sin repetir lo hecho.';
 const MSG_GONE = 'Google no ofrece ningún modelo Gemini Flash disponible para esta llave. Revisa la llave en aistudio.google.com/apikey.';
 const MSG_KEY = 'Google rechazó la llave (GEMINI_API_KEY). Revisa que sea correcta y esté activa en aistudio.google.com/apikey.';
 
 let googleModel = null;
 let modelsCache = null;
 const unusable = new Map();   // modelo -> momento hasta el que no se vuelve a intentar
+const overloaded = new Map(); // modelo -> hasta cuándo descansa por saturación (temporal)
 let lastModelProblem = MSG_GONE;
 
-const isUsable = (name) => (unusable.get(name) || 0) <= Date.now();
+const isUsable = (name) => (unusable.get(name) || 0) <= Date.now() && (overloaded.get(name) || 0) <= Date.now();
 const markUnusable = (name, ms, why) => {
   unusable.set(name, Date.now() + ms);
   lastModelProblem = why;
+  if (googleModel === name) googleModel = null;
+};
+
+const markOverloaded = (name, ms) => {
+  overloaded.set(name, Date.now() + ms);
   if (googleModel === name) googleModel = null;
 };
 
@@ -194,15 +203,24 @@ const resolveGoogleModel = async (apiKey) => {
   // Sin lista (falla de red): el alias de Google que siempre apunta al Flash vigente.
   if (!models) return 'gemini-flash-latest';
 
-  const picked = pickGoogleModel(models);
-  if (!picked) {
+  for (let espera = 0; ; espera++) {
+    const picked = pickGoogleModel(models);
+    if (picked) {
+      googleModel = picked;
+      console.log(`[CATALOGO] Modelo de Google elegido: ${picked}`);
+      return picked;
+    }
+    // Sin modelos libres. Si alguno está solo saturado (algo temporal) se espera a que se
+    // libere en vez de rendirse; si no, ya no hay nada que probar.
+    const libera = [...overloaded.values()].filter(t => t > Date.now());
+    if (libera.length && espera < 8) {
+      await sleep(Math.min(timing.maxWaitMs, Math.max(50, Math.min(...libera) - Date.now() + 50)));
+      continue;
+    }
     const err = new Error('no queda ningún modelo Gemini utilizable');
-    err.fatal = lastModelProblem;
+    err.fatal = libera.length ? MSG_BUSY : lastModelProblem;
     throw err;
   }
-  googleModel = picked;
-  console.log(`[CATALOGO] Modelo de Google elegido: ${picked}`);
-  return picked;
 };
 
 const callGoogle = async (apiKey, model, buffer, business) => {
@@ -248,6 +266,10 @@ const callGoogle = async (apiKey, model, buffer, business) => {
           const m = body.match(/"retryDelay":\s*"(\d+(?:\.\d+)?)s"/);
           err.retryAfterMs = Math.min(65000, (m ? Number(m[1]) : 20) * 1000 + 1000);
         }
+      } else if (res.status >= 500) {
+        // 503 "alta demanda" y similares: es temporal. Ese modelo descansa un rato y se usa otro.
+        if (forced) err.retryAfterMs = 8000;
+        else { markOverloaded(model, timing.overloadMs); err.switchModel = true; }
       } else if ((res.status === 400 && /API key not valid|API_KEY_INVALID/i.test(body)) || res.status === 401 || res.status === 403) {
         err.fatal = MSG_KEY;
       }
@@ -279,13 +301,17 @@ const readPageGoogle = async (buffer, business) => {
     try {
       return await callGoogle(apiKey, model, buffer, business);
     } catch (e) {
-      if (e.switchModel && cambios < 4) continue;
+      if (e.switchModel && cambios < 6) continue;
       throw e;
     }
   }
 };
 
-const _resetGoogleState = () => { googleModel = null; modelsCache = null; unusable.clear(); lastModelProblem = MSG_GONE; nextSlot = 0; };
+const _resetGoogleState = (t) => {
+  googleModel = null; modelsCache = null; unusable.clear(); overloaded.clear(); lastModelProblem = MSG_GONE; nextSlot = 0;
+  timing.overloadMs = t?.overloadMs ?? 90 * 1000;
+  timing.maxWaitMs = t?.maxWaitMs ?? 30 * 1000;
+};
 
 const readPage = (buffer, business) => (provider() === 'google' ? readPageGoogle(buffer, business) : readPageOpenRouter(buffer, business));
 
