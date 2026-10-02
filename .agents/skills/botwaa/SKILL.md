@@ -820,6 +820,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-10-01** | Merge pull request #9 from Kandresdiaz/fix/parar-sin-saldo (`6519517`) | Auto-deploy |
 
+| **2026-10-02** | Merge pull request #10 from Kandresdiaz/feat/vision-gratis (`feb9b8f`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
