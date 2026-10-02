@@ -68,7 +68,12 @@ app.get('/api/debug/version', (req, res) => {
       SUPABASE_URL: !!process.env.SUPABASE_URL,
       SUPABASE_SERVICE_KEY: !!process.env.SUPABASE_SERVICE_KEY,
       ADMIN_PASSWORD: !!process.env.ADMIN_PASSWORD,
+      GEMINI_API_KEY: !!process.env.GEMINI_API_KEY,
+      OPENROUTER_API_KEY: !!process.env.OPENROUTER_API_KEY,
     },
+    // Capacidad de IA: llamadas en curso, en espera y proveedores en pausa por límite
+    ai: require('./ai/llmPool').getPoolStatus(),
+    queue: require('./queues/messageQueue').getQueueStatus(),
     timestamp: new Date().toISOString(),
   });
 });

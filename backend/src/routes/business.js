@@ -308,4 +308,75 @@ router.get('/badges/:userId', ownsParam('userId'), async (req, res) => {
   }
 });
 
+// ─── Probar mi bot: chat de práctica con la información real del negocio ─────
+// Usa la misma IA, catálogo y base de conocimiento que WhatsApp, pero NO guarda nada:
+// ni conversación, ni pedidos, ni citas. Devuelve lo que el bot habría registrado.
+const SIMULATE_LIMIT_PER_MIN = 15;
+const simulateHits = new Map(); // userId → timestamps del último minuto
+
+router.post('/simulate/:userId', ownsParam('userId'), async (req, res) => {
+  const targetUserId = resolveTargetUserId(req.params.userId);
+  const message = String(req.body?.message || '').trim().slice(0, 1000);
+  if (!message) return res.status(400).json({ success: false, error: 'Escribe un mensaje.' });
+
+  const now = Date.now();
+  const hits = (simulateHits.get(targetUserId) || []).filter(t => now - t < 60000);
+  if (hits.length >= SIMULATE_LIMIT_PER_MIN) {
+    return res.status(429).json({ success: false, error: 'Vas muy rápido. Espera unos segundos y vuelve a intentar.' });
+  }
+  hits.push(now);
+  simulateHits.set(targetUserId, hits);
+
+  try {
+    const { data: buses } = await supabase
+      .from('businesses').select('*').eq('user_id', targetUserId)
+      .order('created_at', { ascending: false }).limit(1);
+    const business = buses?.[0];
+    if (!business) return res.status(404).json({ success: false, error: 'Primero configura tu negocio en "Configurar Bot".' });
+
+    const [{ data: knowledge }, { data: products }] = await Promise.all([
+      supabase.from('knowledge_base').select('id, title, content, type, file_url').eq('business_id', business.id).eq('is_active', true),
+      supabase.from('products_services').select('name, description, price, currency, category, image_url')
+        .eq('business_id', business.id).eq('is_active', true).order('category', { ascending: true }).limit(150),
+    ]);
+
+    const { isOutsideHours } = require('../services/businessHours');
+    if (isOutsideHours(business)) business.isOutsideHours = true;
+
+    // Historial que manda el panel: [{ from: 'client' | 'bot', text }], últimos 10
+    const history = (Array.isArray(req.body?.history) ? req.body.history : [])
+      .slice(-10)
+      .filter(m => m && typeof m.text === 'string' && m.text.trim())
+      .map(m => ({ content: m.text.slice(0, 2000), direction: m.from === 'bot' ? 'outbound' : 'inbound' }));
+
+    const { askGroq } = require('../ai/groq');
+    const r = await askGroq(message, business, knowledge || [], history, products || []);
+
+    let image = null;
+    if (r.imageName) {
+      const needle = r.imageName.toLowerCase();
+      const prod = (products || []).find(p => p.image_url && p.name.toLowerCase().includes(needle))
+        || (products || []).find(p => p.image_url && needle.includes(p.name.toLowerCase()));
+      if (prod) image = { url: prod.image_url, caption: prod.name };
+    }
+
+    const order = r.newOrderData || (r.clientData && (r.clientData.producto || r.clientData.ciudad) ? r.clientData : null);
+    return res.json({
+      success: true,
+      reply: r.reply,
+      image,
+      usedFallback: Boolean(r.usedFallback),
+      detected: {
+        lead: Boolean(r.isLeadHot),
+        order,
+        appointment: r.newAppointmentData || null,
+        cancellation: r.cancelAppointmentData || null,
+      },
+    });
+  } catch (e) {
+    console.error('[SIMULATE] Error:', e.message);
+    return res.status(500).json({ success: false, error: 'No se pudo generar la respuesta. Intenta de nuevo.' });
+  }
+});
+
 module.exports = router;

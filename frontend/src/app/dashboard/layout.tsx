@@ -28,6 +28,7 @@ const navItems = [
   { href: '/dashboard/appointments', icon: '📅', label: 'Calendario y Citas', tourKey: 'nav-appointments' },
   { href: '/dashboard/knowledge', icon: '🧠', label: 'Knowledge Base', tourKey: 'nav-knowledge' },
   { href: '/dashboard/bot-config', icon: '⚙️', label: 'Configurar Bot', tourKey: 'nav-bot-config' },
+  { href: '/dashboard/test-bot', icon: '🧪', label: 'Probar mi bot', tourKey: 'nav-test-bot' },
 ];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {

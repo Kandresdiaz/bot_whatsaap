@@ -1,82 +1,7 @@
-const Groq = require('groq-sdk');
-
-// Sin 'groq/compound*': esos modelos buscan en internet por su cuenta y traen datos
-// que el dueño nunca configuró. El bot solo puede responder con la información del negocio.
-const CANDIDATE_MODELS = [
-  'qwen/qwen3.8-27b',
-  'allam-2-7b',
-  'openai/gpt-oss-120b',
-  'openai/gpt-oss-20b',
-  'llama-3.3-70b-versatile',
-  'llama-3.1-8b-instant',
-  'mixtral-8x7b-32768',
-];
-
-let cachedActiveModels = null;
-let lastFetchTime = 0;
-
-const cleanApiKey = (key) => {
-  if (!key) return '';
-  return key.trim().replace(/^['"]|['"]$/g, '');
-};
-
-const getGroqClient = () => {
-  const rawKey = process.env.GROQ_API_KEY;
-  const apiKey = cleanApiKey(rawKey);
-  if (!apiKey) return null;
-  try {
-    return new Groq({ apiKey });
-  } catch (e) {
-    console.error('[Groq] Error instanciando SDK:', e.message);
-    return null;
-  }
-};
-
-const getActiveModels = async (client) => {
-  const now = Date.now();
-  if (cachedActiveModels && (now - lastFetchTime < 15 * 60 * 1000)) {
-    return cachedActiveModels;
-  }
-
-  if (!client) return CANDIDATE_MODELS;
-
-  try {
-    const list = await client.models.list();
-    const all = (list?.data || []).map(m => m.id).filter(Boolean);
-    const validChatModels = all.filter(id =>
-      !id.includes('compound') &&
-      !id.includes('whisper') &&
-      !id.includes('guard') &&
-      !id.includes('orpheus') &&
-      !id.includes('3.6') && // Excluir qwen3.6 / deepseek que emiten tags de razonamiento <think>
-      !id.includes('reasoning')
-    );
-
-    if (validChatModels.length > 0) {
-      validChatModels.sort((a, b) => {
-        const getPriority = (id) => {
-          if (id.includes('qwen3.8')) return 2;
-          if (id.includes('allam')) return 3;
-          if (id.includes('qwen') && !id.includes('3.6')) return 4;
-          if (id.includes('gpt-oss')) return 5;
-          if (id.includes('llama-3.3')) return 6;
-          if (id.includes('llama-3.1')) return 7;
-          return 99;
-        };
-        return getPriority(a) - getPriority(b);
-      });
-
-      cachedActiveModels = validChatModels;
-      lastFetchTime = now;
-      console.log('[Groq] Modelos de chat detectados:', cachedActiveModels);
-      return cachedActiveModels;
-    }
-  } catch (e) {
-    console.warn('[Groq] Error detectando modelos (usando fallback estático):', e.message);
-  }
-
-  return CANDIDATE_MODELS;
-};
+// Las llamadas a la IA pasan por llmPool: reparte entre Groq, Gemini y OpenRouter, limita las
+// llamadas simultáneas y respeta los límites de cada proveedor. Los modelos 'groq/compound*' se
+// excluyen allí: buscan en internet y traen datos que el dueño nunca configuró.
+const { chatComplete } = require('./llmPool');
 
 // ─── 0. Normalización de Texto para Búsqueda RAG ─────────────────────────────
 const normalizeSearchText = (text) => {
@@ -188,8 +113,8 @@ const searchKnowledge = (query, knowledge) => {
 
 // ─── 2. Generar sub-consultas contextuales con IA ────────────────────────────
 const generateSubQueries = async (userMessage, business = null, chatHistory = []) => {
-  const client = getGroqClient();
-  if (!client) return [userMessage];
+  // Saludos y mensajes cortos no necesitan búsquedas alternativas: ahorra una llamada a la IA
+  if ((userMessage || '').trim().split(/s+/).length <= 3) return [userMessage];
 
   const busName = business?.name || 'Negocio';
   const busCategory = business?.category || 'Atención y Servicios';
@@ -200,11 +125,8 @@ const generateSubQueries = async (userMessage, business = null, chatHistory = []
     : '';
 
   try {
-    const models = await getActiveModels(client);
-    const modelToUse = models[0] || CANDIDATE_MODELS[0];
-
-    const response = await client.chat.completions.create({
-      model: modelToUse,
+    const response = await chatComplete({
+      lowPriority: true,
       messages: [
         {
           role: 'system',
@@ -219,7 +141,8 @@ Responde ÚNICAMENTE con las consultas separadas por "|", sin texto adicional ni
       temperature: 0.2,
     });
 
-    const raw = response.choices[0]?.message?.content || '';
+    if (!response) return [userMessage];
+    const raw = response.content || '';
     const queries = raw
       .replace(/<think>[\s\S]*?<\/think>/gi, '')
       .split('|')
@@ -421,12 +344,29 @@ ${business?.payment_or_booking_link ? `Enlace o Método de Pago / Agenda: ${busi
   const orderRules = isBotwa
     ? `- Nunca pidas nombre, dirección ni cuentas bancarias. Para cerrar, envía siempre el link de la prueba de 7 días gratis: https://bot-whatsaap.vercel.app/pricing
 - Si el cliente elige un plan: "¡Excelente elección! Activa tus 7 días gratis ($0 hoy) aquí: https://bot-whatsaap.vercel.app/pricing [LEAD_CALIENTE]"`
-    : `- Cuando el cliente decida comprar: confirma producto y precio en $ COP y pide nombre completo, ciudad y dirección (o correo si es digital) y cantidad${business?.payment_or_booking_link ? `, e indica el método de pago: ${business.payment_or_booking_link}` : ''}.
-${business?.payment_or_booking_link || business?.closing_instructions ? '' : '- El dueño NO configuró medios de pago: no menciones ninguno; di que un asesor le confirma cómo pagar.\n'}- Cuando entregue sus datos, confírmale el pedido con entusiasmo y añade al final:
+    : `- Cuando el cliente decida comprar: confirma producto y precio en $ COP y pide ${business?.closing_instructions
+        ? 'SOLO los datos que piden las INSTRUCCIONES DE CIERRE DEL DUEÑO (no pidas dirección, ciudad ni cantidad si ellas no lo piden)'
+        : 'nombre completo, ciudad y dirección (o correo si es digital) y cantidad'}. Pídelos en un solo mensaje corto.
+- Medios de pago: ${business?.payment_or_booking_link
+        ? `indica este: ${business.payment_or_booking_link}`
+        : 'solo los que aparezcan en las instrucciones del dueño o la base de conocimiento; si no hay ninguno, no inventes: di que un asesor le confirma cómo pagar'}.
+- Cuando entregue sus datos, confírmale el pedido con entusiasmo y añade al final (una sola vez: no repitas las etiquetas en mensajes siguientes del mismo pedido):
 [LEAD_CALIENTE]
-[NUEVO_PEDIDO: {"nombre": "...", "producto": "...", "cantidad": 1, "total": 0, "direccion": "...", "ciudad": "...", "metodo_pago": "...", "notas": "..."}]
-[DATOS_CLIENTE: {"nombre": "...", "producto": "...", "ciudad": "...", "metodo_pago": "..."}]
-("total" = precio del catálogo × cantidad, solo números. Usa solo datos que el cliente dio: nunca valores de ejemplo.)`;
+[NUEVO_PEDIDO: {"nombre": "...", "telefono": "...", "producto": "...", "cantidad": 1, "total": 0, "direccion": "...", "ciudad": "...", "metodo_pago": "...", "notas": "..."}]
+("total" = precio del catálogo × cantidad, solo números. Usa solo datos que el cliente dio; deja "" lo que no dio: nunca valores de ejemplo ni supuestos. En "notas" pon lo relevante: contado/financiado, color, versión, etc.)`;
+
+  const dayNames = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+  let activeDays = business?.active_days;
+  if (typeof activeDays === 'string') {
+    try { activeDays = JSON.parse(activeDays); } catch (_) { activeDays = null; }
+  }
+  const daysText = Array.isArray(activeDays) && activeDays.length > 0 && activeDays.length < 7
+    ? activeDays.slice().sort((a, b) => a - b).map(d => dayNames[d]).filter(Boolean).join(', ')
+    : '';
+  const closedDaysText = daysText
+    ? dayNames.filter((_, i) => !activeDays.includes(i)).join(', ')
+    : '';
+  const duration = parseInt(business?.appointment_duration, 10);
 
   return `Eres el asesor de atención por WhatsApp de "${busName}" (${busCategory}).
 Misión: ${mainGoalText}
@@ -475,9 +415,10 @@ ${business.closing_instructions}
 ## PEDIDOS
 ${orderRules}
 
-## CITAS
+## CITAS (${isSales ? 'visitas al punto de venta, demostraciones, servicio técnico o asesorías' : 'objetivo principal del negocio'})
 - Horario: ${hoursText || 'NO configurado: no propongas horas; pregunta su preferencia y aclara que un asesor la confirma'}.
-- Acuerda día y hora dentro del horario y pide su nombre si no lo tienes. Al confirmar, felicítalo y añade al final:
+${daysText ? `- Días de atención: ${daysText}. Cerrado: ${closedDaysText}. Nunca agendes en un día cerrado: ofrece el día hábil más cercano.\n` : ''}${duration > 0 ? `- Cada cita dura ${duration} minutos: la última debe terminar antes del cierre.\n` : ''}- Nunca agendes en una fecha u hora que ya pasó.
+${isSales ? '- Si el cliente quiere ver, probar o revisar algo en persona, ofrécele agendar la visita.\n' : ''}- Acuerda día y hora dentro del horario y pide su nombre si no lo tienes. Al confirmar, repite día y hora, felicítalo y añade al final (una sola vez por cita):
 [LEAD_CALIENTE]
 [NUEVA_CITA: {"nombre": "...", "servicio": "...", "fecha": "YYYY-MM-DD", "hora": "HH:MM:00"}]
 - Si pide cancelar su cita, confírmalo con calidez en menos de 3 líneas y añade al final:
@@ -490,7 +431,10 @@ Si pide foto de un producto del catálogo que tenga imagen, añade al final: [EN
 // ─── Respuesta Asistente Humana (Fallback Contextual de Alto Nivel) ───────────
 const buildHumanAssistantReply = (userMessage, business, products = [], chatHistory = [], knowledge = []) => {
   const busName = business?.name || 'BotWA';
-  const busCategory = business?.category || 'nuestros servicios';
+  // "Otro"/"General" son opciones del formulario, no un giro: dicho al cliente suena roto
+  const busCategory = business?.category && !/^(otro|otros|general)$/i.test(business.category.trim())
+    ? business.category
+    : 'nuestros productos y servicios';
   const isSales = business?.main_goal !== 'agendar_citas';
   const validHistory = Array.isArray(chatHistory) ? chatHistory.filter(m => m && m.content) : [];
   const hasHistory = validHistory.length > 0;
@@ -650,47 +594,30 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
       { role: 'user', content: userMessage },
     ];
 
-    const client = getGroqClient();
+    // Purga cualquier bloque <think> completo o truncado
+    const stripThink = (t) => (t || '')
+      .replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, '')
+      .replace(/<\/?think>/gi, '')
+      .trim();
+
     let fullReply = null;
     let tokensUsed = 0;
 
-    if (client) {
-      const activeModels = await getActiveModels(client);
-      for (const modelName of activeModels) {
-        try {
-          const response = await client.chat.completions.create({
-            model: modelName,
-            messages,
-            max_tokens: 350,
-            temperature: 0.25,
-          });
-
-          if (response?.choices?.[0]?.message?.content) {
-            let candidateReply = response.choices[0].message.content;
-            // Purgar de raíz cualquier bloque <think> completo o truncado
-            candidateReply = candidateReply
-              .replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, '')
-              .replace(/<\/?think>/gi, '')
-              .trim();
-
-            // Si quedó vacío porque el modelo solo gastó tokens pensando, descartar y pasar al siguiente
-            if (!candidateReply || candidateReply.length < 2) {
-              console.warn(`[Groq] Modelo ${modelName} solo emitió tokens de pensamiento, probando siguiente modelo...`);
-              continue;
-            }
-
-            fullReply = candidateReply;
-            tokensUsed = response.usage?.total_tokens || 0;
-            console.log(`[Groq] ✅ Respuesta IA generada con modelo: ${modelName}`);
-            break;
-          }
-        } catch (modelErr) {
-          console.warn(`[Groq] Modelo ${modelName} no disponible:`, modelErr.message);
-        }
-      }
+    const response = await chatComplete({
+      messages,
+      max_tokens: 350,
+      temperature: 0.25,
+      // Si el modelo solo gastó tokens pensando, la respuesta queda vacía: probar el siguiente
+      accept: (text) => stripThink(text).length >= 2,
+    });
+    if (response) {
+      fullReply = stripThink(response.content);
+      tokensUsed = response.tokens;
+      console.log(`[IA] ✅ Respuesta generada con ${response.provider}:${response.model}`);
     }
 
-    if (!fullReply) {
+    const usedFallback = !fullReply;
+    if (usedFallback) {
       fullReply = buildHumanAssistantReply(userMessage, safeBusiness, products, chatHistory, knowledge);
     }
 
@@ -748,7 +675,7 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
       .trim();
 
     // Guardar respuesta en caché Redis/RAM para consumo 0 tokens en siguientes consultas iguales
-    if (reply && isFirstOrIsolated) {
+    if (reply && isFirstOrIsolated && !usedFallback) {
       setCachedAiResponse(safeBusiness?.id, userMessage, {
         reply,
         isLeadHot,
@@ -769,7 +696,8 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
       cancelAppointmentData,
       newOrderData,
       clientData,
-      ragChunksUsed: relevantKnowledge.length
+      ragChunksUsed: relevantKnowledge.length,
+      usedFallback,
     };
   } catch (err) {
     console.error('[Groq] Error en askGroq:', err.message);
@@ -790,6 +718,7 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
       newAppointmentData: null,
       clientData: null,
       ragChunksUsed: 0,
+      usedFallback: true,
     };
   }
 };

@@ -1915,12 +1915,13 @@ const createSession = async (userId, businessId, io, forceClean = false, isManua
       // Si es mensaje entrante en tiempo real del cliente (notify o append reciente, ignorar historial antiguo y fromMe)
       const epochSec = safeToEpochSeconds(msg.messageTimestamp);
       const isRecent = (Math.floor(Date.now() / 1000) - epochSec) < 300;
+      // Sin await: si un lote trae mensajes de varios clientes, cada uno se atiende en paralelo
+      // (la cola por contacto ya garantiza el orden de un mismo cliente) y los mensajes seguidos
+      // de un mismo cliente alcanzan a juntarse en una sola respuesta.
       if ((type === 'notify' || isRecent) && handleIncomingMessage && !msg.key.fromMe) {
-        try {
-          await handleIncomingMessage(sock, msg, userId, businessId);
-        } catch (err) {
-          console.error(`[MSG] Error procesando mensaje de ${userId}:`, err.message);
-        }
+        Promise.resolve()
+          .then(() => handleIncomingMessage(sock, msg, userId, businessId))
+          .catch(err => console.error(`[MSG] Error procesando mensaje de ${userId}:`, err.message));
       }
     }
   });
