@@ -830,6 +830,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-10-02** | Merge pull request #14 from Kandresdiaz/feat/probar-bot (`37ef5da`) | Auto-deploy |
 
+| **2026-10-02** | fix: activar el bot en un chat vuelve a funcionar al instante (`88df773`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
