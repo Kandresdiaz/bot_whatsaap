@@ -19,6 +19,13 @@ const TIMEOUT_MS = 45000;
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 
 const MAX_PAGES = 300;
+
+// Corte de seguridad: si las páginas fallan una tras otra, o fallan en una proporción alta,
+// seguir llamando al modelo es pagar (o gastar cuota) por nada. Se detiene el trabajo, lo ya
+// leído queda guardado y al volver a subir el mismo PDF se continúa sin repetir lo hecho.
+const MAX_CONSECUTIVE_FAILS = () => Number(process.env.VISION_MAX_CONSECUTIVE_FAILS) || 4;
+const FAIL_RATE_MIN_PAGES = 12;   // no se mide la proporción antes de esto
+const FAIL_RATE_LIMIT = 0.4;      // 40 % de las páginas intentadas
 const PAGE_CONCURRENCY = 3;
 const MAX_PRODUCTS = 300;
 const MAX_FAQS = 25;
@@ -337,6 +344,8 @@ const buildCatalogFromPdfImages = async (businessId, pdfBuffer, sourceName = 'Ca
   const stats = { products: 0, photos: 0, faqs: 0, info: 0, pages: 0, skipped: 0, failed: 0, failedPages: [], lastError: null, enriched: 0, noPrice: 0, alreadyRead: 0 };
   let done = 0;
   let fatal = null;
+  let seguidas = 0;     // páginas seguidas que fallaron
+  let intentadas = 0;   // páginas en las que sí se llamó al modelo
   const report = () => onProgress({
     done, total, products: stats.products, photos: stats.photos, failed: stats.failed,
     lastError: stats.lastError, enriched: stats.enriched, noPrice: stats.noPrice, alreadyRead: stats.alreadyRead,
@@ -436,7 +445,7 @@ const buildCatalogFromPdfImages = async (businessId, pdfBuffer, sourceName = 'Ca
     }
   };
 
-  await forEachPageImage(pdfBuffer, { maxPages: MAX_PAGES, concurrency: PAGE_CONCURRENCY }, async ({ page, buffer }) => {
+  await forEachPageImage(pdfBuffer, { maxPages: MAX_PAGES, concurrency: PAGE_CONCURRENCY, shouldStop: () => Boolean(fatal) }, async ({ page, buffer }) => {
     // Con un error que no se arregla reintentando se deja de llamar al modelo: las demás
     // páginas se saltan al instante en vez de gastar 3 intentos y esperas cada una.
     if (fatal) return;
@@ -457,7 +466,7 @@ const buildCatalogFromPdfImages = async (businessId, pdfBuffer, sourceName = 'Ca
     // usuario tiene que saberlo en vez de quedarse contando a mano.
     let parsed = null;
     let lastWait = 0;
-    for (let intento = 1; intento <= 3 && !parsed; intento++) {
+    for (let intento = 1; intento <= 3 && !parsed && !fatal; intento++) {
       try {
         parsed = await readPage(buffer, business);
       } catch (e) {
@@ -481,6 +490,21 @@ const buildCatalogFromPdfImages = async (businessId, pdfBuffer, sourceName = 'Ca
     } else {
       stats.failed++;
       if (stats.failedPages.length < 30) stats.failedPages.push(page);
+    }
+
+    // ¿Se está gastando IA en vano? Cuenta solo las páginas en las que de verdad se llamó al modelo.
+    intentadas++;
+    const falloEstaPagina = !parsed || stats.failedPages.includes(page);
+    seguidas = falloEstaPagina ? seguidas + 1 : 0;
+    if (!fatal) {
+      const porTasa = intentadas >= FAIL_RATE_MIN_PAGES && stats.failed / intentadas >= FAIL_RATE_LIMIT;
+      if (seguidas >= MAX_CONSECUTIVE_FAILS() || porTasa) {
+        const motivo = seguidas >= MAX_CONSECUTIVE_FAILS()
+          ? `${seguidas} páginas seguidas fallaron`
+          : `fallaron ${stats.failed} de ${intentadas} páginas`;
+        fatal = `Se detuvo para no gastar IA en vano: ${motivo}. Último error: ${String(stats.lastError || 'desconocido').slice(0, 220)}. Lo ya leído quedó guardado: cuando se resuelva, vuelve a subir el mismo PDF y continúa donde quedó, sin repetir lo hecho.`;
+        console.error(`[CATALOGO] ${fatal}`);
+      }
     }
 
     done++;
