@@ -1,82 +1,7 @@
-const Groq = require('groq-sdk');
-
-// Sin 'groq/compound*': esos modelos buscan en internet por su cuenta y traen datos
-// que el dueño nunca configuró. El bot solo puede responder con la información del negocio.
-const CANDIDATE_MODELS = [
-  'qwen/qwen3.8-27b',
-  'allam-2-7b',
-  'openai/gpt-oss-120b',
-  'openai/gpt-oss-20b',
-  'llama-3.3-70b-versatile',
-  'llama-3.1-8b-instant',
-  'mixtral-8x7b-32768',
-];
-
-let cachedActiveModels = null;
-let lastFetchTime = 0;
-
-const cleanApiKey = (key) => {
-  if (!key) return '';
-  return key.trim().replace(/^['"]|['"]$/g, '');
-};
-
-const getGroqClient = () => {
-  const rawKey = process.env.GROQ_API_KEY;
-  const apiKey = cleanApiKey(rawKey);
-  if (!apiKey) return null;
-  try {
-    return new Groq({ apiKey });
-  } catch (e) {
-    console.error('[Groq] Error instanciando SDK:', e.message);
-    return null;
-  }
-};
-
-const getActiveModels = async (client) => {
-  const now = Date.now();
-  if (cachedActiveModels && (now - lastFetchTime < 15 * 60 * 1000)) {
-    return cachedActiveModels;
-  }
-
-  if (!client) return CANDIDATE_MODELS;
-
-  try {
-    const list = await client.models.list();
-    const all = (list?.data || []).map(m => m.id).filter(Boolean);
-    const validChatModels = all.filter(id =>
-      !id.includes('compound') &&
-      !id.includes('whisper') &&
-      !id.includes('guard') &&
-      !id.includes('orpheus') &&
-      !id.includes('3.6') && // Excluir qwen3.6 / deepseek que emiten tags de razonamiento <think>
-      !id.includes('reasoning')
-    );
-
-    if (validChatModels.length > 0) {
-      validChatModels.sort((a, b) => {
-        const getPriority = (id) => {
-          if (id.includes('qwen3.8')) return 2;
-          if (id.includes('allam')) return 3;
-          if (id.includes('qwen') && !id.includes('3.6')) return 4;
-          if (id.includes('gpt-oss')) return 5;
-          if (id.includes('llama-3.3')) return 6;
-          if (id.includes('llama-3.1')) return 7;
-          return 99;
-        };
-        return getPriority(a) - getPriority(b);
-      });
-
-      cachedActiveModels = validChatModels;
-      lastFetchTime = now;
-      console.log('[Groq] Modelos de chat detectados:', cachedActiveModels);
-      return cachedActiveModels;
-    }
-  } catch (e) {
-    console.warn('[Groq] Error detectando modelos (usando fallback estático):', e.message);
-  }
-
-  return CANDIDATE_MODELS;
-};
+// Las llamadas a la IA pasan por llmPool: reparte entre Groq, Gemini y OpenRouter, limita las
+// llamadas simultáneas y respeta los límites de cada proveedor. Los modelos 'groq/compound*' se
+// excluyen allí: buscan en internet y traen datos que el dueño nunca configuró.
+const { chatComplete } = require('./llmPool');
 
 // ─── 0. Normalización de Texto para Búsqueda RAG ─────────────────────────────
 const normalizeSearchText = (text) => {
@@ -188,8 +113,8 @@ const searchKnowledge = (query, knowledge) => {
 
 // ─── 2. Generar sub-consultas contextuales con IA ────────────────────────────
 const generateSubQueries = async (userMessage, business = null, chatHistory = []) => {
-  const client = getGroqClient();
-  if (!client) return [userMessage];
+  // Saludos y mensajes cortos no necesitan búsquedas alternativas: ahorra una llamada a la IA
+  if ((userMessage || '').trim().split(/s+/).length <= 3) return [userMessage];
 
   const busName = business?.name || 'Negocio';
   const busCategory = business?.category || 'Atención y Servicios';
@@ -200,11 +125,8 @@ const generateSubQueries = async (userMessage, business = null, chatHistory = []
     : '';
 
   try {
-    const models = await getActiveModels(client);
-    const modelToUse = models[0] || CANDIDATE_MODELS[0];
-
-    const response = await client.chat.completions.create({
-      model: modelToUse,
+    const response = await chatComplete({
+      lowPriority: true,
       messages: [
         {
           role: 'system',
@@ -219,7 +141,8 @@ Responde ÚNICAMENTE con las consultas separadas por "|", sin texto adicional ni
       temperature: 0.2,
     });
 
-    const raw = response.choices[0]?.message?.content || '';
+    if (!response) return [userMessage];
+    const raw = response.content || '';
     const queries = raw
       .replace(/<think>[\s\S]*?<\/think>/gi, '')
       .split('|')
@@ -671,44 +594,26 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
       { role: 'user', content: userMessage },
     ];
 
-    const client = getGroqClient();
+    // Purga cualquier bloque <think> completo o truncado
+    const stripThink = (t) => (t || '')
+      .replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, '')
+      .replace(/<\/?think>/gi, '')
+      .trim();
+
     let fullReply = null;
     let tokensUsed = 0;
 
-    if (client) {
-      const activeModels = await getActiveModels(client);
-      for (const modelName of activeModels) {
-        try {
-          const response = await client.chat.completions.create({
-            model: modelName,
-            messages,
-            max_tokens: 350,
-            temperature: 0.25,
-          });
-
-          if (response?.choices?.[0]?.message?.content) {
-            let candidateReply = response.choices[0].message.content;
-            // Purgar de raíz cualquier bloque <think> completo o truncado
-            candidateReply = candidateReply
-              .replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, '')
-              .replace(/<\/?think>/gi, '')
-              .trim();
-
-            // Si quedó vacío porque el modelo solo gastó tokens pensando, descartar y pasar al siguiente
-            if (!candidateReply || candidateReply.length < 2) {
-              console.warn(`[Groq] Modelo ${modelName} solo emitió tokens de pensamiento, probando siguiente modelo...`);
-              continue;
-            }
-
-            fullReply = candidateReply;
-            tokensUsed = response.usage?.total_tokens || 0;
-            console.log(`[Groq] ✅ Respuesta IA generada con modelo: ${modelName}`);
-            break;
-          }
-        } catch (modelErr) {
-          console.warn(`[Groq] Modelo ${modelName} no disponible:`, modelErr.message);
-        }
-      }
+    const response = await chatComplete({
+      messages,
+      max_tokens: 350,
+      temperature: 0.25,
+      // Si el modelo solo gastó tokens pensando, la respuesta queda vacía: probar el siguiente
+      accept: (text) => stripThink(text).length >= 2,
+    });
+    if (response) {
+      fullReply = stripThink(response.content);
+      tokensUsed = response.tokens;
+      console.log(`[IA] ✅ Respuesta generada con ${response.provider}:${response.model}`);
     }
 
     const usedFallback = !fullReply;

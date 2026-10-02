@@ -8,14 +8,48 @@ const { isOutsideHours } = require('../services/businessHours');
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const randomDelay = () => sleep(Math.floor(Math.random() * 2000) + 800);
 
-// Rate limit: máx 20 mensajes/hora por contacto
+// Rate limit anti-spam: máx 60 mensajes/hora por contacto (un cliente armando un pedido
+// largo puede pasar de 20 sin ser spam)
+const MAX_MSGS_PER_HOUR = 60;
 const messageCount = new Map();
 const isRateLimited = (phone) => {
-  const key = `${phone}_${Math.floor(Date.now() / 3600000)}`;
+  const hour = Math.floor(Date.now() / 3600000);
+  const key = `${phone}_${hour}`;
   const count = messageCount.get(key) || 0;
-  if (count >= 20) return true;
+  if (count >= MAX_MSGS_PER_HOUR) return true;
   messageCount.set(key, count + 1);
+  // Limpiar contadores de horas pasadas para no acumular memoria
+  if (messageCount.size > 5000) {
+    for (const k of messageCount.keys()) if (!k.endsWith(`_${hour}`)) messageCount.delete(k);
+  }
   return false;
+};
+
+// ─── Ráfagas: el cliente escribe "hola" / "una pregunta" / "cuánto vale X" seguido ──
+// Se espera BURST_WAIT_MS desde el último mensaje y se responde UNA vez a todo junto.
+// Los mensajes anteriores de la ráfaga se guardan en la DB pero no llaman a la IA.
+const BURST_WAIT_MS = Math.max(0, parseInt(process.env.BOT_BURST_WAIT_MS, 10) || 3500);
+const bursts = new Map(); // `${userId}:${phone}` -> { seq, lastAt }
+
+const registerBurstMessage = (burstKey) => {
+  const prev = bursts.get(burstKey);
+  const entry = { seq: (prev?.seq || 0) + 1, lastAt: Date.now() };
+  bursts.set(burstKey, entry);
+  return entry.seq;
+};
+
+// true si llegó otro mensaje del mismo cliente después de este (ese responderá por los dos)
+const isSupersededByNewer = async (burstKey, seq) => {
+  while (true) {
+    const entry = bursts.get(burstKey);
+    if (!entry || entry.seq !== seq) return true;
+    const remaining = entry.lastAt + BURST_WAIT_MS - Date.now();
+    if (remaining <= 0) {
+      bursts.delete(burstKey);
+      return false;
+    }
+    await sleep(remaining);
+  }
 };
 
 // ─── Extraer texto del mensaje Baileys ────────────────────────────────────────
@@ -172,6 +206,10 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
 
   const { enqueueIncomingMessage } = require('../queues/messageQueue');
 
+  // Se registra al llegar (antes de la cola) para que el mensaje anterior sepa que hay uno nuevo
+  const burstKey = `${userId}:${contactPhone}`;
+  const burstSeq = registerBurstMessage(burstKey);
+
   return enqueueIncomingMessage(contactPhone, async () => {
     const contactName = msg.pushName || contactPhone;
     const text = extractText(msg).trim();
@@ -311,6 +349,13 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
     return;
   }
 
+  // ── 3.2. Ráfaga: si el cliente sigue escribiendo, responde el último mensaje por todos ──
+  // Las fotos no se saltan: cada una necesita su propio análisis de visión.
+  if (!getImageMessage(msg) && await isSupersededByNewer(burstKey, burstSeq)) {
+    console.log(`[MSG] ⏳ ${contactPhone} siguió escribiendo: se responde todo junto en el siguiente mensaje`);
+    return;
+  }
+
   // ── 3.5. Verificar estado de suscripción, prueba y límite estricto de mensajes ────
   try {
     const { getValidUserId, emitToUserRooms } = require('./sessionManager');
@@ -358,7 +403,11 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
   }
 
   // ── 4. Rate limit anti-spam ───────────────────────────────────────────────
-  if (isRateLimited(contactPhone)) return;
+  if (isRateLimited(contactPhone)) {
+    console.warn(`[MSG] 🛑 ${contactPhone} superó ${MAX_MSGS_PER_HOUR} mensajes en la hora: el bot no responde, pasa a un asesor`);
+    emitManualNeeded(userId, { conversationId: conversation?.id, contactName, message: text });
+    return;
+  }
 
   // ── 5. Obtener negocio ────────────────────────────────────────────────────
   let business = null;
@@ -554,7 +603,7 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
     if (conversation?.id) {
       const { data } = await supabase
         .from('messages')
-        .select('content, direction')
+        .select('content, direction, timestamp')
         .eq('conversation_id', conversation.id)
         .order('timestamp', { ascending: false })
         .limit(12);
@@ -710,6 +759,22 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
     }
 
     aiText = buildImageContext(analysis, caption);
+  } else {
+    // Juntar los mensajes seguidos que el cliente mandó sin respuesta del bot (últimos 2 min)
+    // en una sola pregunta, y sacarlos del historial para no repetirlos.
+    const cutoff = Date.now() - 2 * 60 * 1000;
+    let i = history.length;
+    while (
+      i > 0 && history.length - i < 6 &&
+      history[i - 1].direction === 'inbound' &&
+      (!history[i - 1].timestamp || new Date(history[i - 1].timestamp).getTime() >= cutoff)
+    ) i--;
+    const burstTexts = history.slice(i).map(m => (m.content || '').trim()).filter(Boolean);
+    if (burstTexts.length > 1 && burstTexts[burstTexts.length - 1] === text) {
+      aiText = burstTexts.join('\n');
+      history = history.slice(0, i);
+      console.log(`[MSG] 🧩 ${contactPhone}: ${burstTexts.length} mensajes seguidos respondidos en una sola respuesta`);
+    }
   }
 
   // ── 10. RAG + Groq: generar respuesta ─────────────────────────────────────
