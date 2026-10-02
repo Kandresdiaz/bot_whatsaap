@@ -824,6 +824,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-10-02** | Merge pull request #11 from Kandresdiaz/fix/modelo-google-dinamico (`b82f1e9`) | Auto-deploy |
 
+| **2026-10-02** | Merge pull request #12 from Kandresdiaz/fix/google-503 (`7bf7c00`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
