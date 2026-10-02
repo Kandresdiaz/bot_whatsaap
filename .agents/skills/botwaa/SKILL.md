@@ -822,6 +822,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-10-02** | Merge pull request #10 from Kandresdiaz/feat/vision-gratis (`feb9b8f`) | Auto-deploy |
 
+| **2026-10-02** | Merge pull request #11 from Kandresdiaz/fix/modelo-google-dinamico (`b82f1e9`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
