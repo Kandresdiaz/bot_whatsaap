@@ -366,6 +366,7 @@ router.post('/simulate/:userId', ownsParam('userId'), async (req, res) => {
       reply: r.reply,
       image,
       usedFallback: Boolean(r.usedFallback),
+      groundingBlocked: Boolean(r.groundingBlocked),
       detected: {
         lead: Boolean(r.isLeadHot),
         order,

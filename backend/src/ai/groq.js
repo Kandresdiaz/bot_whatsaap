@@ -2,6 +2,7 @@
 // llamadas simultáneas y respeta los límites de cada proveedor. Los modelos 'groq/compound*' se
 // excluyen allí: buscan en internet y traen datos que el dueño nunca configuró.
 const { chatComplete } = require('./llmPool');
+const { verifyReplyAmounts, reconcileOrderTotal } = require('./grounding');
 
 // ─── 0. Normalización de Texto para Búsqueda RAG ─────────────────────────────
 const normalizeSearchText = (text) => {
@@ -59,7 +60,14 @@ const SPANISH_STOPWORDS = new Set([
   'mi', 'mis', 'tu', 'tus', 'me', 'te', 'le', 'les', 'lo', 'nos',
   'tiene', 'tienen', 'hay', 'este', 'esta', 'estos', 'estas',
   'mas', 'pero', 'bien', 'bueno', 'sobre', 'todo', 'todos', 'toda', 'todas',
-  'dime', 'cuentame', 'favor'
+  'dime', 'cuentame', 'favor',
+  // Palabras que solo enmarcan una necesidad ("necesito algo para dormir"): lo que se busca es
+  // "dormir", no "necesito" ni "algo", que de otro modo emparejarían con cualquier producto.
+  'necesito', 'necesita', 'necesitamos', 'necesitaba', 'busco', 'buscando', 'buscamos',
+  'quiero', 'quisiera', 'queria', 'algo', 'alguna', 'alguno', 'algun', 'cosa', 'cosas',
+  'opcion', 'opciones', 'recomienda', 'recomiendan', 'recomiendas', 'recomiendame', 'recomendar',
+  'ayuda', 'ayudame', 'tengan', 'tendran', 'tendra', 'saber', 'informacion', 'info',
+  'puedo', 'puede', 'pueden', 'quiere', 'me', 'sirve', 'sirva'
 ]);
 
 // ─── 1. RAG: Buscar chunks relevantes de la knowledge base ───────────────────
@@ -112,10 +120,58 @@ const searchKnowledge = (query, knowledge) => {
 };
 
 // ─── 2. Generar sub-consultas contextuales con IA ────────────────────────────
-const generateSubQueries = async (userMessage, business = null, chatHistory = []) => {
-  // Saludos y mensajes cortos no necesitan búsquedas alternativas: ahorra una llamada a la IA
-  if ((userMessage || '').trim().split(/s+/).length <= 3) return [userMessage];
+// Cortesías y continuaciones: no buscan nada en el catálogo, no justifican gastar IA.
+const CHITCHAT_WORDS = new Set([
+  'hola', 'buenas', 'buenos', 'buen', 'dia', 'dias', 'tarde', 'tardes', 'noche', 'noches',
+  'gracias', 'muchas', 'mil', 'ok', 'okay', 'vale', 'listo', 'lista', 'dale', 'perfecto', 'claro',
+  'si', 'sii', 'no', 'bueno', 'genial', 'excelente', 'entendido', 'acuerdo', 'de', 'que', 'mas',
+  'tal', 'como', 'estas', 'esta', 'bien', 'chao', 'adios', 'hasta', 'luego', 'por', 'favor',
+]);
 
+const STRONG_KNOWLEDGE_SCORE = 10; // frase en el título, o varias palabras del título
+const STRONG_PRODUCT_SCORE = 4;    // al menos una palabra exacta en el nombre de un producto
+
+// ¿Vale la pena gastar una llamada a la IA para generar sub-consultas? Casi nunca: solo cuando
+// el buscador local no encuentra nada claro y el contexto no cabe completo en el prompt.
+const shouldExpandWithLLM = (userMessage, knowledge = [], products = []) => {
+  const tokens = normalizeSearchText(userMessage).split(' ').filter(Boolean);
+  if (tokens.length === 0) return false;
+  if (tokens.every(t => CHITCHAT_WORDS.has(t))) return false;
+  if (!tokens.some(t => t.length >= 2 && !SPANISH_STOPWORDS.has(t) && !CHITCHAT_WORDS.has(t))) return false;
+
+  // Si el catálogo y la base de conocimiento caben completos en el prompt, el modelo ya ve todo
+  const knowledgeChars = (knowledge || []).reduce((n, k) => n + (k.title?.length || 0) + (k.content?.length || 0), 0);
+  if (knowledgeChars <= FULL_KNOWLEDGE_MAX_CHARS && (products || []).length <= 15) return false;
+
+  // Coincidencia local fuerte: el buscador ya encontró lo que el cliente pide
+  const knowledgeTop = searchKnowledge(userMessage, knowledge)[0]?.score || 0;
+  if (knowledgeTop >= STRONG_KNOWLEDGE_SCORE) return false;
+  const productTop = rankAndFilterProducts(userMessage, products, []).topScore || 0;
+  if (productTop >= STRONG_PRODUCT_SCORE) return false;
+
+  return true;
+};
+
+// Vocabulario real del negocio: la IA traduce la necesidad del cliente a estos términos
+// ("algo para dormir" → "colchón") en vez de adivinar palabras que el catálogo no usa.
+const buildVocabulary = (knowledge = [], products = []) => {
+  const clip = (s, n) => (s || '').toString().trim().slice(0, n);
+  const categories = Array.from(new Set((products || []).map(p => clip(p.category, 40)).filter(Boolean))).slice(0, 40);
+  const names = (products || []).map(p => clip(p.name, 45)).filter(Boolean).slice(0, 60);
+  const titles = (knowledge || []).map(k => clip(k.title, 60)).filter(Boolean).slice(0, 30);
+  const parts = [];
+  if (categories.length) parts.push(`Categorías: ${categories.join(', ')}`);
+  if (names.length) parts.push(`Productos: ${names.join(' | ')}`);
+  if (titles.length) parts.push(`Temas de la base de conocimiento: ${titles.join(' | ')}`);
+  return parts.join('\n');
+};
+
+// Sub-consultas ya calculadas: el mismo mensaje en el mismo contexto no se vuelve a pagar.
+const SUBQUERY_TTL_MS = 30 * 60 * 1000;
+const SUBQUERY_MAX_ENTRIES = 500;
+const subQueryCache = new Map();
+
+const generateSubQueries = async (userMessage, business = null, chatHistory = [], vocabulary = '') => {
   const busName = business?.name || 'Negocio';
   const busCategory = business?.category || 'Atención y Servicios';
   const busGoal = business?.main_goal || 'vender';
@@ -124,14 +180,21 @@ const generateSubQueries = async (userMessage, business = null, chatHistory = []
     ? chatHistory.filter(m => m.direction === 'outbound').slice(-1)[0]?.content || ''
     : '';
 
+  const cacheKey = `${business?.id || 'x'}|${normalizeSearchText(userMessage)}|${normalizeSearchText(lastAssistantMsg).slice(0, 80)}`;
+  const hit = subQueryCache.get(cacheKey);
+  if (hit && hit.expiresAt > Date.now()) return hit.value;
+
   try {
     const response = await chatComplete({
       lowPriority: true,
       messages: [
         {
           role: 'system',
-          content: `Eres un motor de búsqueda RAG para la base de conocimiento y catálogo del negocio "${busName}" (Giro: ${busCategory}, Objetivo: ${busGoal}).
-Dado el mensaje de un cliente de WhatsApp y el contexto previo de la conversación, genera de 2 a 3 consultas o términos clave alternativos (ej: nombre exacto del plan o producto al que hace referencia, sinónimos, dudas sobre límites o funciones) para buscar en la base de datos.
+          content: `Eres un motor de búsqueda RAG para el catálogo y la base de conocimiento del negocio "${busName}" (Giro: ${busCategory}, Objetivo: ${busGoal}).
+Tu trabajo es SOLO ayudar a ENCONTRAR información, nunca responder al cliente.
+Dado el mensaje del cliente y el contexto previo, traduce lo que necesita (nombre de producto, para qué lo quiere, sinónimos, una duda de envíos/pagos/garantía) a 2 o 3 consultas cortas, usando de preferencia palabras que EXISTAN en este vocabulario del negocio:
+${vocabulary || '(sin vocabulario disponible)'}
+Si nada del vocabulario se relaciona con lo que pide, responde exactamente: NINGUNA
 Responde ÚNICAMENTE con las consultas separadas por "|", sin texto adicional ni números.`
         },
         ...(lastAssistantMsg ? [{ role: 'assistant', content: lastAssistantMsg.slice(0, 300) }] : []),
@@ -141,17 +204,24 @@ Responde ÚNICAMENTE con las consultas separadas por "|", sin texto adicional ni
       temperature: 0.2,
     });
 
-    if (!response) return [userMessage];
-    const raw = response.content || '';
-    const queries = raw
-      .replace(/<think>[\s\S]*?<\/think>/gi, '')
-      .split('|')
-      .map(q => q.trim())
-      .filter(q => q.length > 0);
-    return queries.length > 0 ? queries : [userMessage];
+    if (!response) return [];
+    const raw = (response.content || '').replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, '').trim();
+    const queries = /^ninguna\.?$/i.test(raw)
+      ? []
+      : raw.split('|').map(q => q.trim()).filter(q => q.length > 0 && q.length <= 80 && !/^ninguna\.?$/i.test(q)).slice(0, 3);
+
+    if (subQueryCache.size >= SUBQUERY_MAX_ENTRIES) subQueryCache.delete(subQueryCache.keys().next().value);
+    subQueryCache.set(cacheKey, { value: queries, expiresAt: Date.now() + SUBQUERY_TTL_MS });
+    return queries;
   } catch (e) {
-    return [userMessage];
+    return [];
   }
+};
+
+// Punto único de entrada: decide si hace falta la IA y, si no, no la usa.
+const getSubQueries = async (userMessage, business, chatHistory, knowledge, products) => {
+  if (!shouldExpandWithLLM(userMessage, knowledge, products)) return [];
+  return generateSubQueries(userMessage, business, chatHistory, buildVocabulary(knowledge, products));
 };
 
 // ─── 3. RAG Multi-Query ───────────────────────────────────────────────────────
@@ -248,7 +318,7 @@ const rankAndFilterProducts = (query, products, subQueries = []) => {
   });
 
   const matched = scored.filter(i => i.score > 0).sort((a, b) => b.score - a.score);
-  if (matched.length > 0) return { list: matched.slice(0, 15), specific: true, catalogHasProducts: true, noMatch: false };
+  if (matched.length > 0) return { list: matched.slice(0, 15), specific: true, catalogHasProducts: true, noMatch: false, topScore: matched[0].score };
   // Catálogo grande + consulta puntual sin ninguna coincidencia: NO devolvemos productos al azar.
   return { list: [], specific: false, catalogHasProducts: true, noMatch: true };
 };
@@ -607,7 +677,7 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
       (m.content.toLowerCase().includes('hola') || m.content.toLowerCase().includes('bienvenid'))
     );
 
-    const subQueries = await generateSubQueries(userMessage, safeBusiness, formattedHistory);
+    const subQueries = await getSubQueries(userMessage, safeBusiness, formattedHistory, knowledge, products);
     const relevantKnowledge = await ragSearch(userMessage, knowledge, safeBusiness, formattedHistory, subQueries);
     const systemPrompt = buildSystemPrompt(safeBusiness, relevantKnowledge, knowledge, products, isFirstMessage, userMessage, subQueries, hasAlreadyGreeted);
 
@@ -640,6 +710,38 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
       fullReply = stripThink(response.content);
       tokensUsed = response.tokens;
       console.log(`[IA] ✅ Respuesta generada con ${response.provider}:${response.model}`);
+    }
+
+    // ── Verificación anti-invención: todo valor en dinero debe salir de lo configurado ──
+    let groundingBlocked = false;
+    if (fullReply) {
+      const groundingCtx = {
+        products,
+        knowledge,
+        business: safeBusiness,
+        texts: [userMessage, ...formattedHistory.map(m => m.content)],
+      };
+      let check = verifyReplyAmounts(fullReply, groundingCtx);
+      if (!check.ok) {
+        console.warn(`[GROUNDING] ⚠️ Valores sin respaldo en la respuesta: ${check.invalid.join(', ')} → reintentando una vez`);
+        const correction = `\n\n## CORRECCIÓN OBLIGATORIA\nTu respuesta anterior mencionó estos valores que NO están registrados en el negocio: ${check.invalid.map(v => `$${v.toLocaleString('es-CO')}`).join(', ')}. Responde de nuevo SIN inventar ni calcular valores: usa solo los precios y montos exactos del catálogo o de la base de conocimiento; si no tienes el dato, di que lo confirmas con un asesor.`;
+        const retry = await chatComplete({
+          messages: [{ role: 'system', content: systemPrompt + correction }, ...messages.slice(1)],
+          max_tokens: 350,
+          temperature: 0.1,
+          accept: (text) => stripThink(text).length >= 2,
+        });
+        if (retry) {
+          tokensUsed += retry.tokens || 0;
+          fullReply = stripThink(retry.content);
+          check = verifyReplyAmounts(fullReply, groundingCtx);
+        }
+        if (!retry || !check.ok) {
+          console.warn('[GROUNDING] 🛑 El reintento sigue con valores sin respaldo: se deriva a un asesor');
+          groundingBlocked = true;
+          fullReply = 'Ese valor te lo confirmo con un asesor del equipo en un momento 🙏 ¿Mientras tanto, te ayudo con algo más del catálogo?';
+        }
+      }
     }
 
     const usedFallback = !fullReply;
@@ -677,7 +779,8 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
     let newOrderData = null;
     if (orderMatch) {
       try {
-        newOrderData = JSON.parse(orderMatch[1]);
+        // El total se recalcula con los precios reales del catálogo: el del modelo no se guarda a ciegas
+        newOrderData = reconcileOrderTotal(JSON.parse(orderMatch[1]), products);
       } catch (_) {}
     }
 
@@ -701,7 +804,7 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
     let modifyOrderData = null;
     if (modifyOrderMatch) {
       try {
-        modifyOrderData = JSON.parse(modifyOrderMatch[1]);
+        modifyOrderData = reconcileOrderTotal(JSON.parse(modifyOrderMatch[1]), products);
       } catch (_) {}
     }
 
@@ -718,15 +821,14 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
       .replace(/\[DATOS_CLIENTE:[^\]]+\]/gi, '')
       .trim();
 
-    // Guardar respuesta en caché Redis/RAM para consumo 0 tokens en siguientes consultas iguales
-    if (reply && isFirstOrIsolated && !usedFallback) {
+    // Guardar respuesta en caché Redis/RAM para consumo 0 tokens en siguientes consultas iguales.
+    // Solo respuestas informativas: una que crea pedido o cita lleva datos de ESE cliente y no
+    // puede entregarse a otro que escriba lo mismo.
+    if (reply && isFirstOrIsolated && !usedFallback && !groundingBlocked && !isLeadHot) {
       setCachedAiResponse(safeBusiness?.id, userMessage, {
         reply,
         isLeadHot,
         imageName,
-        newAppointmentData,
-        newOrderData,
-        clientData,
         ragChunksUsed: relevantKnowledge.length,
       }).catch(() => {});
     }
@@ -744,6 +846,7 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
       clientData,
       ragChunksUsed: relevantKnowledge.length,
       usedFallback,
+      groundingBlocked,
     };
   } catch (err) {
     console.error('[Groq] Error en askGroq:', err.message);
@@ -773,4 +876,4 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
   }
 };
 
-module.exports = { askGroq, ragSearch, searchKnowledge, rankAndFilterProducts };
+module.exports = { askGroq, ragSearch, searchKnowledge, rankAndFilterProducts, shouldExpandWithLLM, buildVocabulary, getSubQueries };
