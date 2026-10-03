@@ -1,6 +1,7 @@
 const { supabase } = require('../db/supabase');
 const { askGroq } = require('../ai/groq');
 const { loadCatalogContext } = require('../services/catalogContext');
+const { extraOrderFields } = require('../ai/orderNotes');
 const { notifyLead } = require('./notifier');
 const { handleAppointmentFlow } = require('./appointmentFlow');
 const { isOutsideHours } = require('../services/businessHours');
@@ -891,7 +892,7 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
       const city = orderDetails.ciudad || '';
       const payMethod = orderDetails.metodo_pago || 'Por confirmar';
       const orderTotal = orderDetails.total || orderDetails.precio || 0;
-      const extraNotes = [orderDetails.notas, orderDetails.telefono && `Tel. que dio: ${orderDetails.telefono}`].filter(Boolean).join(' · ');
+      const extraNotes = [orderDetails.notas, ...extraOrderFields(orderDetails), orderDetails.telefono && `Tel. que dio: ${orderDetails.telefono}`].filter(Boolean).join(' · ');
 
       // Mismo pedido repetido por la IA en las últimas horas de esta conversación: no se duplica
       const since = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
@@ -944,8 +945,7 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
         if (modifyOrderData.direccion) updates.shipping_address = modifyOrderData.direccion;
         if (modifyOrderData.ciudad) updates.city = modifyOrderData.ciudad;
         if (modifyOrderData.metodo_pago) updates.payment_method = modifyOrderData.metodo_pago;
-        const changeNote = modifyOrderData.notas
-          || [modifyOrderData.cantidad && `cantidad: ${modifyOrderData.cantidad}`].filter(Boolean).join(' · ');
+        const changeNote = [modifyOrderData.notas, ...extraOrderFields(modifyOrderData, { alwaysQuantity: true })].filter(Boolean).join(' · ');
         if (changeNote) {
           updates.notes = `${prev.notes || ''} · Modificado por Bot IA: ${changeNote}`.trim();
         }

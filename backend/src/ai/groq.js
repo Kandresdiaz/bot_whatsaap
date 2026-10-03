@@ -580,6 +580,7 @@ ${business?.payment_or_booking_link ? `Enlace o Método de Pago / Agenda: ${busi
 [LEAD_CALIENTE]
 [NUEVO_PEDIDO: {"nombre": "...", "telefono": "...", "producto": "...", "cantidad": 1, "total": 0, "direccion": "...", "ciudad": "...", "metodo_pago": "...", "notas": "..."}]
 ("total" = precio del catálogo × cantidad, solo números. Usa solo datos que el cliente dio; deja "" lo que no dio: nunca valores de ejemplo ni supuestos. En "notas" pon lo relevante: contado/financiado, color, versión, etc.)
+(Si las INSTRUCCIONES DE CIERRE del dueño piden datos que no tienen campo propio —fecha y hora de entrega, quién recibe, dedicatoria, referencia, alergias, etc.— agrégalos al mismo JSON como campos extra con nombre corto, por ejemplo "fecha_entrega": "sábado 14 8:00 am", "recibe": "Laura", "dedicatoria": "...". Solo lo que el cliente dijo; nunca los inventes.)
 - Si pide cambiar un pedido ya tomado (cantidad, producto, dirección, ciudad o medio de pago), confírmale el cambio en 1 o 2 líneas y añade al final (una sola vez):
 [MODIFICAR_PEDIDO: {"producto": "...", "cantidad": 1, "total": 0, "direccion": "...", "ciudad": "...", "metodo_pago": "...", "notas": "..."}]
 (Incluye SOLO los campos que cambian; deja "" u omite lo que no cambia. "total" = precio del catálogo × cantidad, solo números; nunca inventes precios.)`;
