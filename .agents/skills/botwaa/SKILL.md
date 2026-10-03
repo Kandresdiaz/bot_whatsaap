@@ -836,6 +836,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-10-03** | Merge pull request #16 from Kandresdiaz/fix/rag-subconsultas-cache-verificacion (`c00b2f9`) | Auto-deploy |
 
+| **2026-10-03** | Merge pull request #17 from Kandresdiaz/feat/busqueda-sql-catalogos (`37882a9`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
