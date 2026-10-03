@@ -123,6 +123,9 @@ const setCachedAiResponse = async (businessId, userMessage, responseObj, ttlSeco
 const clearBusinessAiCache = async (businessId) => {
   if (!businessId) return;
 
+  // El resumen del catálogo (total y categorías) también cambia cuando el dueño edita productos
+  try { require('../services/catalogContext').invalidateCatalogSummary(businessId); } catch (_) {}
+
   // Limpiar en RAM solo las entradas de este negocio
   for (const key of memoryCache.keys()) {
     if (key.startsWith(`ai_cache:${businessId}:`)) {

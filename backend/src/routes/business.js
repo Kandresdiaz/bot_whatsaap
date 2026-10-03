@@ -334,11 +334,13 @@ router.post('/simulate/:userId', ownsParam('userId'), async (req, res) => {
     const business = buses?.[0];
     if (!business) return res.status(404).json({ success: false, error: 'Primero configura tu negocio en "Configurar Bot".' });
 
-    const [{ data: knowledge }, { data: products }] = await Promise.all([
+    // Misma carga de catálogo que WhatsApp real: lo que se prueba aquí es lo que reciben los clientes
+    const { loadCatalogContext } = require('../services/catalogContext');
+    const [{ data: knowledge }, catalog] = await Promise.all([
       supabase.from('knowledge_base').select('id, title, content, type, file_url').eq('business_id', business.id).eq('is_active', true),
-      supabase.from('products_services').select('name, description, price, currency, category, image_url')
-        .eq('business_id', business.id).eq('is_active', true).order('category', { ascending: true }).limit(150),
+      loadCatalogContext({ supabase, business, text: message }),
     ]);
+    const products = catalog.products;
 
     const { isOutsideHours } = require('../services/businessHours');
     if (isOutsideHours(business)) business.isOutsideHours = true;
@@ -350,13 +352,14 @@ router.post('/simulate/:userId', ownsParam('userId'), async (req, res) => {
       .map(m => ({ content: m.text.slice(0, 2000), direction: m.from === 'bot' ? 'outbound' : 'inbound' }));
 
     const { askGroq } = require('../ai/groq');
-    const r = await askGroq(message, business, knowledge || [], history, products || []);
+    const r = await askGroq(message, business, knowledge || [], history, products || [], catalog.options);
 
     let image = null;
     if (r.imageName) {
       const needle = r.imageName.toLowerCase();
-      const prod = (products || []).find(p => p.image_url && p.name.toLowerCase().includes(needle))
-        || (products || []).find(p => p.image_url && needle.includes(p.name.toLowerCase()));
+      const seen = [...(r.productsUsed || []), ...(products || [])];
+      const prod = seen.find(p => p.image_url && p.name.toLowerCase().includes(needle))
+        || seen.find(p => p.image_url && needle.includes(p.name.toLowerCase()));
       if (prod) image = { url: prod.image_url, caption: prod.name };
     }
 
