@@ -189,23 +189,33 @@ const isSimpleGreeting = (text) => {
   return greetings.includes(norm) || norm.length <= 4;
 };
 
+// Devuelve { list, specific, catalogHasProducts, noMatch }:
+// - specific: la lista son productos que SÍ coinciden con la consulta puntual del cliente.
+// - noMatch: hay catálogo pero NINGÚN producto coincide con la consulta puntual → no entregamos
+//   productos al azar, para que el modelo no los presente como si fueran lo que el cliente pidió.
 const rankAndFilterProducts = (query, products, subQueries = []) => {
-  if (!Array.isArray(products) || products.length <= 10) return products || [];
-  if (!query || typeof query !== 'string') return products.slice(0, 10);
+  const all = Array.isArray(products) ? products : [];
+  if (all.length === 0) return { list: [], specific: false, catalogHasProducts: false, noMatch: false };
+  // Catálogo pequeño: cabe completo, el modelo ve TODO y no tiene que adivinar nada.
+  if (all.length <= 15) return { list: all, specific: false, catalogHasProducts: true, noMatch: false };
+  if (!query || typeof query !== 'string') return { list: all.slice(0, 12), specific: false, catalogHasProducts: true, noMatch: false };
 
   const allSearchTerms = [query, ...(Array.isArray(subQueries) ? subQueries : [])];
   const allWords = new Set();
 
+  // Solo usamos palabras CON contenido (sin stopwords) para puntuar. Si la consulta son puras
+  // stopwords ("¿qué tienen?", "hola, me cuentas"), es navegación genérica → muestra, no "sin match".
   for (const term of allSearchTerms) {
     const norm = normalizeSearchText(term);
     const tokens = norm.split(/\s+/).filter(w => w.length >= 2);
     const meaningful = tokens.filter(w => !SPANISH_STOPWORDS.has(w));
-    (meaningful.length > 0 ? meaningful : tokens).forEach(w => allWords.add(w));
+    meaningful.forEach(w => allWords.add(w));
   }
 
-  if (allWords.size === 0) return products.slice(0, 10);
+  // Consulta genérica (sin palabras de contenido): mostramos una muestra para que explore.
+  if (allWords.size === 0) return { list: all.slice(0, 12), specific: false, catalogHasProducts: true, noMatch: false };
 
-  const scored = products.map(item => {
+  const scored = all.map(item => {
     const normName = normalizeSearchText(item.name || '');
     const normCat = normalizeSearchText(item.category || '');
     const normDesc = normalizeSearchText(item.description || '');
@@ -238,8 +248,9 @@ const rankAndFilterProducts = (query, products, subQueries = []) => {
   });
 
   const matched = scored.filter(i => i.score > 0).sort((a, b) => b.score - a.score);
-  if (matched.length > 0) return matched.slice(0, 8);
-  return products.slice(0, 10);
+  if (matched.length > 0) return { list: matched.slice(0, 15), specific: true, catalogHasProducts: true, noMatch: false };
+  // Catálogo grande + consulta puntual sin ninguna coincidencia: NO devolvemos productos al azar.
+  return { list: [], specific: false, catalogHasProducts: true, noMatch: true };
 };
 
 // Topes del contexto: un documento largo (p. ej. un PDF subido antes de partirse en
@@ -252,6 +263,7 @@ const buildKnowledgeContext = (knowledge) => {
 
   const blocks = [];
   let used = 0;
+  let dropped = 0;
   knowledge.forEach((k, i) => {
     const content = (k.content || '').length > MAX_ITEM_CHARS ? `${k.content.slice(0, MAX_ITEM_CHARS)}…` : (k.content || '');
     let block;
@@ -260,11 +272,14 @@ const buildKnowledgeContext = (knowledge) => {
     else if (k.type === 'file') block = `[GUÍA / DOCUMENTO ${i+1}: ${k.title}]\nContenido: ${content}`;
     else block = `[INFORMACIÓN OFICIAL ${i+1}: ${k.title}]\n${content}`;
 
-    if (used + block.length > MAX_KNOWLEDGE_CONTEXT_CHARS && blocks.length > 0) return;
+    if (used + block.length > MAX_KNOWLEDGE_CONTEXT_CHARS && blocks.length > 0) { dropped++; return; }
     blocks.push(block);
     used += block.length;
   });
-  return blocks.join('\n\n---\n\n');
+  let out = blocks.join('\n\n---\n\n');
+  // Si quedó información por fuera, avísale al modelo para que no rellene lo que no ve.
+  if (dropped > 0) out += `\n\n(Hay ${dropped} documento(s) más en la base de conocimiento que no caben en este contexto. Si el cliente pregunta algo que no aparece arriba, NO lo inventes: ofrece confirmarlo con un asesor del equipo.)`;
+  return out;
 };
 
 // ─── 5. System prompt con info del negocio ────────────────────────────────────
@@ -309,8 +324,11 @@ const buildSystemPrompt = (business, relevantKnowledge, allKnowledge, products =
   const relevantContext = buildKnowledgeContext(knowledgeForPrompt);
   const hasKnowledge = !!relevantContext;
 
-  const filteredProducts = rankAndFilterProducts(userMessage, products, subQueries);
+  const prodResult = rankAndFilterProducts(userMessage, products, subQueries);
+  const filteredProducts = prodResult.list;
   const hasProducts = Array.isArray(filteredProducts) && filteredProducts.length > 0;
+  const noProductMatch = prodResult.noMatch === true;
+  const isPartialSample = hasProducts && !prodResult.specific && Array.isArray(products) && products.length > filteredProducts.length;
   const productsContext = hasProducts
     ? filteredProducts.map(p => `- [${p.category || 'General'}] ${p.name}: $${Number(p.price || 0).toLocaleString('es-CO')} ${p.currency || 'COP'}${p.description ? ` (${p.description})` : ''}${p.image_url ? ` | Foto/Imagen: ${p.image_url}` : ''}`).join('\n')
     : null;
@@ -353,7 +371,10 @@ ${business?.payment_or_booking_link ? `Enlace o Método de Pago / Agenda: ${busi
 - Cuando entregue sus datos, confírmale el pedido con entusiasmo y añade al final (una sola vez: no repitas las etiquetas en mensajes siguientes del mismo pedido):
 [LEAD_CALIENTE]
 [NUEVO_PEDIDO: {"nombre": "...", "telefono": "...", "producto": "...", "cantidad": 1, "total": 0, "direccion": "...", "ciudad": "...", "metodo_pago": "...", "notas": "..."}]
-("total" = precio del catálogo × cantidad, solo números. Usa solo datos que el cliente dio; deja "" lo que no dio: nunca valores de ejemplo ni supuestos. En "notas" pon lo relevante: contado/financiado, color, versión, etc.)`;
+("total" = precio del catálogo × cantidad, solo números. Usa solo datos que el cliente dio; deja "" lo que no dio: nunca valores de ejemplo ni supuestos. En "notas" pon lo relevante: contado/financiado, color, versión, etc.)
+- Si pide cambiar un pedido ya tomado (cantidad, producto, dirección, ciudad o medio de pago), confírmale el cambio en 1 o 2 líneas y añade al final (una sola vez):
+[MODIFICAR_PEDIDO: {"producto": "...", "cantidad": 1, "total": 0, "direccion": "...", "ciudad": "...", "metodo_pago": "...", "notas": "..."}]
+(Incluye SOLO los campos que cambian; deja "" u omite lo que no cambia. "total" = precio del catálogo × cantidad, solo números; nunca inventes precios.)`;
 
   const dayNames = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
   let activeDays = business?.active_days;
@@ -403,7 +424,9 @@ ${greetingInstruction}
 ${businessInfo}
 
 ${categoriesOverview ? `${categoriesOverview}\n\n` : ''}${hasProducts
-  ? `## CATÁLOGO OFICIAL\n${productsContext}`
+  ? `## CATÁLOGO OFICIAL\n${productsContext}${isPartialSample ? '\n(Es solo una MUESTRA del catálogo, no está completo. Si el cliente busca algo puntual que no aparezca aquí, pídele el nombre/modelo para ubicarlo; no asumas que no existe.)' : ''}`
+  : noProductMatch
+  ? `## CATÁLOGO\nEl negocio SÍ tiene catálogo, pero NINGÚN producto coincide con lo que el cliente pregunta. NO afirmes que existe ni que no existe, y NO inventes nombre, precio, stock ni características. Pídele que precise el nombre o modelo, muéstrale las categorías de arriba, u ofrece confirmarlo con un asesor.`
   : `## CATÁLOGO\nNo hay productos individuales registrados. El negocio atiende en ${busCategory}.${business?.description ? ` ${business.description}` : ''}`}
 ${hasKnowledge ? `
 ## BASE DE CONOCIMIENTO (respuestas autorizadas: úsalas fielmente, con tus palabras, sin contradecirlas)
@@ -423,6 +446,9 @@ ${isSales ? '- Si el cliente quiere ver, probar o revisar algo en persona, ofré
 [NUEVA_CITA: {"nombre": "...", "servicio": "...", "fecha": "YYYY-MM-DD", "hora": "HH:MM:00"}]
 - Si pide cancelar su cita, confírmalo con calidez en menos de 3 líneas y añade al final:
 [CANCELAR_CITA: {"nombre": "...", "fecha": "YYYY-MM-DD", "servicio": "..."}]
+- Si pide cambiar o reprogramar su cita a otra fecha u hora, confírmale los NUEVOS datos en menos de 3 líneas y añade al final (una sola vez):
+[MODIFICAR_CITA: {"nombre": "...", "fecha_anterior": "YYYY-MM-DD", "fecha": "YYYY-MM-DD", "hora": "HH:MM:00", "servicio": "..."}]
+("fecha" y "hora" son los NUEVOS; incluye "fecha_anterior" solo si la conoces. Respeta horario, días hábiles y no uses fechas pasadas.)
 
 ## FOTOS
 Si pide foto de un producto del catálogo que tenga imagen, añade al final: [ENVIAR_IMAGEN: Nombre del Producto]`;
@@ -663,7 +689,23 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
       } catch (_) {}
     }
 
-    const isLeadHot = isLeadHotFlag || Boolean(newAppointmentData) || Boolean(newOrderData) || Boolean(clientData) || Boolean(cancelAppointmentData);
+    const modifyApptMatch = fullReply.match(/\[MODIFICAR_CITA:\s*(\{[\s\S]*?\})\]/i);
+    let modifyAppointmentData = null;
+    if (modifyApptMatch) {
+      try {
+        modifyAppointmentData = JSON.parse(modifyApptMatch[1]);
+      } catch (_) {}
+    }
+
+    const modifyOrderMatch = fullReply.match(/\[MODIFICAR_PEDIDO:\s*(\{[\s\S]*?\})\]/i);
+    let modifyOrderData = null;
+    if (modifyOrderMatch) {
+      try {
+        modifyOrderData = JSON.parse(modifyOrderMatch[1]);
+      } catch (_) {}
+    }
+
+    const isLeadHot = isLeadHotFlag || Boolean(newAppointmentData) || Boolean(newOrderData) || Boolean(clientData) || Boolean(cancelAppointmentData) || Boolean(modifyAppointmentData) || Boolean(modifyOrderData);
 
     const reply = fullReply
       .replace(/\[LEAD_CALIENTE\]/gi, '')
@@ -671,6 +713,8 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
       .replace(/\[NUEVA_CITA:[^\]]+\]/gi, '')
       .replace(/\[CANCELAR_CITA:[^\]]+\]/gi, '')
       .replace(/\[NUEVO_PEDIDO:[^\]]+\]/gi, '')
+      .replace(/\[MODIFICAR_CITA:[^\]]+\]/gi, '')
+      .replace(/\[MODIFICAR_PEDIDO:[^\]]+\]/gi, '')
       .replace(/\[DATOS_CLIENTE:[^\]]+\]/gi, '')
       .trim();
 
@@ -694,7 +738,9 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
       imageName,
       newAppointmentData,
       cancelAppointmentData,
+      modifyAppointmentData,
       newOrderData,
+      modifyOrderData,
       clientData,
       ragChunksUsed: relevantKnowledge.length,
       usedFallback,
@@ -716,6 +762,10 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
       tokensUsed: 0,
       imageName: null,
       newAppointmentData: null,
+      cancelAppointmentData: null,
+      modifyAppointmentData: null,
+      newOrderData: null,
+      modifyOrderData: null,
       clientData: null,
       ragChunksUsed: 0,
       usedFallback: true,
