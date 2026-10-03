@@ -834,6 +834,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-10-03** | Merge pull request #15 from Kandresdiaz/fix/rag-anti-alucinacion-y-modificar (`d44b7b3`) | Auto-deploy |
 
+| **2026-10-03** | Merge pull request #16 from Kandresdiaz/fix/rag-subconsultas-cache-verificacion (`c00b2f9`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
