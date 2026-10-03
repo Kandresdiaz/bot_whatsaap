@@ -832,6 +832,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-10-02** | fix: activar el bot en un chat vuelve a funcionar al instante (`88df773`) | Auto-deploy |
 
+| **2026-10-03** | Merge pull request #15 from Kandresdiaz/fix/rag-anti-alucinacion-y-modificar (`d44b7b3`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
