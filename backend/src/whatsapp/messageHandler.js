@@ -778,14 +778,14 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
   }
 
   // ── 10. RAG + Groq: generar respuesta ─────────────────────────────────────
-  const { reply, isLeadHot, tokensUsed, imageName, newAppointmentData, cancelAppointmentData, newOrderData, clientData, ragChunksUsed } = await askGroq(
+  const { reply, isLeadHot, tokensUsed, imageName, newAppointmentData, cancelAppointmentData, modifyAppointmentData, newOrderData, modifyOrderData, clientData, ragChunksUsed } = await askGroq(
     aiText, business, knowledge, history, products
   );
 
   console.log(`[RAG] Chunks usados: ${ragChunksUsed} | Tokens: ${tokensUsed}`);
 
   // ── 11. Actualizar Nombre de Contacto si fue capturado en el Cierre ────────
-  const capturedName = newOrderData?.nombre || clientData?.nombre || newAppointmentData?.nombre || cancelAppointmentData?.nombre;
+  const capturedName = newOrderData?.nombre || clientData?.nombre || newAppointmentData?.nombre || cancelAppointmentData?.nombre || modifyAppointmentData?.nombre;
   if (capturedName && conversation?.id && (conversation.contact_name === contactPhone || !conversation.contact_name)) {
     await safeQuery(() => supabase.from('conversations').update({ contact_name: capturedName }).eq('id', conversation.id));
   }
@@ -853,6 +853,41 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
     }
   }
 
+  // ── 12.0.1 Modificar / Reprogramar Cita en Base de Datos (si aplica) ─────
+  if (modifyAppointmentData && business?.id && (modifyAppointmentData.fecha || modifyAppointmentData.hora)) {
+    try {
+      const updates = {};
+      if (modifyAppointmentData.fecha) updates.appointment_date = modifyAppointmentData.fecha;
+      if (modifyAppointmentData.hora) updates.appointment_time = modifyAppointmentData.hora;
+      if (modifyAppointmentData.servicio) updates.service = modifyAppointmentData.servicio;
+
+      if (Object.keys(updates).length > 0) {
+        let modQuery = supabase.from('appointments').update(updates)
+          .eq('business_id', business.id).eq('status', 'confirmed');
+
+        if (conversation?.id) {
+          modQuery = modQuery.or(`conversation_id.eq.${conversation.id},client_phone.eq.${contactPhone}`);
+        } else {
+          modQuery = modQuery.eq('client_phone', contactPhone);
+        }
+        // Si el cliente dijo cuál cita cambiaba, apuntamos a esa fecha original
+        if (modifyAppointmentData.fecha_anterior) {
+          modQuery = modQuery.eq('appointment_date', modifyAppointmentData.fecha_anterior);
+        }
+
+        const { data: modifiedList } = await modQuery.select();
+        console.log(`[MSG] 🔁 Citas modificadas en DB: ${modifiedList?.length || 0}`);
+
+        if (modifiedList && modifiedList.length > 0 && global.io) {
+          const { emitToUserRooms } = require('./sessionManager');
+          emitToUserRooms(global.io, userId, 'appointment_modified', modifiedList[0]);
+        }
+      }
+    } catch (eMod) {
+      console.error('[MSG] Error modificando cita en DB:', eMod.message);
+    }
+  }
+
   // ── 12.1 Registrar Pedido Automático en Base de Datos (si aplica venta de productos) ──
   const orderDetails = newOrderData || (clientData && (clientData.producto || clientData.ciudad) ? clientData : null);
   if (orderDetails && conversation?.id && business?.id) {
@@ -892,6 +927,48 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
     } catch (eOrder) {
       if (eOrder.duplicate) console.log('[MSG] Pedido repetido por la IA, no se duplica.');
       else console.error('[MSG] Error guardando pedido automático:', eOrder.message);
+    }
+  }
+
+  // ── 12.2 Modificar Pedido ya tomado en Base de Datos (si aplica) ─────────
+  if (modifyOrderData && conversation?.id && business?.id) {
+    try {
+      // Apuntamos al último pedido pendiente de esta conversación
+      const { data: existingOrders } = await supabase.from('orders')
+        .select('id, items, total_amount, shipping_address, city, payment_method, notes')
+        .eq('conversation_id', conversation.id).eq('business_id', business.id)
+        .eq('status', 'pending').order('created_at', { ascending: false }).limit(1);
+
+      if (existingOrders && existingOrders.length > 0) {
+        const prev = existingOrders[0];
+        const updates = {};
+        if (modifyOrderData.producto) updates.items = modifyOrderData.producto;
+        const newTotal = modifyOrderData.total ?? modifyOrderData.precio;
+        if (newTotal !== undefined && newTotal !== '' && !isNaN(parseFloat(newTotal))) {
+          updates.total_amount = parseFloat(newTotal);
+        }
+        if (modifyOrderData.direccion) updates.shipping_address = modifyOrderData.direccion;
+        if (modifyOrderData.ciudad) updates.city = modifyOrderData.ciudad;
+        if (modifyOrderData.metodo_pago) updates.payment_method = modifyOrderData.metodo_pago;
+        const changeNote = modifyOrderData.notas
+          || [modifyOrderData.cantidad && `cantidad: ${modifyOrderData.cantidad}`].filter(Boolean).join(' · ');
+        if (changeNote) {
+          updates.notes = `${prev.notes || ''} · Modificado por Bot IA: ${changeNote}`.trim();
+        }
+
+        if (Object.keys(updates).length > 0) {
+          const { data: modOrder } = await supabase.from('orders').update(updates).eq('id', prev.id).select().limit(1);
+          console.log(`[MSG] 🔁 Pedido modificado en DB: ${modOrder?.length || 0}`);
+          if (modOrder && modOrder.length > 0 && global.io) {
+            const { emitToUserRooms } = require('./sessionManager');
+            emitToUserRooms(global.io, userId, 'order_modified', modOrder[0]);
+          }
+        }
+      } else {
+        console.log('[MSG] MODIFICAR_PEDIDO sin pedido pendiente previo: se ignora (no se crea uno nuevo).');
+      }
+    } catch (eModOrder) {
+      console.error('[MSG] Error modificando pedido en DB:', eModOrder.message);
     }
   }
 

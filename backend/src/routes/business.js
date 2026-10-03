@@ -371,6 +371,8 @@ router.post('/simulate/:userId', ownsParam('userId'), async (req, res) => {
         order,
         appointment: r.newAppointmentData || null,
         cancellation: r.cancelAppointmentData || null,
+        appointmentChange: r.modifyAppointmentData || null,
+        orderChange: r.modifyOrderData || null,
       },
     });
   } catch (e) {
