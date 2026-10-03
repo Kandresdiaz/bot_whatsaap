@@ -1,5 +1,7 @@
 const { supabase } = require('../db/supabase');
 const { askGroq } = require('../ai/groq');
+const { loadCatalogContext } = require('../services/catalogContext');
+const { extraOrderFields } = require('../ai/orderNotes');
 const { notifyLead } = require('./notifier');
 const { handleAppointmentFlow } = require('./appointmentFlow');
 const { isOutsideHours } = require('../services/businessHours');
@@ -519,24 +521,13 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
     console.error('[MSG] Error cargando knowledge base:', e.message);
   }
 
+  let catalogOptions = {};
   try {
-    let pQuery = supabase.from('products_services').select('name, description, price, currency, category, image_url').eq('is_active', true);
-    if (business?.id) {
-      pQuery = pQuery.eq('business_id', business.id);
-    }
-
-    // Filtro SQL por presupuesto si el usuario menciona montos (ej: "menos de 150.000")
-    const priceMatch = (text || '').match(/(?:menos de|hasta|máximo|maximo|menor a)\s*\$?\s*([\d\.\,]+)/i);
-    if (priceMatch) {
-      const num = parseInt(priceMatch[1].replace(/[\.\,]/g, ''));
-      if (!isNaN(num) && num > 0) {
-        pQuery = pQuery.lte('price', num);
-        priceFiltered = true;
-      }
-    }
-
-    const { data: prods } = await pQuery.order('category', { ascending: true }).limit(150);
-    products = prods || [];
+    // Catálogo completo si es pequeño; búsqueda en SQL si es grande (ver services/catalogContext.js)
+    const catalog = await loadCatalogContext({ supabase, business, text });
+    products = catalog.products;
+    priceFiltered = catalog.priceFiltered;
+    catalogOptions = catalog.options;
 
     const PRIMARY_BOTWA_ID = '8fd9a59d-77d7-4db7-8637-9aaebca1158e';
     if (products.length === 0 && business?.id === PRIMARY_BOTWA_ID) {
@@ -739,7 +730,9 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
       try {
         const { downloadMediaMessage } = require('@whiskeysockets/baileys');
         const buffer = await downloadMediaMessage(msg, 'buffer', {}, { reuploadRequest: sock.updateMediaMessage });
-        analysis = await analyzeImage(buffer, incomingImage.mimetype, products, caption);
+        // La foto se compara con el catálogo; en uno grande `products` es solo una muestra
+        const visionProducts = catalogOptions.visionProducts ? await catalogOptions.visionProducts() : products;
+        analysis = await analyzeImage(buffer, incomingImage.mimetype, visionProducts, caption);
       } catch (e) {
         console.error('[MSG] Error descargando la imagen:', e.message);
       }
@@ -778,9 +771,11 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
   }
 
   // ── 10. RAG + Groq: generar respuesta ─────────────────────────────────────
-  const { reply, isLeadHot, tokensUsed, imageName, newAppointmentData, cancelAppointmentData, modifyAppointmentData, newOrderData, modifyOrderData, clientData, ragChunksUsed } = await askGroq(
-    aiText, business, knowledge, history, products
+  const { reply, isLeadHot, tokensUsed, imageName, newAppointmentData, cancelAppointmentData, modifyAppointmentData, newOrderData, modifyOrderData, clientData, ragChunksUsed, productsUsed } = await askGroq(
+    aiText, business, knowledge, history, products, catalogOptions
   );
+  // Para enviar la foto de un producto: lo que el bot tuvo a la vista este turno, más lo cargado
+  const imageCatalog = Array.isArray(productsUsed) && productsUsed.length ? [...productsUsed, ...products] : products;
 
   console.log(`[RAG] Chunks usados: ${ragChunksUsed} | Tokens: ${tokensUsed}`);
 
@@ -897,7 +892,7 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
       const city = orderDetails.ciudad || '';
       const payMethod = orderDetails.metodo_pago || 'Por confirmar';
       const orderTotal = orderDetails.total || orderDetails.precio || 0;
-      const extraNotes = [orderDetails.notas, orderDetails.telefono && `Tel. que dio: ${orderDetails.telefono}`].filter(Boolean).join(' · ');
+      const extraNotes = [orderDetails.notas, ...extraOrderFields(orderDetails), orderDetails.telefono && `Tel. que dio: ${orderDetails.telefono}`].filter(Boolean).join(' · ');
 
       // Mismo pedido repetido por la IA en las últimas horas de esta conversación: no se duplica
       const since = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
@@ -950,8 +945,7 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
         if (modifyOrderData.direccion) updates.shipping_address = modifyOrderData.direccion;
         if (modifyOrderData.ciudad) updates.city = modifyOrderData.ciudad;
         if (modifyOrderData.metodo_pago) updates.payment_method = modifyOrderData.metodo_pago;
-        const changeNote = modifyOrderData.notas
-          || [modifyOrderData.cantidad && `cantidad: ${modifyOrderData.cantidad}`].filter(Boolean).join(' · ');
+        const changeNote = [modifyOrderData.notas, ...extraOrderFields(modifyOrderData, { alwaysQuantity: true })].filter(Boolean).join(' · ');
         if (changeNote) {
           updates.notes = `${prev.notes || ''} · Modificado por Bot IA: ${changeNote}`.trim();
         }
@@ -990,8 +984,8 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
   if (!targetImageSearch) {
     const normMsg = text.toLowerCase();
     const isRequestingImage = /foto|imagen|referencia|muéstrame|muestra|ver/i.test(normMsg);
-    if (isRequestingImage && Array.isArray(products)) {
-      const matchedProd = products.find(p => p.image_url && normMsg.includes(p.name.toLowerCase()));
+    if (isRequestingImage && Array.isArray(imageCatalog)) {
+      const matchedProd = imageCatalog.find(p => p.image_url && normMsg.includes(p.name.toLowerCase()));
       if (matchedProd) {
         targetImageSearch = matchedProd.name;
       }
@@ -1012,7 +1006,7 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
       imgUrl = imgKB.file_url;
       caption = imgKB.content;
     } else {
-      const prodImg = products.find(p =>
+      const prodImg = imageCatalog.find(p =>
         p.image_url &&
         (p.name.toLowerCase().includes(targetImageSearch.toLowerCase()) || (p.category && p.category.toLowerCase().includes(targetImageSearch.toLowerCase())))
       );

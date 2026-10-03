@@ -123,16 +123,28 @@ const reconcileOrderTotal = (order, products = []) => {
   const declared = parseAmount(order.total ?? order.precio ?? 0) || 0;
   const qty = Math.max(1, parseInt(order.cantidad, 10) || 1);
   const normItem = normalize(order.producto || order.items || '');
-  const matched = normItem
-    ? products.filter(p => {
-        const name = normalize(p.name);
-        return name.length >= 3 && Number(p.price) > 0 && (normItem.includes(name) || name.includes(normItem));
-      })
-    : [];
+
+  // Un mismo producto puede venir de varias búsquedas: se cuenta una sola vez
+  const byName = new Map();
+  for (const p of products) {
+    const name = normalize(p.name);
+    if (name.length >= 3 && Number(p.price) > 0 && !byName.has(name)) byName.set(name, Number(p.price));
+  }
 
   let expected = null;
-  if (matched.length === 1) expected = Number(matched[0].price) * qty;
-  else if (matched.length > 1) expected = matched.reduce((s, p) => s + Number(p.price), 0);
+  if (normItem) {
+    if (byName.has(normItem)) {
+      // El pedido nombra exactamente un producto del catálogo
+      expected = byName.get(normItem) * qty;
+    } else {
+      // El pedido nombra varios ("Silla modelo 3 y Lampara"): los productos cuyo nombre aparece en el
+      // texto; si uno está contenido en otro más específico ("modelo 2" en "modelo 215") gana el más específico
+      const inside = [...byName.keys()].filter(n => normItem.includes(n));
+      const specific = inside.filter(n => !inside.some(o => o !== n && o.includes(n)));
+      if (specific.length === 1) expected = byName.get(specific[0]) * qty;
+      else if (specific.length > 1) expected = specific.reduce((s, n) => s + byName.get(n), 0);
+    }
+  }
 
   if (expected !== null) {
     return declared === expected ? order : { ...order, total: expected };

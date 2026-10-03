@@ -131,13 +131,19 @@ const CHITCHAT_WORDS = new Set([
 const STRONG_KNOWLEDGE_SCORE = 10; // frase en el título, o varias palabras del título
 const STRONG_PRODUCT_SCORE = 4;    // al menos una palabra exacta en el nombre de un producto
 
-// ¿Vale la pena gastar una llamada a la IA para generar sub-consultas? Casi nunca: solo cuando
-// el buscador local no encuentra nada claro y el contexto no cabe completo en el prompt.
-const shouldExpandWithLLM = (userMessage, knowledge = [], products = []) => {
+// ¿El mensaje tiene algo que buscar? Cortesías ("gracias", "ok dale") y puro relleno no
+// justifican gastar una llamada a la IA.
+const shouldExpandForSearch = (userMessage) => {
   const tokens = normalizeSearchText(userMessage).split(' ').filter(Boolean);
   if (tokens.length === 0) return false;
   if (tokens.every(t => CHITCHAT_WORDS.has(t))) return false;
-  if (!tokens.some(t => t.length >= 2 && !SPANISH_STOPWORDS.has(t) && !CHITCHAT_WORDS.has(t))) return false;
+  return tokens.some(t => t.length >= 2 && !SPANISH_STOPWORDS.has(t) && !CHITCHAT_WORDS.has(t));
+};
+
+// ¿Vale la pena gastar una llamada a la IA para generar sub-consultas? Casi nunca: solo cuando
+// el buscador local no encuentra nada claro y el contexto no cabe completo en el prompt.
+const shouldExpandWithLLM = (userMessage, knowledge = [], products = []) => {
+  if (!shouldExpandForSearch(userMessage)) return false;
 
   // Si el catálogo y la base de conocimiento caben completos en el prompt, el modelo ya ve todo
   const knowledgeChars = (knowledge || []).reduce((n, k) => n + (k.title?.length || 0) + (k.content?.length || 0), 0);
@@ -154,9 +160,10 @@ const shouldExpandWithLLM = (userMessage, knowledge = [], products = []) => {
 
 // Vocabulario real del negocio: la IA traduce la necesidad del cliente a estos términos
 // ("algo para dormir" → "colchón") en vez de adivinar palabras que el catálogo no usa.
-const buildVocabulary = (knowledge = [], products = []) => {
+const buildVocabulary = (knowledge = [], products = [], extraCategories = []) => {
   const clip = (s, n) => (s || '').toString().trim().slice(0, n);
-  const categories = Array.from(new Set((products || []).map(p => clip(p.category, 40)).filter(Boolean))).slice(0, 40);
+  const categories = Array.from(new Set([...(extraCategories || []), ...(products || []).map(p => p.category)]
+    .map(c => clip(c, 40)).filter(Boolean))).slice(0, 40);
   const names = (products || []).map(p => clip(p.name, 45)).filter(Boolean).slice(0, 60);
   const titles = (knowledge || []).map(k => clip(k.title, 60)).filter(Boolean).slice(0, 30);
   const parts = [];
@@ -224,6 +231,119 @@ const getSubQueries = async (userMessage, business, chatHistory, knowledge, prod
   return generateSubQueries(userMessage, business, chatHistory, buildVocabulary(knowledge, products));
 };
 
+// ─── Catálogos grandes: búsqueda en SQL (migración 005) ──────────────────────
+// Lo que el cliente pide además de "qué producto": ordenar por precio o ver algo parecido.
+const PRICE_ASC_RE = /\b(barat[oa]s?|economic[oa]s?|menor precio|precio mas bajo|menos costos[oa])\b/;
+const PRICE_DESC_RE = /\b(mas car[oa]s?|mayor precio|precio mas alto|mas costos[oa]|de lujo|premium)\b/;
+const SIMILAR_RE = /\b(parecid[oa]s?|similar(es)?|alternativ[oa]s?|algo asi|otr[oa]s? (opcion|opciones|modelo|modelos|marca|marcas|referencia|referencias)|mas opciones)\b/;
+// Palabras de esas peticiones: no son parte del nombre de ningún producto
+const INTENT_WORDS = new Set([
+  'barato', 'barata', 'baratos', 'baratas', 'economico', 'economica', 'economicos', 'economicas',
+  'parecido', 'parecida', 'parecidos', 'parecidas', 'similar', 'similares', 'alternativa', 'alternativas',
+  'premium', 'lujo', 'costoso', 'costosa', 'caro', 'cara', 'caros', 'caras',
+]);
+
+// Términos de búsqueda: solo palabras con contenido (sin relleno, sin presupuestos como "150000")
+const extractSearchTerms = (queries = []) => {
+  const out = new Set();
+  for (const q of queries) {
+    for (const w of normalizeSearchText(q).split(' ')) {
+      if (w.length < 2 || SPANISH_STOPWORDS.has(w) || INTENT_WORDS.has(w) || /^\d{5,}$/.test(w)) continue;
+      out.add(w);
+    }
+  }
+  return [...out].slice(0, 12);
+};
+
+const MAX_PRODUCTS_IN_PROMPT = 15;
+// El bot acaba de pedir datos personales o de entrega
+const DATA_REQUEST_RE = /\b(direccion|ciudad|barrio|telefono|celular|correo|email|nombre completo|cedula|datos|cantidad|cuantas unidades)\b/;
+
+// Busca en SQL lo que el cliente pide. La IA solo se usa para traducir una necesidad a términos
+// del catálogo ("algo para dormir" → "colchón") cuando la búsqueda directa no encontró algo claro.
+const retrieveFromLargeCatalog = async ({ userMessage, business, history, knowledge, options }) => {
+  const norm = normalizeSearchText(userMessage);
+  const orden = PRICE_ASC_RE.test(norm) ? 'precio_asc' : PRICE_DESC_RE.test(norm) ? 'precio_desc' : 'relevancia';
+  const wantsSimilar = SIMILAR_RE.test(norm);
+  const lastBotMessages = [...history].filter(m => m.direction === 'outbound').slice(-2).map(m => m.content || '');
+  // Si el bot acaba de pedirle datos al cliente ("¿tu dirección?"), lo que contesta ("calle 1")
+  // no es una búsqueda de productos: no se gasta IA en expandirlo.
+  const answeringDataRequest = DATA_REQUEST_RE.test(normalizeSearchText(lastBotMessages[lastBotMessages.length - 1] || ''));
+
+  let terms = extractSearchTerms([userMessage]);
+  // "hola", "gracias", "ok dale" no piden ningún producto
+  if (!shouldExpandForSearch(userMessage)) terms = [];
+  // En una dirección o un teléfono los números ("calle 10 # 5-20") no son modelos de producto
+  if (answeringDataRequest) terms = terms.filter(t => !/^\d+$/.test(t));
+
+  const sampleResult = (extra = {}) => ({ products: options.sample || [], noMatch: false, contextProducts: [], subQueries: [], mode: 'sample', orden: 'relevancia', ...extra });
+  // Productos de los que ya se venía hablando en la conversación (p. ej. el pedido en curso)
+  const fetchContext = async () => {
+    const contextTerms = extractSearchTerms(lastBotMessages).slice(0, 10);
+    return contextTerms.length ? (await options.searchProducts(contextTerms, { limit: 6 })) || [] : [];
+  };
+
+  // Charla o consulta genérica ("hola", "qué venden"): una muestra basta, no hay nada que buscar
+  if (!terms.length && orden === 'relevancia' && !wantsSimilar) {
+    if (answeringDataRequest) {
+      const ctx = await fetchContext();
+      if (ctx.length) return { products: ctx, noMatch: false, contextProducts: [], subQueries: [], mode: 'context', orden: 'relevancia' };
+    }
+    return sampleResult();
+  }
+
+  let rows = await options.searchProducts(terms, { orden });
+  if (rows === null) return sampleResult(); // la búsqueda SQL no respondió: se queda con la muestra
+
+  let subQueries = [];
+  const topScore = rows[0]?.score || 0;
+  if (terms.length && topScore < STRONG_PRODUCT_SCORE && !answeringDataRequest && shouldExpandForSearch(userMessage)) {
+    const vocabulary = buildVocabulary(knowledge, options.sample || [], options.categories || []);
+    subQueries = await generateSubQueries(userMessage, business, history, vocabulary);
+    const extraTerms = extractSearchTerms(subQueries).filter(t => !terms.includes(t));
+    if (extraTerms.length) {
+      const widened = await options.searchProducts([...terms, ...extraTerms], { orden });
+      if (widened && widened.length) rows = widened;
+    }
+  }
+
+  let finalOrden = orden;
+  if (wantsSimilar && typeof options.similarProducts === 'function') {
+    // El producto de referencia es el que pide el cliente o, si dice solo "algo parecido", el
+    // que el bot acaba de mostrar.
+    let anchor = terms.length ? rows[0] : null;
+    if (!anchor) {
+      const lastBot = [...history].reverse().find(m => m.direction === 'outbound')?.content || '';
+      const lastTerms = extractSearchTerms([lastBot]);
+      if (lastTerms.length) anchor = (await options.searchProducts(lastTerms.slice(0, 8), { limit: 1 }))?.[0] || null;
+    }
+    if (anchor?.id) {
+      const similar = await options.similarProducts(anchor.id, 8);
+      if (similar && similar.length) {
+        rows = [anchor, ...similar.filter(p => p.id !== anchor.id)];
+        finalOrden = 'similares';
+      }
+    }
+  }
+
+  // Nada coincide con el último mensaje, o el cliente está dando datos de un pedido en curso: se
+  // conservan, aparte, los productos de los que ya se hablaba.
+  let contextProducts = [];
+  if ((rows.length === 0 || answeringDataRequest) && lastBotMessages.length) {
+    const seen = new Set(rows.map(p => p.id));
+    contextProducts = (await fetchContext()).filter(p => !seen.has(p.id));
+  }
+
+  return {
+    products: rows.slice(0, MAX_PRODUCTS_IN_PROMPT),
+    noMatch: rows.length === 0,
+    contextProducts,
+    subQueries,
+    mode: 'search',
+    orden: finalOrden,
+  };
+};
+
 // ─── 3. RAG Multi-Query ───────────────────────────────────────────────────────
 // `precomputedSubQueries` evita pedirle a Groq las mismas sub-consultas dos veces por mensaje
 const ragSearch = async (userMessage, knowledge, business = null, chatHistory = [], precomputedSubQueries = null) => {
@@ -269,6 +389,8 @@ const rankAndFilterProducts = (query, products, subQueries = []) => {
   // Catálogo pequeño: cabe completo, el modelo ve TODO y no tiene que adivinar nada.
   if (all.length <= 15) return { list: all, specific: false, catalogHasProducts: true, noMatch: false };
   if (!query || typeof query !== 'string') return { list: all.slice(0, 12), specific: false, catalogHasProducts: true, noMatch: false };
+  // "hola", "gracias", "ok dale": no piden ningún producto, no es una búsqueda sin resultados
+  if (!shouldExpandForSearch(query)) return { list: all.slice(0, 12), specific: false, catalogHasProducts: true, noMatch: false };
 
   const allSearchTerms = [query, ...(Array.isArray(subQueries) ? subQueries : [])];
   const allWords = new Set();
@@ -355,7 +477,8 @@ const buildKnowledgeContext = (knowledge) => {
 // ─── 5. System prompt con info del negocio ────────────────────────────────────
 const FULL_KNOWLEDGE_MAX_CHARS = 8000;
 
-const buildSystemPrompt = (business, relevantKnowledge, allKnowledge, products = [], isFirstMessage = true, userMessage = '', subQueries = [], hasAlreadyGreeted = false) => {
+// catalogInfo (solo catálogos grandes, buscados en SQL): { total, categories, noMatch, mode, orden }
+const buildSystemPrompt = (business, relevantKnowledge, allKnowledge, products = [], isFirstMessage = true, userMessage = '', subQueries = [], hasAlreadyGreeted = false, catalogInfo = null) => {
   const busName = business?.name || 'BotWA';
   const busCategory = business?.category || 'Atención Comercial y Servicios';
   // Datos opcionales: si el dueño no los configuró NO se rellenan con valores supuestos
@@ -378,9 +501,10 @@ const buildSystemPrompt = (business, relevantKnowledge, allKnowledge, products =
   });
   const isoDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(now); // YYYY-MM-DD
 
-  const distinctCategories = Array.from(new Set(
-    (products || []).map(p => p.category?.trim()).filter(Boolean)
-  ));
+  // En catálogos grandes la lista de productos es solo lo encontrado: las categorías son las de TODO el catálogo
+  const distinctCategories = catalogInfo?.categories?.length
+    ? catalogInfo.categories
+    : Array.from(new Set((products || []).map(p => p.category?.trim()).filter(Boolean)));
   const categoriesOverview = distinctCategories.length > 0
     ? `=== COLECCIONES Y CATEGORÍAS REGISTRADAS EN EL CATÁLOGO ===\n${distinctCategories.map(c => `• ${c}`).join('\n')}\n=== FIN DE COLECCIONES ===`
     : '';
@@ -394,11 +518,25 @@ const buildSystemPrompt = (business, relevantKnowledge, allKnowledge, products =
   const relevantContext = buildKnowledgeContext(knowledgeForPrompt);
   const hasKnowledge = !!relevantContext;
 
+  // En catálogo grande, los "de contexto" no son resultados de la búsqueda: se muestran aparte
+  const contextProducts = catalogInfo?.contextProducts || [];
+  if (contextProducts.length) products = products.filter(p => !contextProducts.includes(p));
   const prodResult = rankAndFilterProducts(userMessage, products, subQueries);
   const filteredProducts = prodResult.list;
   const hasProducts = Array.isArray(filteredProducts) && filteredProducts.length > 0;
-  const noProductMatch = prodResult.noMatch === true;
-  const isPartialSample = hasProducts && !prodResult.specific && Array.isArray(products) && products.length > filteredProducts.length;
+  const noProductMatch = prodResult.noMatch === true || (!hasProducts && catalogInfo?.noMatch === true);
+  const isPartialSample = hasProducts && !catalogInfo && !prodResult.specific && Array.isArray(products) && products.length > filteredProducts.length;
+  const ordenLabel = { precio_asc: 'de menor a mayor precio', precio_desc: 'de mayor a menor precio', similares: 'por parecido al producto de referencia (el primero)' }[catalogInfo?.orden] || 'por relevancia';
+  const contextBlock = contextProducts.length
+    ? `\nProductos de los que ya se venía hablando en esta conversación (datos oficiales; si el cliente continúa con ellos, úsalos):\n${contextProducts.map(p => `- [${p.category || 'General'}] ${p.name}: $${Number(p.price || 0).toLocaleString('es-CO')} ${p.currency || 'COP'}${p.description ? ` (${p.description})` : ''}`).join('\n')}`
+    : '';
+  const catalogNote = !hasProducts || !catalogInfo
+    ? ''
+    : catalogInfo.mode === 'context'
+      ? '\n(Son los productos de los que ya se venía hablando: el cliente está respondiendo datos de su pedido. No presentes otros productos.)'
+    : catalogInfo.mode === 'sample'
+      ? `\n(Es solo una MUESTRA de un catálogo de ${catalogInfo.total} productos, no está completo. Si el cliente busca algo puntual que no aparezca aquí, pídele el nombre/modelo para ubicarlo; no asumas que no existe.)`
+      : `\n(Resultado de buscar lo que pide el cliente entre los ${catalogInfo.total} productos del negocio, ordenados ${ordenLabel}. Preséntalos solo si responden a lo que pidió; el resto del catálogo no se muestra aquí. No afirmes que no hay más: ofrécele precisar nombre, modelo o característica.)`;
   const productsContext = hasProducts
     ? filteredProducts.map(p => `- [${p.category || 'General'}] ${p.name}: $${Number(p.price || 0).toLocaleString('es-CO')} ${p.currency || 'COP'}${p.description ? ` (${p.description})` : ''}${p.image_url ? ` | Foto/Imagen: ${p.image_url}` : ''}`).join('\n')
     : null;
@@ -442,6 +580,7 @@ ${business?.payment_or_booking_link ? `Enlace o Método de Pago / Agenda: ${busi
 [LEAD_CALIENTE]
 [NUEVO_PEDIDO: {"nombre": "...", "telefono": "...", "producto": "...", "cantidad": 1, "total": 0, "direccion": "...", "ciudad": "...", "metodo_pago": "...", "notas": "..."}]
 ("total" = precio del catálogo × cantidad, solo números. Usa solo datos que el cliente dio; deja "" lo que no dio: nunca valores de ejemplo ni supuestos. En "notas" pon lo relevante: contado/financiado, color, versión, etc.)
+(Si las INSTRUCCIONES DE CIERRE del dueño piden datos que no tienen campo propio —fecha y hora de entrega, quién recibe, dedicatoria, referencia, alergias, etc.— agrégalos al mismo JSON como campos extra con nombre corto, por ejemplo "fecha_entrega": "sábado 14 8:00 am", "recibe": "Laura", "dedicatoria": "...". Solo lo que el cliente dijo; nunca los inventes.)
 - Si pide cambiar un pedido ya tomado (cantidad, producto, dirección, ciudad o medio de pago), confírmale el cambio en 1 o 2 líneas y añade al final (una sola vez):
 [MODIFICAR_PEDIDO: {"producto": "...", "cantidad": 1, "total": 0, "direccion": "...", "ciudad": "...", "metodo_pago": "...", "notas": "..."}]
 (Incluye SOLO los campos que cambian; deja "" u omite lo que no cambia. "total" = precio del catálogo × cantidad, solo números; nunca inventes precios.)`;
@@ -484,6 +623,8 @@ ${business.custom_instructions}
 - No sueltes el catálogo completo ni precios de golpe si el cliente aún no dice qué busca.
 ${hasProducts
   ? '- Con catálogo: presenta 2 o 3 opciones relevantes con precio y beneficio; si alguna dice "⭐ Más Recomendado/Popular", recomiéndala.'
+  : noProductMatch
+  ? '- No encontraste ese producto en el catálogo: no inventes modelos, precios ni características. Pregunta el nombre o modelo, ofrece las categorías o confirma con un asesor.'
   : '- No hay productos cargados: no inventes modelos ni precios. Usa las FAQs si responden la duda; si no, pregunta qué necesita y ofrece confirmarlo con un asesor.'}
 - Si el cliente responde corto ("el segundo", "el pro", "qué incluye"), deduce del historial a qué opción se refiere.
 
@@ -494,9 +635,9 @@ ${greetingInstruction}
 ${businessInfo}
 
 ${categoriesOverview ? `${categoriesOverview}\n\n` : ''}${hasProducts
-  ? `## CATÁLOGO OFICIAL\n${productsContext}${isPartialSample ? '\n(Es solo una MUESTRA del catálogo, no está completo. Si el cliente busca algo puntual que no aparezca aquí, pídele el nombre/modelo para ubicarlo; no asumas que no existe.)' : ''}`
+  ? `## CATÁLOGO OFICIAL\n${productsContext}${catalogNote}${contextBlock}${isPartialSample ? '\n(Es solo una MUESTRA del catálogo, no está completo. Si el cliente busca algo puntual que no aparezca aquí, pídele el nombre/modelo para ubicarlo; no asumas que no existe.)' : ''}`
   : noProductMatch
-  ? `## CATÁLOGO\nEl negocio SÍ tiene catálogo, pero NINGÚN producto coincide con lo que el cliente pregunta. NO afirmes que existe ni que no existe, y NO inventes nombre, precio, stock ni características. Pídele que precise el nombre o modelo, muéstrale las categorías de arriba, u ofrece confirmarlo con un asesor.`
+  ? `## CATÁLOGO\nEl negocio SÍ tiene catálogo, pero NINGÚN producto coincide con lo que el cliente pregunta. NO afirmes que existe ni que no existe, y NO inventes nombre, precio, stock ni características. Pídele que precise el nombre o modelo, muéstrale las categorías de arriba, u ofrece confirmarlo con un asesor.${contextBlock}`
   : `## CATÁLOGO\nNo hay productos individuales registrados. El negocio atiende en ${busCategory}.${business?.description ? ` ${business.description}` : ''}`}
 ${hasKnowledge ? `
 ## BASE DE CONOCIMIENTO (respuestas autorizadas: úsalas fielmente, con tus palabras, sin contradecirlas)
@@ -613,7 +754,9 @@ const buildHumanAssistantReply = (userMessage, business, products = [], chatHist
 // ─── 6. Función principal RAG + Groq ─────────────────────────────────────────
 const { getCachedAiResponse, setCachedAiResponse, normalizeText } = require('./aiCache');
 
-const askGroq = async (userMessage, business, knowledge, chatHistory = [], products = []) => {
+// options (solo catálogos grandes, ver services/catalogContext.js): { catalogTotal, categories, sample,
+// searchProducts(terms, opts), similarProducts(id, limit) }. Sin options, `products` es el catálogo completo.
+const askGroq = async (userMessage, business, knowledge, chatHistory = [], products = [], options = {}) => {
   const safeBusiness = business || {
     name: 'Asistente Virtual',
     category: 'General',
@@ -677,9 +820,36 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
       (m.content.toLowerCase().includes('hola') || m.content.toLowerCase().includes('bienvenid'))
     );
 
-    const subQueries = await getSubQueries(userMessage, safeBusiness, formattedHistory, knowledge, products);
+    // Catálogo grande → se busca en SQL lo que pide el cliente; si no, el catálogo completo ya está en `products`
+    const largeCatalog = typeof options?.searchProducts === 'function';
+    let catalogProducts = products;
+    let catalogInfo = null;
+    let subQueries;
+    if (largeCatalog) {
+      const found = await retrieveFromLargeCatalog({ userMessage, business: safeBusiness, history: formattedHistory, knowledge, options });
+      subQueries = found.subQueries;
+      catalogInfo = { total: options.catalogTotal, categories: options.categories || [], noMatch: found.noMatch, mode: found.mode, orden: found.orden, contextProducts: found.contextProducts || [] };
+      // Los productos "de contexto" (de los que ya se hablaba) también cuentan como vistos: respaldan precios y fotos
+      catalogProducts = [...found.products, ...catalogInfo.contextProducts];
+    } else {
+      subQueries = await getSubQueries(userMessage, safeBusiness, formattedHistory, knowledge, products);
+    }
     const relevantKnowledge = await ragSearch(userMessage, knowledge, safeBusiness, formattedHistory, subQueries);
-    const systemPrompt = buildSystemPrompt(safeBusiness, relevantKnowledge, knowledge, products, isFirstMessage, userMessage, subQueries, hasAlreadyGreeted);
+    const systemPrompt = buildSystemPrompt(safeBusiness, relevantKnowledge, knowledge, catalogProducts, isFirstMessage, userMessage, subQueries, hasAlreadyGreeted, catalogInfo);
+
+    // Total de un pedido: se recalcula con precios reales. En catálogo grande el producto del pedido
+    // puede no estar en lo recuperado este turno, así que se busca por su nombre.
+    const reconcileWithCatalog = async (order) => {
+      if (!order || typeof order !== 'object') return order;
+      let known = catalogProducts;
+      if (largeCatalog && (order.producto || order.items)) {
+        try {
+          const rows = await options.searchProducts(extractSearchTerms([order.producto || order.items]), { limit: 5 });
+          if (rows?.length) known = [...rows, ...catalogProducts];
+        } catch (_) {}
+      }
+      return reconcileOrderTotal(order, known);
+    };
 
     const messages = [
       { role: 'system', content: systemPrompt },
@@ -716,12 +886,24 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
     let groundingBlocked = false;
     if (fullReply) {
       const groundingCtx = {
-        products,
+        products: catalogProducts,
         knowledge,
         business: safeBusiness,
         texts: [userMessage, ...formattedHistory.map(m => m.content)],
       };
       let check = verifyReplyAmounts(fullReply, groundingCtx);
+      if (!check.ok && largeCatalog) {
+        // El producto de un pedido en curso puede no estar en lo buscado este turno: se ubica por
+        // lo que se habló antes en la conversación y se vuelve a verificar, sin gastar otra llamada a la IA.
+        try {
+          const recent = formattedHistory.slice(-4).map(m => m.content);
+          const extra = await options.searchProducts(extractSearchTerms([...recent, userMessage]).slice(0, 10), { limit: 8 });
+          if (extra?.length) {
+            groundingCtx.products = [...extra, ...catalogProducts];
+            check = verifyReplyAmounts(fullReply, groundingCtx);
+          }
+        } catch (_) {}
+      }
       if (!check.ok) {
         console.warn(`[GROUNDING] ⚠️ Valores sin respaldo en la respuesta: ${check.invalid.join(', ')} → reintentando una vez`);
         const correction = `\n\n## CORRECCIÓN OBLIGATORIA\nTu respuesta anterior mencionó estos valores que NO están registrados en el negocio: ${check.invalid.map(v => `$${v.toLocaleString('es-CO')}`).join(', ')}. Responde de nuevo SIN inventar ni calcular valores: usa solo los precios y montos exactos del catálogo o de la base de conocimiento; si no tienes el dato, di que lo confirmas con un asesor.`;
@@ -746,7 +928,7 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
 
     const usedFallback = !fullReply;
     if (usedFallback) {
-      fullReply = buildHumanAssistantReply(userMessage, safeBusiness, products, chatHistory, knowledge);
+      fullReply = buildHumanAssistantReply(userMessage, safeBusiness, catalogProducts, chatHistory, knowledge);
     }
 
     // Doble sanitización de seguridad para etiquetas internas y tags de razonamiento
@@ -780,7 +962,7 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
     if (orderMatch) {
       try {
         // El total se recalcula con los precios reales del catálogo: el del modelo no se guarda a ciegas
-        newOrderData = reconcileOrderTotal(JSON.parse(orderMatch[1]), products);
+        newOrderData = await reconcileWithCatalog(JSON.parse(orderMatch[1]));
       } catch (_) {}
     }
 
@@ -804,7 +986,7 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
     let modifyOrderData = null;
     if (modifyOrderMatch) {
       try {
-        modifyOrderData = reconcileOrderTotal(JSON.parse(modifyOrderMatch[1]), products);
+        modifyOrderData = await reconcileWithCatalog(JSON.parse(modifyOrderMatch[1]));
       } catch (_) {}
     }
 
@@ -847,6 +1029,8 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
       ragChunksUsed: relevantKnowledge.length,
       usedFallback,
       groundingBlocked,
+      // Productos que el bot tuvo a la vista este turno (para enviar la foto del que mencionó)
+      productsUsed: catalogProducts,
     };
   } catch (err) {
     console.error('[Groq] Error en askGroq:', err.message);
@@ -876,4 +1060,4 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
   }
 };
 
-module.exports = { askGroq, ragSearch, searchKnowledge, rankAndFilterProducts, shouldExpandWithLLM, buildVocabulary, getSubQueries };
+module.exports = { askGroq, ragSearch, searchKnowledge, rankAndFilterProducts, shouldExpandWithLLM, buildVocabulary, getSubQueries, extractSearchTerms, retrieveFromLargeCatalog };
