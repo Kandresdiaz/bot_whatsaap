@@ -4,6 +4,12 @@
 const { chatComplete } = require('./llmPool');
 const { verifyReplyAmounts, reconcileOrderTotal } = require('./grounding');
 
+// Un producto sin precio (una página del catálogo que no lo traía se guarda con 0) NO es gratis:
+// mostrar "$0 COP" le dice al cliente que cuesta nada.
+const priceLabel = (p) => Number(p?.price) > 0
+  ? `$${Number(p.price).toLocaleString('es-CO')} ${p.currency || 'COP'}`
+  : 'precio no registrado (confírmalo con un asesor, no digas que es gratis)';
+
 // ─── 0. Normalización de Texto para Búsqueda RAG ─────────────────────────────
 const normalizeSearchText = (text) => {
   if (!text || typeof text !== 'string') return '';
@@ -256,6 +262,7 @@ const extractSearchTerms = (queries = []) => {
 };
 
 const MAX_PRODUCTS_IN_PROMPT = 15;
+const SEARCH_CANDIDATES = 30; // candidatos que se piden a la búsqueda SQL antes de repartir entre categorías
 // El bot acaba de pedir datos personales o de entrega
 const DATA_REQUEST_RE = /\b(direccion|ciudad|barrio|telefono|celular|correo|email|nombre completo|cedula|datos|cantidad|cuantas unidades)\b/;
 
@@ -292,7 +299,8 @@ const retrieveFromLargeCatalog = async ({ userMessage, business, history, knowle
     return sampleResult();
   }
 
-  let rows = await options.searchProducts(terms, { orden });
+  // Se piden más de las que caben en el prompt para poder repartirlas entre categorías
+  let rows = await options.searchProducts(terms, { orden, limit: SEARCH_CANDIDATES });
   if (rows === null) return sampleResult(); // la búsqueda SQL no respondió: se queda con la muestra
 
   let subQueries = [];
@@ -302,7 +310,7 @@ const retrieveFromLargeCatalog = async ({ userMessage, business, history, knowle
     subQueries = await generateSubQueries(userMessage, business, history, vocabulary);
     const extraTerms = extractSearchTerms(subQueries).filter(t => !terms.includes(t));
     if (extraTerms.length) {
-      const widened = await options.searchProducts([...terms, ...extraTerms], { orden });
+      const widened = await options.searchProducts([...terms, ...extraTerms], { orden, limit: SEARCH_CANDIDATES });
       if (widened && widened.length) rows = widened;
     }
   }
@@ -334,8 +342,14 @@ const retrieveFromLargeCatalog = async ({ userMessage, business, history, knowle
     contextProducts = (await fetchContext()).filter(p => !seen.has(p.id));
   }
 
+  // Por relevancia: sin lo que solo comparte una palabra común, y repartido entre categorías para que
+  // una categoría grande no desplace a una pequeña. Por precio o similares el orden ya es el pedido.
+  const shown = finalOrden === 'relevancia'
+    ? diversifyByCategory(dropWeakMatches(rows), MAX_PRODUCTS_IN_PROMPT)
+    : rows.slice(0, MAX_PRODUCTS_IN_PROMPT);
+
   return {
-    products: rows.slice(0, MAX_PRODUCTS_IN_PROMPT),
+    products: shown,
     noMatch: rows.length === 0,
     contextProducts,
     subQueries,
@@ -381,37 +395,91 @@ const isSimpleGreeting = (text) => {
 
 // Puntúa cada producto por las palabras de la consulta: nombre 4 · categoría 2.5 · descripción 1
 // (con tolerancia a errores de tipeo). Un producto sin ninguna coincidencia queda en 0.
-const scoreProductsByWords = (words, products) => products.map(item => {
-  const normName = normalizeSearchText(item.name || '');
-  const normCat = normalizeSearchText(item.category || '');
-  const normDesc = normalizeSearchText(item.description || '');
-
-  const nameWords = normName.split(/\s+/);
-  const catWords = normCat.split(/\s+/);
-  const descWords = normDesc.split(/\s+/);
-
-  let score = 0;
+// Peso de cada palabra según qué tan poco común es en el catálogo: "eléctrica" (en todos los
+// productos) no distingue nada; "bicicleta" (en pocos) sí. Va de 0.05 a 1.
+const wordWeights = (words, products) => {
+  const n = products.length;
+  const haystacks = products.map(p => normalizeSearchText(`${p.name || ''} ${p.category || ''} ${p.description || ''}`));
+  const weights = new Map();
   for (const word of words) {
-    if (normName.includes(word)) {
-      score += 4;
-    } else if (nameWords.some(nw => isFuzzyWordMatch(word, nw))) {
-      score += 3.2;
-    }
-
-    if (normCat.includes(word)) {
-      score += 2.5;
-    } else if (catWords.some(cw => isFuzzyWordMatch(word, cw))) {
-      score += 2.0;
-    }
-
-    if (normDesc.includes(word)) {
-      score += 1;
-    } else if (descWords.some(dw => isFuzzyWordMatch(word, dw))) {
-      score += 0.8;
-    }
+    const df = haystacks.reduce((count, h) => count + (h.includes(word) ? 1 : 0), 0);
+    const w = n > 1 ? Math.log((n + 1) / (df + 0.5)) / Math.log((n + 1) / 1.5) : 1;
+    weights.set(word, Math.max(0.05, Math.min(1, w)));
   }
-  return { ...item, score };
-});
+  return weights;
+};
+
+// `score` = cuánto coincide (para decidir si hay coincidencia); `rank` = lo mismo pero dándole
+// menos peso a las palabras comunes (para ordenar y para no llenar la lista con un solo tipo).
+const scoreProductsByWords = (words, products) => {
+  const weights = wordWeights(words, products);
+  return products.map(item => {
+    const normName = normalizeSearchText(item.name || '');
+    const normCat = normalizeSearchText(item.category || '');
+    const normDesc = normalizeSearchText(item.description || '');
+
+    const nameWords = normName.split(/\s+/);
+    const catWords = normCat.split(/\s+/);
+    const descWords = normDesc.split(/\s+/);
+
+    let score = 0;
+    let rank = 0;
+    for (const word of words) {
+      let part = 0;
+      if (normName.includes(word)) {
+        part += 4;
+      } else if (nameWords.some(nw => isFuzzyWordMatch(word, nw))) {
+        part += 3.2;
+      }
+
+      if (normCat.includes(word)) {
+        part += 2.5;
+      } else if (catWords.some(cw => isFuzzyWordMatch(word, cw))) {
+        part += 2.0;
+      }
+
+      if (normDesc.includes(word)) {
+        part += 1;
+      } else if (descWords.some(dw => isFuzzyWordMatch(word, dw))) {
+        part += 0.8;
+      }
+      score += part;
+      rank += part * weights.get(word);
+    }
+    return { ...item, score, rank };
+  });
+};
+
+// Reparte los resultados entre categorías en vez de agotar una sola: si piden "bici eléctrica" y
+// hay 30 bicimotos y 6 bicicletas, el modelo tiene que ver las dos clases, no solo las primeras 15.
+// Se toma uno de cada categoría por turnos (empezando por la que mejor puntúa), así una categoría
+// grande no desplaza a una pequeña. Los `items` ya vienen ordenados por relevancia.
+const diversifyByCategory = (items, max, perCategory = Infinity) => {
+  const groups = new Map();
+  items.forEach((item, index) => {
+    const category = (item.category || '').trim().toLowerCase();
+    if (!groups.has(category)) groups.set(category, []);
+    groups.get(category).push(index);
+  });
+  const queues = [...groups.values()];
+  const picked = [];
+  for (let round = 0; picked.length < max && round < perCategory; round++) {
+    let tookAny = false;
+    for (const queue of queues) {
+      if (picked.length >= max) break;
+      if (round < queue.length) { picked.push(queue[round]); tookAny = true; }
+    }
+    if (!tookAny) break;
+  }
+  return picked.sort((a, b) => a - b).map(i => items[i]);
+};
+
+// Descarta lo que solo comparte una palabra común con lo pedido (frente a lo mejor encontrado)
+const RELEVANCE_FLOOR = 0.35;
+const dropWeakMatches = (items) => {
+  const top = items.reduce((m, p) => Math.max(m, p.rank ?? p.score ?? 0), 0);
+  return top > 0 ? items.filter(p => (p.rank ?? p.score ?? 0) >= top * RELEVANCE_FLOOR) : items;
+};
 
 // Devuelve { list, specific, catalogHasProducts, noMatch }:
 // - specific: la lista son productos que SÍ coinciden con la consulta puntual del cliente.
@@ -443,8 +511,16 @@ const rankAndFilterProducts = (query, products, subQueries = []) => {
 
   const scored = scoreProductsByWords(allWords, all);
 
-  const matched = scored.filter(i => i.score > 0).sort((a, b) => b.score - a.score);
-  if (matched.length > 0) return { list: matched.slice(0, 15), specific: true, catalogHasProducts: true, noMatch: false, topScore: matched[0].score };
+  const found = scored.filter(i => i.score > 0).sort((a, b) => b.rank - a.rank || b.score - a.score);
+  const matched = dropWeakMatches(found);
+  if (matched.length > 0) {
+    return {
+      list: diversifyByCategory(matched, 15),
+      specific: true, catalogHasProducts: true, noMatch: false,
+      topScore: Math.max(...matched.map(m => m.score)),
+      totalMatched: matched.length,
+    };
+  }
   // Catálogo grande + consulta puntual sin ninguna coincidencia: NO devolvemos productos al azar.
   return { list: [], specific: false, catalogHasProducts: true, noMatch: true };
 };
@@ -530,9 +606,13 @@ const buildSystemPrompt = (business, relevantKnowledge, allKnowledge, products =
   const hasProducts = Array.isArray(filteredProducts) && filteredProducts.length > 0;
   const noProductMatch = prodResult.noMatch === true || (!hasProducts && catalogInfo?.noMatch === true);
   const isPartialSample = hasProducts && !catalogInfo && !prodResult.specific && Array.isArray(products) && products.length > filteredProducts.length;
+  // Hay más coincidencias de las que caben: el modelo no debe creer que lo mostrado es todo lo que hay
+  const moreMatchesNote = hasProducts && !catalogInfo && prodResult.specific && prodResult.totalMatched > filteredProducts.length
+    ? `\n(Se muestran ${filteredProducts.length} de ${prodResult.totalMatched} productos que coinciden, repartidos entre las categorías. Hay más: si el cliente quiere ver otros o afinar, pregúntale por modelo, uso o presupuesto.)`
+    : '';
   const ordenLabel = { precio_asc: 'de menor a mayor precio', precio_desc: 'de mayor a menor precio', similares: 'por parecido al producto de referencia (el primero)' }[catalogInfo?.orden] || 'por relevancia';
   const contextBlock = contextProducts.length
-    ? `\nProductos de los que ya se venía hablando en esta conversación (datos oficiales; si el cliente continúa con ellos, úsalos):\n${contextProducts.map(p => `- [${p.category || 'General'}] ${p.name}: $${Number(p.price || 0).toLocaleString('es-CO')} ${p.currency || 'COP'}${p.description ? ` (${p.description})` : ''}`).join('\n')}`
+    ? `\nProductos de los que ya se venía hablando en esta conversación (datos oficiales; si el cliente continúa con ellos, úsalos):\n${contextProducts.map(p => `- [${p.category || 'General'}] ${p.name}: ${priceLabel(p)}${p.description ? ` (${p.description})` : ''}`).join('\n')}`
     : '';
   const catalogNote = !hasProducts || !catalogInfo
     ? ''
@@ -542,7 +622,7 @@ const buildSystemPrompt = (business, relevantKnowledge, allKnowledge, products =
       ? `\n(Es solo una MUESTRA de un catálogo de ${catalogInfo.total} productos, no está completo. Si el cliente busca algo puntual que no aparezca aquí, pídele el nombre/modelo para ubicarlo; no asumas que no existe.)`
       : `\n(Resultado de buscar lo que pide el cliente entre los ${catalogInfo.total} productos del negocio, ordenados ${ordenLabel}. Preséntalos solo si responden a lo que pidió; el resto del catálogo no se muestra aquí. No afirmes que no hay más: ofrécele precisar nombre, modelo o característica.)`;
   const productsContext = hasProducts
-    ? filteredProducts.map(p => `- [${p.category || 'General'}] ${p.name}: $${Number(p.price || 0).toLocaleString('es-CO')} ${p.currency || 'COP'}${p.description ? ` (${p.description})` : ''}${p.image_url ? ` | Foto/Imagen: ${p.image_url}` : ''}`).join('\n')
+    ? filteredProducts.map(p => `- [${p.category || 'General'}] ${p.name}: ${priceLabel(p)}${p.description ? ` (${p.description})` : ''}${p.image_url ? ` | Foto/Imagen: ${p.image_url}` : ''}`).join('\n')
     : null;
 
   const mainGoalText = isSales
@@ -639,7 +719,7 @@ ${greetingInstruction}
 ${businessInfo}
 
 ${categoriesOverview ? `${categoriesOverview}\n\n` : ''}${hasProducts
-  ? `## CATÁLOGO OFICIAL\n${productsContext}${catalogNote}${contextBlock}${isPartialSample ? '\n(Es solo una MUESTRA del catálogo, no está completo. Si el cliente busca algo puntual que no aparezca aquí, pídele el nombre/modelo para ubicarlo; no asumas que no existe.)' : ''}`
+  ? `## CATÁLOGO OFICIAL\n${productsContext}${catalogNote}${moreMatchesNote}${contextBlock}${isPartialSample ? '\n(Es solo una MUESTRA del catálogo, no está completo. Si el cliente busca algo puntual que no aparezca aquí, pídele el nombre/modelo para ubicarlo; no asumas que no existe.)' : ''}`
   : noProductMatch
   ? `## CATÁLOGO\nEl negocio SÍ tiene catálogo, pero NINGÚN producto coincide con lo que el cliente pregunta. NO afirmes que existe ni que no existe, y NO inventes nombre, precio, stock ni características. Pídele que precise el nombre o modelo, muéstrale las categorías de arriba, u ofrece confirmarlo con un asesor.${contextBlock}`
   : `## CATÁLOGO\nNo hay productos individuales registrados. El negocio atiende en ${busCategory}.${business?.description ? ` ${business.description}` : ''}`}
@@ -698,7 +778,7 @@ const buildHumanAssistantReply = (userMessage, business, products = [], chatHist
   const queryWords = [...new Set(normalizeSearchText(userMessage).split(' ')
     .filter(w => w.length >= 2 && !SPANISH_STOPWORDS.has(w) && !INTENT_WORDS.has(w)))];
   const rankedProducts = Array.isArray(products) && products.length > 0 && queryWords.length > 0
-    ? scoreProductsByWords(queryWords, products).filter(p => p.score >= 3.2).sort((a, b) => b.score - a.score)
+    ? scoreProductsByWords(queryWords, products).filter(p => p.score >= 3.2).sort((a, b) => b.rank - a.rank || b.score - a.score)
     : [];
 
   // 1.1 Consultas fuera de tema (recetas, bromas, tareas). Si el catálogo tiene lo que nombra
@@ -742,7 +822,8 @@ const buildHumanAssistantReply = (userMessage, business, products = [], chatHist
   if (Array.isArray(products) && products.length > 0) {
     const fmt = (p) => {
       const desc = (p.description || '').trim();
-      return `• *${p.name}*: $${Number(p.price || 0).toLocaleString('es-CO')} ${p.currency || 'COP'}${desc ? ` (${desc.length > 120 ? `${desc.slice(0, 120)}…` : desc})` : ''}`;
+      const price = Number(p.price) > 0 ? `$${Number(p.price).toLocaleString('es-CO')} ${p.currency || 'COP'}` : 'precio por confirmar con un asesor';
+      return `• *${p.name}*: ${price}${desc ?` (${desc.length > 120 ? `${desc.slice(0, 120)}…` : desc})` : ''}`;
     };
     const categories = [...new Set(products.map(p => (p.category || '').trim()).filter(Boolean))].slice(0, 8);
     const categoriesText = categories.length ? ` Manejamos: ${categories.join(', ')}.` : '';
@@ -762,8 +843,8 @@ const buildHumanAssistantReply = (userMessage, business, products = [], chatHist
 
     if (rankedProducts.length > 0) {
       // Solo los que de verdad se parecen a lo pedido (no uno que comparte una sola sílaba)
-      const cut = rankedProducts[0].score * 0.8;
-      const top = rankedProducts.filter(p => p.score >= cut).slice(0, 3).map(fmt).join('\n');
+      const cut = rankedProducts[0].rank * 0.8;
+      const top = diversifyByCategory(rankedProducts.filter(p => p.rank >= cut), 3, 2).map(fmt).join('\n');
       return `Esto es lo que tengo registrado en ${busName} relacionado con tu consulta:\n\n${top}\n\nSi buscas otro modelo, marca o dato que no aparezca aquí (medidas, colores, garantía, disponibilidad...), un asesor del equipo te lo confirma. ${closing}`;
     }
 
@@ -922,6 +1003,7 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
         knowledge,
         business: safeBusiness,
         texts: [userMessage, ...formattedHistory.map(m => m.content)],
+        allowZero: safeBusiness?.name === 'BotWA' || safeBusiness?.id === '8fd9a59d-77d7-4db7-8637-9aaebca1158e',
       };
       let check = verifyReplyAmounts(fullReply, groundingCtx);
       if (!check.ok && largeCatalog) {
