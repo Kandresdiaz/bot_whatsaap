@@ -838,6 +838,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-10-03** | Merge pull request #17 from Kandresdiaz/feat/busqueda-sql-catalogos (`37882a9`) | Auto-deploy |
 
+| **2026-10-04** | Merge pull request #18 from Kandresdiaz/fix/respuesta-emergencia (`9010ad8`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
