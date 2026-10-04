@@ -379,6 +379,40 @@ const isSimpleGreeting = (text) => {
   return greetings.includes(norm) || norm.length <= 4;
 };
 
+// Puntúa cada producto por las palabras de la consulta: nombre 4 · categoría 2.5 · descripción 1
+// (con tolerancia a errores de tipeo). Un producto sin ninguna coincidencia queda en 0.
+const scoreProductsByWords = (words, products) => products.map(item => {
+  const normName = normalizeSearchText(item.name || '');
+  const normCat = normalizeSearchText(item.category || '');
+  const normDesc = normalizeSearchText(item.description || '');
+
+  const nameWords = normName.split(/\s+/);
+  const catWords = normCat.split(/\s+/);
+  const descWords = normDesc.split(/\s+/);
+
+  let score = 0;
+  for (const word of words) {
+    if (normName.includes(word)) {
+      score += 4;
+    } else if (nameWords.some(nw => isFuzzyWordMatch(word, nw))) {
+      score += 3.2;
+    }
+
+    if (normCat.includes(word)) {
+      score += 2.5;
+    } else if (catWords.some(cw => isFuzzyWordMatch(word, cw))) {
+      score += 2.0;
+    }
+
+    if (normDesc.includes(word)) {
+      score += 1;
+    } else if (descWords.some(dw => isFuzzyWordMatch(word, dw))) {
+      score += 0.8;
+    }
+  }
+  return { ...item, score };
+});
+
 // Devuelve { list, specific, catalogHasProducts, noMatch }:
 // - specific: la lista son productos que SÍ coinciden con la consulta puntual del cliente.
 // - noMatch: hay catálogo pero NINGÚN producto coincide con la consulta puntual → no entregamos
@@ -407,37 +441,7 @@ const rankAndFilterProducts = (query, products, subQueries = []) => {
   // Consulta genérica (sin palabras de contenido): mostramos una muestra para que explore.
   if (allWords.size === 0) return { list: all.slice(0, 12), specific: false, catalogHasProducts: true, noMatch: false };
 
-  const scored = all.map(item => {
-    const normName = normalizeSearchText(item.name || '');
-    const normCat = normalizeSearchText(item.category || '');
-    const normDesc = normalizeSearchText(item.description || '');
-
-    const nameWords = normName.split(/\s+/);
-    const catWords = normCat.split(/\s+/);
-    const descWords = normDesc.split(/\s+/);
-
-    let score = 0;
-    for (const word of allWords) {
-      if (normName.includes(word)) {
-        score += 4;
-      } else if (nameWords.some(nw => isFuzzyWordMatch(word, nw))) {
-        score += 3.2;
-      }
-
-      if (normCat.includes(word)) {
-        score += 2.5;
-      } else if (catWords.some(cw => isFuzzyWordMatch(word, cw))) {
-        score += 2.0;
-      }
-
-      if (normDesc.includes(word)) {
-        score += 1;
-      } else if (descWords.some(dw => isFuzzyWordMatch(word, dw))) {
-        score += 0.8;
-      }
-    }
-    return { ...item, score };
-  });
+  const scored = scoreProductsByWords(allWords, all);
 
   const matched = scored.filter(i => i.score > 0).sort((a, b) => b.score - a.score);
   if (matched.length > 0) return { list: matched.slice(0, 15), specific: true, catalogHasProducts: true, noMatch: false, topScore: matched[0].score };
@@ -690,8 +694,16 @@ const buildHumanAssistantReply = (userMessage, business, products = [], chatHist
     return business?.greeting_msg || `¡Hola! 👋 Te damos la bienvenida a ${busName}. ¿En qué te podemos asesorar hoy?`;
   }
 
-  // 1.1 Consultas fuera de tema (recetas, pizza, bromas, tareas)
-  if (norm.includes('pizza') || norm.includes('receta') || norm.includes('cocina') || norm.includes('chiste') || norm.includes('tarea')) {
+  // Productos del catálogo que coinciden con lo que pregunta (nombre, categoría o descripción)
+  const queryWords = [...new Set(normalizeSearchText(userMessage).split(' ')
+    .filter(w => w.length >= 2 && !SPANISH_STOPWORDS.has(w) && !INTENT_WORDS.has(w)))];
+  const rankedProducts = Array.isArray(products) && products.length > 0 && queryWords.length > 0
+    ? scoreProductsByWords(queryWords, products).filter(p => p.score >= 3.2).sort((a, b) => b.score - a.score)
+    : [];
+
+  // 1.1 Consultas fuera de tema (recetas, bromas, tareas). Si el catálogo tiene lo que nombra
+  // (una pizzería con "pizza"), NO es fuera de tema.
+  if (!rankedProducts.length && (norm.includes('pizza') || norm.includes('receta') || norm.includes('cocina') || norm.includes('chiste') || norm.includes('tarea'))) {
     if (busName === 'BotWA') {
       return `😄 ¡Esa te la debo! En ${busName} te ayudamos a automatizar la atención y citas en WhatsApp. ¿Te gustaría conocer cómo funciona para tu empresa? 😊`;
     }
@@ -725,23 +737,43 @@ const buildHumanAssistantReply = (userMessage, business, products = [], chatHist
   }
 
   // Para negocios con Catálogo de Productos / Servicios
+  // Respuesta de emergencia (la IA no está disponible): solo datos EXACTOS del catálogo, y si no
+  // hay coincidencia se dice, nunca se muestran productos al azar.
   if (Array.isArray(products) && products.length > 0) {
-    const matched = products.filter(p => norm.includes(p.name.toLowerCase()));
-    if (matched.length > 0) {
-      const top = matched.slice(0, 3).map(p => `• *${p.name}*: $${Number(p.price || 0).toLocaleString('es-CO')} ${p.currency || 'COP'}${p.description ? ` (${p.description})` : ''}`).join('\n');
-      return `¡Con gusto! Contamos con las siguientes opciones disponibles en ${busName}:\n\n${top}\n\n¿Te gustaría apartar tu pedido o que coordinemos los detalles? 😊`;
-    }
+    const fmt = (p) => {
+      const desc = (p.description || '').trim();
+      return `• *${p.name}*: $${Number(p.price || 0).toLocaleString('es-CO')} ${p.currency || 'COP'}${desc ? ` (${desc.length > 120 ? `${desc.slice(0, 120)}…` : desc})` : ''}`;
+    };
+    const categories = [...new Set(products.map(p => (p.category || '').trim()).filter(Boolean))].slice(0, 8);
+    const categoriesText = categories.length ? ` Manejamos: ${categories.join(', ')}.` : '';
+    const closing = isSales
+      ? '¿Te gustaría apartar alguno? 😊'
+      : '¿Para qué día y hora te gustaría agendar tu cita? 📅';
 
-    // Consulta general de planes, catálogo, precios, menú o servicios del negocio
-    if (norm.includes('plan') || norm.includes('precio') || norm.includes('opcion') || norm.includes('menu') || norm.includes('carta') || norm.includes('catalogo') || norm.includes('cuanto') || norm.includes('costo') || norm.includes('oferta') || norm.includes('servicio')) {
-      const top = products.slice(0, 3).map(p => `• *${p.name}*: $${Number(p.price || 0).toLocaleString('es-CO')} ${p.currency || 'COP'}${p.description ? ` (${p.description})` : ''}`).join('\n');
-      if (!isSales) {
-        return `Contamos con las siguientes opciones en ${busName}:\n\n${top}\n\n¿Para qué día y hora te gustaría agendar tu cita? 📅`;
+    // "la más barata" / "la más cara": se ordena el catálogo REAL por precio (entre lo que nombra, si nombra algo)
+    const byPrice = PRICE_ASC_RE.test(norm) ? 1 : PRICE_DESC_RE.test(norm) ? -1 : 0;
+    if (byPrice) {
+      const pool = (rankedProducts.length ? rankedProducts : products).filter(p => Number(p.price) > 0);
+      if (pool.length) {
+        const top = [...pool].sort((a, b) => byPrice * (Number(a.price) - Number(b.price))).slice(0, 3).map(fmt).join('\n');
+        return `${byPrice > 0 ? 'Los más económicos' : 'Los de mayor precio'} que tengo registrados en ${busName}:\n\n${top}\n\n${closing}`;
       }
-      return `Contamos con las siguientes opciones en ${busName}:\n\n${top}\n\n¿Cuál de estas opciones te gustaría apartar el día de hoy? 😊`;
     }
 
-    return `¡Hola! 👋 Con gusto te asesoro. En ${busName} nos especializamos en ${busCategory}. Cuéntame, ¿qué producto o servicio específico estás buscando el día de hoy? 😊`;
+    if (rankedProducts.length > 0) {
+      // Solo los que de verdad se parecen a lo pedido (no uno que comparte una sola sílaba)
+      const cut = rankedProducts[0].score * 0.8;
+      const top = rankedProducts.filter(p => p.score >= cut).slice(0, 3).map(fmt).join('\n');
+      return `Esto es lo que tengo registrado en ${busName} relacionado con tu consulta:\n\n${top}\n\nSi buscas otro modelo, marca o dato que no aparezca aquí (medidas, colores, garantía, disponibilidad...), un asesor del equipo te lo confirma. ${closing}`;
+    }
+
+    // Pide ver el catálogo o los precios en general, sin nombrar nada. Envíos, pagos, garantía... no son catálogo.
+    const asksOtherTopic = /\b(envios?|domicilios?|garantia|financi\w*|cuotas?|pagos?|devoluci\w*|cambios?|horarios?|ubicacion|direccion)\b/.test(norm);
+    if (!asksOtherTopic && /\b(catalogo|menu|carta|productos|servicios|opciones|que (venden|tienen|ofrecen|manejan)|precios?|cuanto)\b/.test(norm)) {
+      return `¡Con gusto! ¿De qué producto o servicio te cuento el precio?${categoriesText} Dime el nombre y te doy el dato exacto. 😊`;
+    }
+
+    return `Ese dato no lo tengo registrado, así que te lo confirma un asesor del equipo en un momento 🙏${categoriesText} Mientras tanto, dime qué producto te interesa y te doy el precio exacto.`;
   }
 
   if (!isSales) {
@@ -927,6 +959,12 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
     }
 
     const usedFallback = !fullReply;
+    // Contadores para /api/debug/version: permiten ver desde fuera cuánto responde la emergencia
+    try {
+      const pool = require('./llmPool');
+      if (usedFallback) pool.recordOutcome?.('fallbacks');
+      if (groundingBlocked) pool.recordOutcome?.('blocked');
+    } catch (_) {}
     if (usedFallback) {
       fullReply = buildHumanAssistantReply(userMessage, safeBusiness, catalogProducts, chatHistory, knowledge);
     }
