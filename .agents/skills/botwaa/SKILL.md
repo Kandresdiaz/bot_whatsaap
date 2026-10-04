@@ -840,6 +840,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-10-04** | Merge pull request #18 from Kandresdiaz/fix/respuesta-emergencia (`9010ad8`) | Auto-deploy |
 
+| **2026-10-04** | Merge pull request #19 from Kandresdiaz/fix/negocio-unico-y-diagnostico (`5592fbc`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
