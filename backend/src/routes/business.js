@@ -3,6 +3,7 @@ const router = express.Router();
 const { supabase } = require('../db/supabase');
 const { ownsParam, requireAdmin } = require('../auth/access');
 const { seedDefaultProductsAndKB } = require('../db/seedHelper');
+const { resolveUserBusiness } = require('../services/businessResolver');
 
 const isUuid = (str) => typeof str === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
 
@@ -53,14 +54,8 @@ router.get('/:userId', ownsParam('userId'), async (req, res) => {
 
   try {
     // 1. Buscar el negocio propio de este usuario exacto
-    let { data } = await supabase
-      .from('businesses')
-      .select('*')
-      .eq('user_id', targetUserId)
-      .order('created_at', { ascending: false })
-      .limit(1);
-
-    let business = (data && data.length > 0) ? data[0] : null;
+    // Si hay más de un negocio, el que tiene datos cargados (el mismo que usa el bot)
+    let business = await resolveUserBusiness(supabase, targetUserId) || null;
 
     // 2. Si no existe aún registro para este usuario, crearlo con su propio user_id
     if (!business) {
@@ -328,10 +323,7 @@ router.post('/simulate/:userId', ownsParam('userId'), async (req, res) => {
   simulateHits.set(targetUserId, hits);
 
   try {
-    const { data: buses } = await supabase
-      .from('businesses').select('*').eq('user_id', targetUserId)
-      .order('created_at', { ascending: false }).limit(1);
-    const business = buses?.[0];
+    const business = await resolveUserBusiness(supabase, targetUserId);
     if (!business) return res.status(404).json({ success: false, error: 'Primero configura tu negocio en "Configurar Bot".' });
 
     // Misma carga de catálogo que WhatsApp real: lo que se prueba aquí es lo que reciben los clientes
@@ -363,11 +355,31 @@ router.post('/simulate/:userId', ownsParam('userId'), async (req, res) => {
       if (prod) image = { url: prod.image_url, caption: prod.name };
     }
 
+    // "Qué vio el bot": permite explicar en segundos por qué respondió lo que respondió
+    const { evaluateBotReadiness } = require('../services/botReadiness');
+    const { count: businessesOfUser } = await supabase.from('businesses').select('id', { count: 'exact', head: true }).eq('user_id', targetUserId);
+    const productsTotal = catalog.options?.catalogTotal || (products || []).length;
+    const readiness = evaluateBotReadiness(business, productsTotal, (knowledge || []).length);
+    const debug = {
+      business: business.name || '(sin nombre)',
+      businessesOfUser: businessesOfUser || 1,
+      productsTotal,
+      knowledgeItems: (knowledge || []).length,
+      catalogMode: r.debugInfo?.catalogMode || null,
+      seenProducts: (r.productsUsed || []).slice(0, 15).map(p => `${p.name} — ${Number(p.price) > 0 ? `$${Number(p.price).toLocaleString('es-CO')}` : 'sin precio'}${p.category ? ` [${p.category}]` : ''}`),
+      searchedAlso: r.debugInfo?.subQueries || [],
+      nothingMatched: Boolean(r.debugInfo?.noMatch),
+      aiModel: r.debugInfo?.aiModel || null,
+      readyToAnswer: readiness.ready,
+      missing: readiness.missing,
+    };
+
     const order = r.newOrderData || (r.clientData && (r.clientData.producto || r.clientData.ciudad) ? r.clientData : null);
     return res.json({
       success: true,
       reply: r.reply,
       image,
+      debug,
       usedFallback: Boolean(r.usedFallback),
       groundingBlocked: Boolean(r.groundingBlocked),
       detected: {

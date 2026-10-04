@@ -3,6 +3,7 @@ const router = express.Router();
 const { supabase } = require('../db/supabase');
 const { ownsBody, ownsParam, ownsRow } = require('../auth/access');
 const { clearBusinessAiCache } = require('../ai/aiCache');
+const { resolveUserBusiness } = require('../services/businessResolver');
 
 // Helper para obtener el business_id real a partir del user_id o business_id
 const resolveBusinessId = async (idOrUserId) => {
@@ -24,13 +25,9 @@ const resolveBusinessId = async (idOrUserId) => {
 
     if (bById && bById[0]?.id) return bById[0].id;
 
-    const { data: bByUser } = await supabase
-      .from('businesses')
-      .select('id')
-      .eq('user_id', idOrUserId)
-      .limit(1);
-
-    if (bByUser && bByUser[0]?.id) return bByUser[0].id;
+    // Mismo criterio que el bot: el negocio con datos cargados (ver businessResolver)
+    const byUser = await resolveUserBusiness(supabase, idOrUserId, 'id');
+    if (byUser?.id) return byUser.id;
   } catch (e) {
     console.error('[Products] Error resolviendo businessId:', e.message);
   }

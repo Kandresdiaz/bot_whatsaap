@@ -69,8 +69,9 @@ const resolveBusinessId = async (idOrUserId) => {
     const { data: bById } = await supabase.from('businesses').select('id').eq('id', idOrUserId).limit(1);
     if (bById && bById[0]?.id) return bById[0].id;
 
-    const { data: bByUser } = await supabase.from('businesses').select('id').eq('user_id', idOrUserId).limit(1);
-    if (bByUser && bByUser[0]?.id) return bByUser[0].id;
+    // Mismo criterio que el bot: el negocio con datos cargados (ver businessResolver)
+    const byUser = await resolveUserBusiness(supabase, idOrUserId, 'id');
+    if (byUser?.id) return byUser.id;
   } catch (e) {}
   return null;
 };
@@ -99,6 +100,7 @@ router.get('/:businessId', ownsParam('businessId'), async (req, res) => {
 });
 
 const { clearBusinessAiCache } = require('../ai/aiCache');
+const { resolveUserBusiness } = require('../services/businessResolver');
 
 // Agregar texto o FAQ
 router.post('/:businessId', ownsParam('businessId'), async (req, res) => {

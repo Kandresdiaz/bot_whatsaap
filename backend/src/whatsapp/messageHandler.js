@@ -2,6 +2,7 @@ const { supabase } = require('../db/supabase');
 const { askGroq } = require('../ai/groq');
 const { loadCatalogContext } = require('../services/catalogContext');
 const { extraOrderFields } = require('../ai/orderNotes');
+const { resolveUserBusiness } = require('../services/businessResolver');
 const { notifyLead } = require('./notifier');
 const { handleAppointmentFlow } = require('./appointmentFlow');
 const { isOutsideHours } = require('../services/businessHours');
@@ -427,30 +428,13 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
       if (bById && bById.length > 0) business = bById[0];
     }
 
+    // Mismo criterio que el panel: si el usuario tiene más de un negocio, el que tiene datos cargados
     if (!business && validUserId) {
-      const { data: bData } = await supabase
-        .from('businesses')
-        .select('*')
-        .eq('user_id', validUserId)
-        .order('created_at', { ascending: false })
-        .limit(1);
-
-      if (bData && bData.length > 0) {
-        business = bData[0];
-      }
+      business = await resolveUserBusiness(supabase, validUserId) || null;
     }
 
     if (!business && userId && userId !== validUserId) {
-      const { data: bData2 } = await supabase
-        .from('businesses')
-        .select('*')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false })
-        .limit(1);
-
-      if (bData2 && bData2.length > 0) {
-        business = bData2[0];
-      }
+      business = await resolveUserBusiness(supabase, userId) || null;
     }
 
     // Fallback a BotWA SOLO si es el administrador principal

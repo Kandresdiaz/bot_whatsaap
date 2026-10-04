@@ -15,12 +15,28 @@ type Detected = {
   cancellation: Fields | null;
 };
 
+// Lo que el bot tuvo a la vista al responder: sirve para entender por qué dijo lo que dijo
+type DebugInfo = {
+  business: string;
+  businessesOfUser: number;
+  productsTotal: number;
+  knowledgeItems: number;
+  catalogMode: string | null;
+  seenProducts: string[];
+  searchedAlso: string[];
+  nothingMatched: boolean;
+  aiModel: string | null;
+  readyToAnswer: boolean;
+  missing: string[];
+};
+
 type ChatMsg = {
   from: 'client' | 'bot';
   text: string;
   image?: { url: string; caption: string } | null;
   usedFallback?: boolean;
   detected?: Detected;
+  debug?: DebugInfo;
 };
 
 const SALES_EXAMPLES = [
@@ -85,6 +101,39 @@ function DetectedCard({ d }: { d: Detected }) {
   return null;
 }
 
+function DebugBox({ d }: { d: DebugInfo }) {
+  const line = { margin: '2px 0' } as const;
+  return (
+    <details style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4, maxWidth: '85%' }}>
+      <summary style={{ cursor: 'pointer' }}>🔍 Qué vio el bot</summary>
+      <div style={{ padding: '6px 0 2px' }}>
+        <p style={line}>
+          Negocio: <b>{d.business}</b>
+          {d.businessesOfUser > 1 && <span style={{ color: '#facc15' }}> ⚠️ tu usuario tiene {d.businessesOfUser} negocios</span>}
+        </p>
+        <p style={line}>Productos en el catálogo: <b>{d.productsTotal}</b> · Ítems de conocimiento: <b>{d.knowledgeItems}</b></p>
+        {d.catalogMode && <p style={line}>Cómo buscó: {d.catalogMode}{d.searchedAlso.length > 0 ? ` (también: ${d.searchedAlso.join(', ')})` : ''}</p>}
+        {d.seenProducts.length > 0 ? (
+          <div style={line}>
+            Productos que tuvo a la vista:
+            <ul style={{ margin: '2px 0 0 18px', padding: 0 }}>
+              {d.seenProducts.map((p, i) => <li key={i}>{p}</li>)}
+            </ul>
+          </div>
+        ) : (
+          <p style={{ ...line, color: '#facc15' }}>
+            {d.nothingMatched ? 'Ningún producto coincidió con lo que preguntaste.' : 'No tuvo ningún producto a la vista.'}
+          </p>
+        )}
+        <p style={line}>Respondió: <b>{d.aiModel || 'respuesta automática de respaldo (ninguna IA respondió)'}</b></p>
+        {!d.readyToAnswer && (
+          <p style={{ ...line, color: '#f87171' }}>En WhatsApp real el bot NO respondería: {d.missing.join(' · ')}</p>
+        )}
+      </div>
+    </details>
+  );
+}
+
 export default function TestBotPage() {
   const { effectiveUserId } = useAuth();
   const [business, setBusiness] = useState<{ name?: string; main_goal?: string } | null>(null);
@@ -127,7 +176,7 @@ export default function TestBotPage() {
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.error || 'No se pudo generar la respuesta.');
       setMsgs(prev => [...prev, {
-        from: 'bot', text: data.reply, image: data.image, usedFallback: data.usedFallback, detected: data.detected,
+        from: 'bot', text: data.reply, image: data.image, usedFallback: data.usedFallback, detected: data.detected, debug: data.debug,
       }]);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo generar la respuesta.');
@@ -187,6 +236,7 @@ export default function TestBotPage() {
                 </div>
               )}
               {m.detected && <DetectedCard d={m.detected} />}
+              {m.debug && <DebugBox d={m.debug} />}
             </div>
           ))}
 
