@@ -1151,6 +1151,13 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
       groundingBlocked,
       // Productos que el bot tuvo a la vista este turno (para enviar la foto del que mencionó)
       productsUsed: catalogProducts,
+      // Para "Probar bot": qué vio y qué modelo respondió
+      debugInfo: {
+        catalogMode: largeCatalog ? (catalogInfo?.mode === 'sample' ? 'muestra del catálogo (búsqueda SQL)' : 'búsqueda SQL') : 'catálogo en memoria',
+        subQueries: subQueries || [],
+        noMatch: Boolean(catalogInfo?.noMatch),
+        aiModel: response ? `${response.provider}:${response.model}` : null,
+      },
     };
   } catch (err) {
     console.error('[Groq] Error en askGroq:', err.message);

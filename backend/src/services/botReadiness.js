@@ -1,4 +1,5 @@
 const { supabase } = require('../db/supabase');
+const { resolveUserBusiness } = require('./businessResolver');
 
 // Negocio y administrador principal de BotWA: su catálogo se siembra por código,
 // así que nunca se bloquea su bot por falta de información.
@@ -42,14 +43,7 @@ const checkBotReadiness = async (userId) => {
   if (userId === PRIMARY_ADMIN_UUID || userId === 'admin') return { ready: true, missing: [] };
   if (!supabase) return { ready: true, missing: [] };
 
-  const { data: businesses } = await supabase
-    .from('businesses')
-    .select('id, name, description, custom_instructions, is_configured')
-    .eq('user_id', userId)
-    .order('created_at', { ascending: false })
-    .limit(1);
-
-  const business = businesses?.[0] || null;
+  const business = await resolveUserBusiness(supabase, userId, 'id, name, description, custom_instructions, is_configured');
   if (!business) return evaluateBotReadiness(null);
 
   const [{ count: productsCount }, { count: knowledgeCount }] = await Promise.all([
