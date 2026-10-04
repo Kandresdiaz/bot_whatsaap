@@ -116,7 +116,10 @@ const buildTargets = async () => {
 
 // ─── Enfriamiento por destino tras un 429 / error ────────────────────────────
 const cooldownUntil = new Map(); // target.id -> timestamp
-const stats = { calls: 0, ok: 0, rateLimited: 0, errors: 0, allBusy: 0, byTarget: {} };
+// fallbacks = veces que ninguna IA respondió y el bot usó la respuesta de emergencia;
+// blocked = respuestas que el verificador de precios descartó por traer un valor sin respaldo.
+const stats = { calls: 0, ok: 0, rateLimited: 0, errors: 0, allBusy: 0, fallbacks: 0, blocked: 0, byTarget: {} };
+const recordOutcome = (kind) => { if (kind in stats) stats[kind]++; };
 
 const isCooling = (t) => (cooldownUntil.get(t.id) || 0) > Date.now();
 const coolDown = (t, ms, why) => {
@@ -265,4 +268,4 @@ const getPoolStatus = () => ({
   stats,
 });
 
-module.exports = { chatComplete, getPoolStatus };
+module.exports = { chatComplete, getPoolStatus, recordOutcome };

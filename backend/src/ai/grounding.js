@@ -66,8 +66,10 @@ const extractAllNumbers = (text) => {
 const MAX_QTY = 50;
 
 // Conjunto de valores que el bot SÍ puede decir.
-const buildAllowedAmounts = ({ products = [], knowledge = [], business = null, texts = [], reply = '' } = {}) => {
-  const allowed = new Set([0]);
+// "$0" solo vale si el negocio lo dice (una prueba gratis, un envío gratis): un producto sin precio
+// registrado NO es gratis. `allowZero` es para el negocio cuyo producto es justo "$0 hoy" (BotWA).
+const buildAllowedAmounts = ({ products = [], knowledge = [], business = null, texts = [], reply = '', allowZero = false } = {}) => {
+  const allowed = new Set(allowZero ? [0] : []);
   const add = (n) => { if (typeof n === 'number' && Number.isFinite(n)) allowed.add(Math.round(n)); };
 
   const prices = [];

@@ -17,6 +17,9 @@
 --       · singular/plural y variantes ("relojes" ≈ "reloj") con el stemmer español
 --       · errores de tipeo en términos de 4+ letras ("motto" ≈ "moto") con trigramas
 --     Cuantos más términos/características coinciden ("reloj negro sumergible"), más arriba.
+--     score = cuánto coincide; rank = lo mismo pero dándole MENOS peso a las palabras que están
+--     en casi todo el catálogo del negocio ("eléctrica" en una tienda de movilidad eléctrica no
+--     distingue nada; "bicicleta" sí). rank sirve para ordenar y repartir entre categorías.
 --     orden: 'relevancia' (por defecto), 'precio_asc' ("el más barato"), 'precio_desc'.
 --   productos_similares(negocio, id_producto, límite)
 --     Para "algo parecido": misma categoría + nombre y descripción parecidos + precio cercano.
@@ -52,7 +55,10 @@ CREATE INDEX IF NOT EXISTS products_services_biz_text_idx
   WHERE is_active IS NOT FALSE;
 
 -- ─── buscar_productos ───────────────────────────────────────────────────────
-CREATE OR REPLACE FUNCTION public.buscar_productos(
+-- (si existía una versión anterior con otras columnas de salida, hay que quitarla primero)
+DROP FUNCTION IF EXISTS public.buscar_productos(uuid, text[], int, text, numeric);
+
+CREATE FUNCTION public.buscar_productos(
   p_business_id uuid,
   p_terms       text[]  DEFAULT '{}',
   p_limit       int     DEFAULT 12,
@@ -67,12 +73,13 @@ RETURNS TABLE (
   currency    text,
   category    text,
   image_url   text,
-  score       real
+  score       real,
+  rank        real
 )
 LANGUAGE sql STABLE
 SET search_path = public, extensions
 AS $$
-  WITH t AS (
+  WITH t0 AS (
     SELECT DISTINCT lower(unaccent(btrim(x))) AS term
     FROM unnest(coalesce(p_terms, '{}'::text[])) AS x
     WHERE length(btrim(x)) >= 2
@@ -88,36 +95,52 @@ AS $$
       AND p.is_active IS NOT FALSE
       AND (p_max_price IS NULL OR p.price <= p_max_price)
   ),
+  total AS (SELECT count(*)::float8 AS n FROM base),
+  -- Peso de cada término: 1 si es raro en el catálogo del negocio, ~0.05 si está en casi todo.
+  -- MATERIALIZED: se calcula una vez; sin eso Postgres lo repetiría por cada producto.
+  t AS MATERIALIZED (
+    SELECT t0.term,
+           greatest(0.05, least(1.0,
+             CASE WHEN total.n > 1
+                  THEN ln((total.n + 1) / ((SELECT count(*) FROM base b2
+                                            WHERE strpos(b2.n || ' ' || b2.c || ' ' || b2.d, t0.term) > 0) + 0.5))
+                       / ln((total.n + 1) / 1.5)
+                  ELSE 1.0 END)) AS w
+    FROM t0 CROSS JOIN total
+  ),
   scored AS (
-    SELECT b.*,
-      coalesce((
-        SELECT sum(4.0 * m.name_hit + 2.5 * m.cat_hit + 1.5 * m.desc_hit + 1.0 * m.fts_hit)
-        FROM t
-        CROSS JOIN LATERAL (
-          SELECT
-            -- términos de 2 letras ("tv"): solo como palabra completa, para no coincidir con todo
-            CASE WHEN length(t.term) = 2 THEN (b.n ~ ('(^| )' || t.term || '( |$)'))::int::float8
-                 WHEN strpos(b.n, t.term) > 0 THEN 1.0
-                 WHEN length(t.term) >= 4 AND word_similarity(t.term, b.n) >= 0.45
-                      THEN 0.8 * word_similarity(t.term, b.n)
-                 ELSE 0.0 END AS name_hit,
-            CASE WHEN length(t.term) = 2 THEN (b.c ~ ('(^| )' || t.term || '( |$)'))::int::float8
-                 WHEN strpos(b.c, t.term) > 0 THEN 1.0
-                 WHEN length(t.term) >= 4 AND word_similarity(t.term, b.c) >= 0.45
-                      THEN 0.8 * word_similarity(t.term, b.c)
-                 ELSE 0.0 END AS cat_hit,
-            CASE WHEN length(t.term) = 2 THEN (b.d ~ ('(^| )' || t.term || '( |$)'))::int::float8
-                 WHEN strpos(b.d, t.term) > 0 THEN 1.0
-                 ELSE 0.0 END AS desc_hit,
-            CASE WHEN to_tsvector('spanish', b.n || ' ' || b.c || ' ' || b.d)
-                      @@ plainto_tsquery('spanish', t.term) THEN 1.0 ELSE 0.0 END AS fts_hit
-        ) m
-      ), 0)::real AS score
+    SELECT b.*, agg.raw::real AS score, agg.ranked::real AS rank
     FROM base b
+    CROSS JOIN LATERAL (
+      SELECT coalesce(sum(h.hit), 0) AS raw, coalesce(sum(h.hit * t.w), 0) AS ranked
+      FROM t
+      CROSS JOIN LATERAL (
+        SELECT
+          -- términos de 2 letras ("tv"): solo como palabra completa, para no coincidir con todo
+          CASE WHEN length(t.term) = 2 THEN (b.n ~ ('(^| )' || t.term || '( |$)'))::int::float8
+               WHEN strpos(b.n, t.term) > 0 THEN 1.0
+               WHEN length(t.term) >= 4 AND word_similarity(t.term, b.n) >= 0.45
+                    THEN 0.8 * word_similarity(t.term, b.n)
+               ELSE 0.0 END AS name_hit,
+          CASE WHEN length(t.term) = 2 THEN (b.c ~ ('(^| )' || t.term || '( |$)'))::int::float8
+               WHEN strpos(b.c, t.term) > 0 THEN 1.0
+               WHEN length(t.term) >= 4 AND word_similarity(t.term, b.c) >= 0.45
+                    THEN 0.8 * word_similarity(t.term, b.c)
+               ELSE 0.0 END AS cat_hit,
+          CASE WHEN length(t.term) = 2 THEN (b.d ~ ('(^| )' || t.term || '( |$)'))::int::float8
+               WHEN strpos(b.d, t.term) > 0 THEN 1.0
+               ELSE 0.0 END AS desc_hit,
+          CASE WHEN to_tsvector('spanish', b.n || ' ' || b.c || ' ' || b.d)
+                    @@ plainto_tsquery('spanish', t.term) THEN 1.0 ELSE 0.0 END AS fts_hit
+      ) m
+      CROSS JOIN LATERAL (
+        SELECT 4.0 * m.name_hit + 2.5 * m.cat_hit + 1.5 * m.desc_hit + 1.0 * m.fts_hit AS hit
+      ) h
+    ) agg
   )
-  SELECT s.id, s.name, s.description, s.price, s.currency, s.category, s.image_url, s.score
+  SELECT s.id, s.name, s.description, s.price, s.currency, s.category, s.image_url, s.score, s.rank
   FROM scored s
-  WHERE (SELECT count(*) FROM t) = 0
+  WHERE (SELECT count(*) FROM t0) = 0
      OR s.score >= CASE
           -- "el más barato de los relojes": ordenar por precio SOLO entre los que de verdad
           -- son relojes, no entre cualquier cosa que mencione la palabra
@@ -126,8 +149,8 @@ AS $$
   ORDER BY
     CASE WHEN p_orden = 'precio_asc'  THEN s.price END ASC  NULLS LAST,
     CASE WHEN p_orden = 'precio_desc' THEN s.price END DESC NULLS LAST,
-    s.score DESC, s.category NULLS LAST, s.name
-  LIMIT greatest(1, least(coalesce(p_limit, 12), 30));
+    s.rank DESC, s.score DESC, s.category NULLS LAST, s.name
+  LIMIT greatest(1, least(coalesce(p_limit, 12), 60));
 $$;
 
 -- ─── productos_similares ────────────────────────────────────────────────────
