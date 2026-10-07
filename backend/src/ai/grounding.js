@@ -118,6 +118,34 @@ const verifyReplyAmounts = (reply, ctx = {}) => {
   return { ok: invalid.length === 0, invalid };
 };
 
+// ─── Códigos de modelo ("EM22", "EB-1S", "WH2001") ───────────────────────────
+// El modelo puede cambiar una letra o un número de la referencia ("EM2p" en vez de "EM22") y el
+// cliente pediría un producto que no existe. Toda referencia que aparezca en la respuesta tiene que
+// estar en el catálogo, la base de conocimiento, los datos del negocio o lo que escribió el cliente.
+const CODE_RE = /\b[A-Za-z]{1,5}-?\d{1,4}[A-Za-z]{0,3}\b/g;
+const COMMON_TOKENS = new Set(['mp3', 'mp4', 'b2b', 'b2c', 'co2', 'h2o', 'covid19', '24x7']);
+const compact = (text) => normalize(text).replace(/\s+/g, '');
+
+const verifyReplyCodes = (reply, { products = [], knowledge = [], business = null, texts = [] } = {}) => {
+  // Enlaces y correos no son referencias de producto
+  const cleaned = String(reply || '').replace(/https?:\/\/\S+|www\.\S+|\S+@\S+/gi, ' ');
+  const found = [...new Set((cleaned.match(CODE_RE) || []))];
+  if (found.length === 0) return { ok: true, invalid: [] };
+
+  const corpus = compact([
+    ...products.flatMap(p => [p?.name, p?.description, p?.category]),
+    ...knowledge.flatMap(k => [k?.title, k?.content]),
+    ...(business ? [business.name, business.description, business.custom_instructions, business.closing_instructions, business.address, business.greeting_msg] : []),
+    ...texts,
+  ].filter(Boolean).join(' '));
+
+  const invalid = found.filter(code => {
+    const c = compact(code);
+    return c.length >= 3 && !COMMON_TOKENS.has(c) && !corpus.includes(c);
+  });
+  return { ok: invalid.length === 0, invalid };
+};
+
 // El total que el modelo escribe en [NUEVO_PEDIDO] tiene que salir del catálogo: se recalcula
 // con los precios reales. Devuelve el pedido con el total corregido (o en 0 si no se puede saber).
 const reconcileOrderTotal = (order, products = []) => {
@@ -162,5 +190,6 @@ module.exports = {
   extractAllNumbers,
   buildAllowedAmounts,
   verifyReplyAmounts,
+  verifyReplyCodes,
   reconcileOrderTotal,
 };

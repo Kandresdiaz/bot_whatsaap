@@ -118,7 +118,8 @@ const buildTargets = async () => {
 const cooldownUntil = new Map(); // target.id -> timestamp
 // fallbacks = veces que ninguna IA respondió y el bot usó la respuesta de emergencia;
 // blocked = respuestas que el verificador de precios descartó por traer un valor sin respaldo.
-const stats = { calls: 0, ok: 0, rateLimited: 0, errors: 0, allBusy: 0, fallbacks: 0, blocked: 0, byTarget: {} };
+// truncated = respuestas que el modelo dejó cortadas por quedarse sin tokens (se descartan).
+const stats = { calls: 0, ok: 0, rateLimited: 0, errors: 0, allBusy: 0, fallbacks: 0, blocked: 0, truncated: 0, byTarget: {} };
 const recordOutcome = (kind) => { if (kind in stats) stats[kind]++; };
 
 const isCooling = (t) => (cooldownUntil.get(t.id) || 0) > Date.now();
@@ -155,8 +156,10 @@ const callTarget = async (t, { messages, max_tokens, temperature }) => {
   const timer = setTimeout(() => controller.abort(), CALL_TIMEOUT_MS);
   try {
     const body = { model: t.model, messages, temperature, max_tokens };
-    // Los Gemini "piensan" antes de responder y eso sale del mismo tope de tokens
-    if (t.provider !== 'groq') body.max_tokens = Math.max(max_tokens, 1024);
+    // Los modelos "piensan" antes de responder y eso sale del mismo tope de tokens: con un tope justo
+    // la respuesta se corta a las primeras letras ("EM"). Gemini/OpenRouter necesitan más; en Groq se
+    // sube menos porque esos tokens reservados cuentan contra su límite por minuto.
+    body.max_tokens = Math.max(max_tokens, t.provider === 'groq' ? 700 : 1024);
 
     const res = await fetch(`${t.baseUrl}/chat/completions`, {
       method: 'POST',
@@ -175,6 +178,8 @@ const callTarget = async (t, { messages, max_tokens, temperature }) => {
     return {
       content: data?.choices?.[0]?.message?.content || '',
       tokens: data?.usage?.total_tokens || 0,
+      // 'length' = el modelo se quedó sin tokens y la respuesta quedó cortada
+      truncated: data?.choices?.[0]?.finish_reason === 'length',
     };
   } finally {
     clearTimeout(timer);
@@ -192,7 +197,7 @@ const callTarget = async (t, { messages, max_tokens, temperature }) => {
  * @param {(text:string)=>boolean} [opts.accept] descarta respuestas inválidas y prueba el siguiente
  * @returns {Promise<{content:string, tokens:number, model:string, provider:string}|null>}
  */
-const chatComplete = async ({ messages, max_tokens = 350, temperature = 0.25, lowPriority = false, accept } = {}) => {
+const chatComplete = async ({ messages, max_tokens = 350, temperature = 0.25, lowPriority = false, accept, allowTruncated = false } = {}) => {
   if (lowPriority && active >= MAX_CONCURRENT) return null;
 
   const targets = await buildTargets();
@@ -209,6 +214,13 @@ const chatComplete = async ({ messages, max_tokens = 350, temperature = 0.25, lo
         try {
           const out = await callTarget(t, { messages, max_tokens, temperature });
           const content = (out.content || '').trim();
+          // Una respuesta cortada a medias NUNCA se le entrega al cliente: se prueba con el siguiente modelo
+          if (out.truncated && !allowTruncated) {
+            console.warn(`[AI Pool] ${t.id} cortó la respuesta (se quedó sin tokens), pruebo el siguiente`);
+            stats.truncated++;
+            rejected.add(t.id);
+            continue;
+          }
           if (accept && !accept(content)) {
             console.warn(`[AI Pool] ${t.id} devolvió una respuesta inválida, pruebo el siguiente`);
             rejected.add(t.id);

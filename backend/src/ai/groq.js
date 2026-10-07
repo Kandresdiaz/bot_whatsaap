@@ -2,7 +2,13 @@
 // llamadas simultáneas y respeta los límites de cada proveedor. Los modelos 'groq/compound*' se
 // excluyen allí: buscan en internet y traen datos que el dueño nunca configuró.
 const { chatComplete } = require('./llmPool');
-const { verifyReplyAmounts, reconcileOrderTotal } = require('./grounding');
+const { verifyReplyAmounts, verifyReplyCodes, reconcileOrderTotal } = require('./grounding');
+
+// Lo que el cliente va a leer (sin etiquetas internas) debe ser una respuesta de verdad: una de
+// dos letras ("EM") es una respuesta cortada, no una respuesta.
+const MIN_REPLY_CHARS = 6;
+const visibleText = (text) => (text || '').replace(/\[[A-Z_]+(?::[^\]]*)?\]/g, '').trim();
+const isUsableReply = (text) => visibleText(text).length >= MIN_REPLY_CHARS;
 
 // Un producto sin precio (una página del catálogo que no lo traía se guarda con 0) NO es gratis:
 // mostrar "$0 COP" le dice al cliente que cuesta nada.
@@ -200,6 +206,7 @@ const generateSubQueries = async (userMessage, business = null, chatHistory = []
   try {
     const response = await chatComplete({
       lowPriority: true,
+      allowTruncated: true, // una lista de consultas cortada sigue sirviendo
       messages: [
         {
           role: 'system',
@@ -748,7 +755,8 @@ ${isSales ? '- Si el cliente quiere ver, probar o revisar algo en persona, ofré
 ## FOTOS / IMÁGENES (importante)
 - En el CATÁLOGO, cada producto con foto trae "Foto/Imagen: <url>". Si el cliente quiere VER un producto —aunque lo pida mal o informal ("mándame una foto", "la puedo ver?", "cómo se ve", "muéstrame", "y una imagen?")— identifica de cuál habla (si no lo nombra, es el que están viendo en la conversación) y añade al final: [ENVIAR_IMAGEN: Nombre exacto del producto del catálogo].
 - La foto se envía SOLA con esa etiqueta. ESTÁ PROHIBIDO decir "te la envío en un momento", "ya te la mando", "enseguida te la paso" o prometer mandarla después: si la vas a enviar, pon la etiqueta AHORA y acompáñala de una frase corta ("¡Claro! Mira 👇").
-- Usa el nombre tal como aparece en el catálogo. Solo usa la etiqueta si ese producto tiene "Foto/Imagen" registrada; si no la tiene, dile con calidez que un asesor se la comparte y NO uses la etiqueta.`;
+- Usa el nombre tal como aparece en el catálogo. Solo usa la etiqueta si ese producto tiene "Foto/Imagen" registrada; si no la tiene, dile con calidez que un asesor se la comparte y NO uses la etiqueta.
+- La foto llega con el nombre y el precio en su pie: NO preguntes si quiere conocer el precio ni lo repitas. Escribe el nombre del producto EXACTAMENTE como está en el catálogo (sin cambiar letras ni números de la referencia) y pregunta si le gustaría comprarlo o ver más detalles.`;
 };
 
 // ─── Respuesta Asistente Humana (Fallback Contextual de Alto Nivel) ───────────
@@ -848,6 +856,19 @@ const buildHumanAssistantReply = (userMessage, business, products = [], chatHist
       const cut = rankedProducts[0].rank * 0.8;
       const top = diversifyByCategory(rankedProducts.filter(p => p.rank >= cut), 3, 2).map(fmt).join('\n');
       return `Esto es lo que tengo registrado en ${busName} relacionado con tu consulta:\n\n${top}\n\nSi buscas otro modelo, marca o dato que no aparezca aquí (medidas, colores, garantía, disponibilidad...), un asesor del equipo te lo confirma. ${closing}`;
+    }
+
+    // "quiero esa", "me gusta, ¿cómo la compro?": no nombra el producto, pero el bot acaba de hablar de uno
+    const wantsToContinue = /\b(quiero|comprar\w*|me gusta|llevo|llevar\w*|pedido|apartar\w*|esa|ese|esta|este)\b/.test(norm);
+    if (hasHistory && wantsToContinue) {
+      const lastBot = [...validHistory].reverse().find(m => m.direction === 'outbound')?.content || '';
+      const lastWords = [...new Set(normalizeSearchText(lastBot).split(' ').filter(w => w.length >= 2 && !SPANISH_STOPWORDS.has(w)))];
+      const discussed = lastWords.length
+        ? scoreProductsByWords(lastWords, products).filter(p => p.score >= 3.2).sort((a, b) => b.rank - a.rank || b.score - a.score)
+        : [];
+      if (discussed.length) {
+        return `¡Excelente elección! 🙌 Tengo registrado:\n\n${fmt(discussed[0])}\n\nUn asesor del equipo continúa contigo para confirmar los datos de tu compra en un momento. 🙏`;
+      }
     }
 
     // Pide ver el catálogo o los precios en general, sin nombrar nada. Envíos, pagos, garantía... no son catálogo.
@@ -989,7 +1010,7 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
       max_tokens: 350,
       temperature: 0.25,
       // Si el modelo solo gastó tokens pensando, la respuesta queda vacía: probar el siguiente
-      accept: (text) => stripThink(text).length >= 2,
+      accept: (text) => isUsableReply(stripThink(text)),
     });
     if (response) {
       fullReply = stripThink(response.content);
@@ -1007,7 +1028,13 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
         texts: [userMessage, ...formattedHistory.map(m => m.content)],
         allowZero: safeBusiness?.name === 'BotWA' || safeBusiness?.id === '8fd9a59d-77d7-4db7-8637-9aaebca1158e',
       };
-      let check = verifyReplyAmounts(fullReply, groundingCtx);
+      // Valores en dinero Y códigos de modelo: todo lo que el bot afirma tiene que salir del negocio
+      const verifyAll = (text) => {
+        const amounts = verifyReplyAmounts(text, groundingCtx);
+        const codes = verifyReplyCodes(text, groundingCtx);
+        return { ok: amounts.ok && codes.ok, amounts: amounts.invalid, codes: codes.invalid, invalid: [...amounts.invalid, ...codes.invalid] };
+      };
+      let check = verifyAll(fullReply);
       if (!check.ok && largeCatalog) {
         // El producto de un pedido en curso puede no estar en lo buscado este turno: se ubica por
         // lo que se habló antes en la conversación y se vuelve a verificar, sin gastar otra llamada a la IA.
@@ -1016,33 +1043,38 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
           const extra = await options.searchProducts(extractSearchTerms([...recent, userMessage]).slice(0, 10), { limit: 8 });
           if (extra?.length) {
             groundingCtx.products = [...extra, ...catalogProducts];
-            check = verifyReplyAmounts(fullReply, groundingCtx);
+            check = verifyAll(fullReply);
           }
         } catch (_) {}
       }
       if (!check.ok) {
-        console.warn(`[GROUNDING] ⚠️ Valores sin respaldo en la respuesta: ${check.invalid.join(', ')} → reintentando una vez`);
-        const correction = `\n\n## CORRECCIÓN OBLIGATORIA\nTu respuesta anterior mencionó estos valores que NO están registrados en el negocio: ${check.invalid.map(v => `$${v.toLocaleString('es-CO')}`).join(', ')}. Responde de nuevo SIN inventar ni calcular valores: usa solo los precios y montos exactos del catálogo o de la base de conocimiento; si no tienes el dato, di que lo confirmas con un asesor.`;
+        console.warn(`[GROUNDING] ⚠️ Datos sin respaldo en la respuesta: ${check.invalid.join(', ')} → reintentando una vez`);
+        const listed = [
+          ...check.amounts.map(v => `$${v.toLocaleString('es-CO')}`),
+          ...check.codes.map(c => `"${c}"`),
+        ].join(', ');
+        const correction = `\n\n## CORRECCIÓN OBLIGATORIA\nTu respuesta anterior mencionó datos que NO están registrados en el negocio: ${listed}. Responde de nuevo SIN inventar, calcular ni cambiar nada: copia los nombres, referencias y precios EXACTOS del catálogo o de la base de conocimiento; si no tienes el dato, di que lo confirmas con un asesor.`;
         const retry = await chatComplete({
           messages: [{ role: 'system', content: systemPrompt + correction }, ...messages.slice(1)],
           max_tokens: 350,
           temperature: 0.1,
-          accept: (text) => stripThink(text).length >= 2,
+          accept: (text) => isUsableReply(stripThink(text)),
         });
         if (retry) {
           tokensUsed += retry.tokens || 0;
           fullReply = stripThink(retry.content);
-          check = verifyReplyAmounts(fullReply, groundingCtx);
+          check = verifyAll(fullReply);
         }
         if (!retry || !check.ok) {
           console.warn('[GROUNDING] 🛑 El reintento sigue con valores sin respaldo: se deriva a un asesor');
           groundingBlocked = true;
-          fullReply = 'Ese valor te lo confirmo con un asesor del equipo en un momento 🙏 ¿Mientras tanto, te ayudo con algo más del catálogo?';
+          fullReply = 'Ese dato te lo confirmo con un asesor del equipo en un momento 🙏 ¿Mientras tanto, te ayudo con algo más del catálogo?';
         }
       }
     }
 
-    const usedFallback = !fullReply;
+    // Sin respuesta, o con una que queda en nada una vez quitadas las etiquetas internas
+    const usedFallback = !fullReply || !isUsableReply(fullReply);
     // Contadores para /api/debug/version: permiten ver desde fuera cuánto responde la emergencia
     try {
       const pool = require('./llmPool');
