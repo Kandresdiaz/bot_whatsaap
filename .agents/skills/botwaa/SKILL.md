@@ -842,6 +842,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-10-04** | Merge pull request #19 from Kandresdiaz/fix/negocio-unico-y-diagnostico (`5592fbc`) | Auto-deploy |
 
+| **2026-10-07** | fix: el bot ahora sí envía la foto del producto aunque la pidan mal (`07424a1`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
