@@ -844,6 +844,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-10-07** | fix: el bot ahora sí envía la foto del producto aunque la pidan mal (`07424a1`) | Auto-deploy |
 
+| **2026-10-07** | Merge pull request #20 from Kandresdiaz/fix/respuesta-cortada-y-codigos (`6781925`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
