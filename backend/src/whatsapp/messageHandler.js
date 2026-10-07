@@ -6,6 +6,7 @@ const { resolveUserBusiness } = require('../services/businessResolver');
 const { notifyLead } = require('./notifier');
 const { handleAppointmentFlow } = require('./appointmentFlow');
 const { isOutsideHours } = require('../services/businessHours');
+const { norm } = require('../ai/catalogUtils');
 
 // ─── ANTI-BAN: delays aleatorios humanizados ──────────────────────────────────
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
@@ -94,6 +95,66 @@ const getImageMessage = (msg) => {
   if (m?.viewOnceMessageV2) m = m.viewOnceMessageV2.message;
   if (m?.viewOnceMessageV2Extension) m = m.viewOnceMessageV2Extension.message;
   return m?.imageMessage || null;
+};
+
+// ─── Fotos del catálogo: encontrar el producto correcto aunque lo pidan "mal" ──
+// El cliente puede pedir ver algo de mil formas ("mándame una foto", "la puedo ver?",
+// "cómo se ve", "muéstrame", "y una imagen?"). Estas piezas vuelven robusta esa búsqueda.
+
+// ¿El mensaje pide VER una foto/imagen? (tolerante a typos, acentos e informalidad)
+const IMAGE_REQUEST_RE = /\b(fotos?|fotico|imagen|imagenes|img|referencia|catalogo)\b|\bmuestr\w*\b|\bensen\w*\b|\b(verla|verlo|verlos|verlas|vela|velo)\b|\bla (puedo|quiero|podria|podemos|podrias) ver\b|\b(puedo|quiero) verl\w*\b|\bcomo (se ve|luce|es de)\b/;
+const isImageRequest = (text) => IMAGE_REQUEST_RE.test(norm(text));
+
+// Palabras vacías: no identifican al producto, no deben diluir el puntaje de coincidencia.
+const STOPWORDS = new Set(['que','los','las','una','uno','del','por','favor','porfa','para','con','ver','vela','velo','verla','verlo','verlas','verlos','foto','fotos','fotico','imagen','imagenes','img','referencia','quiero','puedo','podria','podrias','podemos','muestra','muestrame','muestrame','mandame','manda','enviame','envia','pasame','pasa','mostrar','ensename','enseñame','como','esa','ese','este','esta','esos','esas','ella','ello','esto','eso','tienes','tiene','hay','algo','porfavor','pls','porfis','alguna','algun']);
+
+// Puntúa qué tan bien un texto de búsqueda coincide con el nombre/categoría de un producto.
+const scoreProductMatch = (target, p) => {
+  const t = norm(target);
+  const name = norm(p?.name);
+  if (!t || !name) return 0;
+  if (name === t) return 100;
+  if (name.includes(t) || t.includes(name)) return 85;
+  const tWords = [...new Set(t.split(' ').filter(w => w.length >= 3 && !STOPWORDS.has(w)))];
+  if (!tWords.length) return 0;
+  const hits = tWords.filter(w => name.includes(w)).length;
+  let score = (hits / tWords.length) * 70;
+  // Un token "modelo" (con dígitos, ej. em22, x100) que coincide es muy distintivo: pesa más.
+  if (tWords.some(w => /\d/.test(w) && name.includes(w))) score = Math.max(score, 82);
+  const cat = norm(p?.category);
+  if (cat && (cat.includes(t) || t.includes(cat))) score += 8;
+  return score;
+};
+
+// Mejor producto CON FOTO que coincide con `target` (nombre que dijo el cliente o el modelo).
+const pickProductImage = (target, catalog, minScore = 45) => {
+  if (!target || !Array.isArray(catalog)) return null;
+  let best = null, bestScore = 0;
+  for (const p of catalog) {
+    if (!p?.image_url) continue;
+    const s = scoreProductMatch(target, p);
+    if (s > bestScore) { bestScore = s; best = p; }
+  }
+  return bestScore >= minScore ? best : null;
+};
+
+// El cliente pide "una foto" sin nombrar el producto: ¿de cuál venían hablando?
+// Recorre los últimos mensajes (del más reciente al más viejo) buscando un producto
+// del catálogo (con foto) nombrado por su nombre completo o por su token de modelo.
+const resolveContextProduct = (history, catalog) => {
+  if (!Array.isArray(history) || !Array.isArray(catalog)) return null;
+  const withImg = catalog.filter(p => p?.image_url && p?.name);
+  if (!withImg.length) return null;
+  const recent = history.slice(-6).reverse();
+  for (const m of recent) {
+    const c = norm(m?.content);
+    if (!c) continue;
+    let found = withImg.find(p => c.includes(norm(p.name)));
+    if (found) return found;
+    found = withImg.find(p => norm(p.name).split(' ').some(w => /\d/.test(w) && w.length >= 3 && c.includes(w)));
+    if (found) return found;
+  }
+  return null;
 };
 
 // ─── Enviar mensaje con Baileys (Human Pacing & Presencia 'Escribiendo...') ────
@@ -963,50 +1024,45 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
   // ── 12. Anti-ban delay ─────────────────────────────────────────────────────
   await randomDelay();
 
-  // ── 13. Enviar imagen si el bot la detectó (KB o Productos) ───────────────
-  let targetImageSearch = imageName;
-  if (!targetImageSearch) {
-    const normMsg = text.toLowerCase();
-    const isRequestingImage = /foto|imagen|referencia|muéstrame|muestra|ver/i.test(normMsg);
-    if (isRequestingImage && Array.isArray(imageCatalog)) {
-      const matchedProd = imageCatalog.find(p => p.image_url && normMsg.includes(p.name.toLowerCase()));
-      if (matchedProd) {
-        targetImageSearch = matchedProd.name;
-      }
-    }
-  }
+  // ── 13. Enviar imagen del producto (etiqueta del modelo o deducida del contexto) ──
+  // Tres capas para que SIEMPRE llegue la foto correcta, pida como pida el cliente:
+  //  (a) el modelo dejó [ENVIAR_IMAGEN: nombre]  → KB primero, luego catálogo
+  //  (b) el modelo lo olvidó pero el cliente pidió ver una foto → la deducimos:
+  //      del producto nombrado en este mensaje, o del que venían hablando.
+  const productCaption = (p) => `${p.name} - $${Number(p.price || 0).toLocaleString('es-CO')} ${p.currency || 'COP'}`;
+  let imgUrl = null;
+  let caption = null;
 
-  if (targetImageSearch) {
-    let imgUrl = null;
-    let caption = null;
-
+  if (imageName) {
+    const target = norm(imageName);
     const imgKB = knowledge.find(k =>
-      k.type === 'image' &&
-      k.title.toLowerCase().includes(targetImageSearch.toLowerCase()) &&
-      k.file_url
+      k.type === 'image' && k.file_url && k.title &&
+      (norm(k.title).includes(target) || target.includes(norm(k.title)))
     );
-
     if (imgKB?.file_url) {
       imgUrl = imgKB.file_url;
       caption = imgKB.content;
     } else {
-      const prodImg = imageCatalog.find(p =>
-        p.image_url &&
-        (p.name.toLowerCase().includes(targetImageSearch.toLowerCase()) || (p.category && p.category.toLowerCase().includes(targetImageSearch.toLowerCase())))
-      );
-      if (prodImg?.image_url) {
-        imgUrl = prodImg.image_url;
-        caption = `${prodImg.name} - $${Number(prodImg.price || 0).toLocaleString('es-CO')} ${prodImg.currency || 'COP'}`;
-      }
+      const prodImg = pickProductImage(imageName, imageCatalog);
+      if (prodImg) { imgUrl = prodImg.image_url; caption = productCaption(prodImg); }
     }
+  }
 
-    if (imgUrl) {
-      try {
-        await sock.sendMessage(jid, { image: { url: imgUrl }, caption: caption || '' });
-        await sleep(800);
-      } catch (e) {
-        console.error('[MSG] Error enviando imagen:', e.message);
-      }
+  // Fallback: el cliente claramente pidió ver una foto y el modelo no dejó etiqueta (o no resolvió).
+  if (!imgUrl && isImageRequest(text) && Array.isArray(imageCatalog)) {
+    // ¿nombró el producto en este mensaje? (umbral alto: debe ser claro)
+    let prodImg = pickProductImage(text, imageCatalog, 60);
+    // si no, ¿de cuál producto venían hablando en la conversación?
+    if (!prodImg) prodImg = resolveContextProduct(history, imageCatalog);
+    if (prodImg?.image_url) { imgUrl = prodImg.image_url; caption = productCaption(prodImg); }
+  }
+
+  if (imgUrl) {
+    try {
+      await sock.sendMessage(jid, { image: { url: imgUrl }, caption: caption || '' });
+      await sleep(800);
+    } catch (e) {
+      console.error('[MSG] Error enviando imagen:', e.message);
     }
   }
 

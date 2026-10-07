@@ -745,8 +745,10 @@ ${isSales ? '- Si el cliente quiere ver, probar o revisar algo en persona, ofré
 [MODIFICAR_CITA: {"nombre": "...", "fecha_anterior": "YYYY-MM-DD", "fecha": "YYYY-MM-DD", "hora": "HH:MM:00", "servicio": "..."}]
 ("fecha" y "hora" son los NUEVOS; incluye "fecha_anterior" solo si la conoces. Respeta horario, días hábiles y no uses fechas pasadas.)
 
-## FOTOS
-Si pide foto de un producto del catálogo que tenga imagen, añade al final: [ENVIAR_IMAGEN: Nombre del Producto]`;
+## FOTOS / IMÁGENES (importante)
+- En el CATÁLOGO, cada producto con foto trae "Foto/Imagen: <url>". Si el cliente quiere VER un producto —aunque lo pida mal o informal ("mándame una foto", "la puedo ver?", "cómo se ve", "muéstrame", "y una imagen?")— identifica de cuál habla (si no lo nombra, es el que están viendo en la conversación) y añade al final: [ENVIAR_IMAGEN: Nombre exacto del producto del catálogo].
+- La foto se envía SOLA con esa etiqueta. ESTÁ PROHIBIDO decir "te la envío en un momento", "ya te la mando", "enseguida te la paso" o prometer mandarla después: si la vas a enviar, pon la etiqueta AHORA y acompáñala de una frase corta ("¡Claro! Mira 👇").
+- Usa el nombre tal como aparece en el catálogo. Solo usa la etiqueta si ese producto tiene "Foto/Imagen" registrada; si no la tiene, dile con calidez que un asesor se la comparte y NO uses la etiqueta.`;
 };
 
 // ─── Respuesta Asistente Humana (Fallback Contextual de Alto Nivel) ───────────
