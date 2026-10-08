@@ -424,11 +424,11 @@ export default function AppointmentsPage() {
   }, [currentMonth]);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 1200, margin: '0 auto', color: '#f8fafc' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 1200, margin: '0 auto', color: '#f8fafc', minWidth: 0 }}>
       {/* Toast Notificador */}
       {toast && (
         <div style={{
-          position: 'fixed', bottom: 24, right: 24, zIndex: 9999,
+          position: 'fixed', bottom: 16, right: 16, left: 16, maxWidth: 420, marginLeft: 'auto', zIndex: 9999,
           background: '#0F172A', color: '#00CFFF', border: '1px solid #00CFFF',
           borderRadius: 12, padding: '12px 20px', fontSize: 13, fontWeight: 700,
           boxShadow: '0 10px 30px rgba(0,207,255,0.25)',
@@ -460,7 +460,7 @@ export default function AppointmentsPage() {
       </div>
 
       {/* Métricas Rápidas */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12 }}>
         <div className="card" style={{ background: '#0C1527', borderColor: '#1E293B', padding: 14 }}>
           <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>Total Citas Registradas</div>
           <div style={{ fontSize: 26, fontWeight: 800, color: '#f8fafc' }}>{appointments.length}</div>
@@ -509,11 +509,11 @@ export default function AppointmentsPage() {
 
         {/* Navegación de Meses si está en Vista Calendario */}
         {viewMode === 'calendar' ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
             <button className="btn btn-ghost" onClick={prevMonth} style={{ padding: '6px 12px', fontSize: 13 }}>
               ‹ Mes Anterior
             </button>
-            <div style={{ fontSize: 15, fontWeight: 800, color: '#00CFFF', minWidth: 160, textAlign: 'center' }}>
+            <div style={{ fontSize: 15, fontWeight: 800, color: '#00CFFF', minWidth: 130, textAlign: 'center' }}>
               {MONTH_NAMES[currentMonth.getMonth()]} {currentMonth.getFullYear()}
             </div>
             <button className="btn btn-ghost" onClick={nextMonth} style={{ padding: '6px 12px', fontSize: 13 }}>
@@ -552,11 +552,11 @@ export default function AppointmentsPage() {
 
       {/* VISTA 1: CALENDARIO MENSUAL + AGENDA DEL DÍA */}
       {viewMode === 'calendar' ? (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 20 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(320px, 100%), 1fr))', gap: 20 }}>
           {/* Cuadrícula del Calendario (Izquierda / Principal) */}
           <div className="card" style={{ background: '#0C1527', borderColor: '#1E293B', padding: 16, flex: '2 1 500px' }}>
             {/* Cabecera de días de la semana */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, marginBottom: 8, textAlign: 'center' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 4, marginBottom: 8, textAlign: 'center' }}>
               {DAYS_SHORT.map(d => (
                 <div key={d} style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8', padding: '6px 0' }}>
                   {d}
@@ -565,7 +565,7 @@ export default function AppointmentsPage() {
             </div>
 
             {/* Días del Calendario */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 6 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 4 }}>
               {calendarDays.map(cell => {
                 const dayAppts = apptsByDate[cell.dateStr] || [];
                 const isSelected = cell.dateStr === selectedDate;
@@ -577,7 +577,7 @@ export default function AppointmentsPage() {
                     onClick={() => setSelectedDate(cell.dateStr)}
                     style={{
                       aspectRatio: '1',
-                      minHeight: 64,
+                      minHeight: 56, minWidth: 0, overflow: 'hidden',
                       background: isSelected
                         ? 'rgba(0, 207, 255, 0.12)'
                         : isToday

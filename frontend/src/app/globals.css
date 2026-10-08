@@ -580,6 +580,23 @@ input:checked + .toggle-slider:before { transform: translateX(20px); background:
     font-size: 12px !important;
   }
 
+  /* Barras y avisos del layout del dashboard */
+  .layout-banner { padding: 10px 14px !important; margin-bottom: 12px !important; }
+  .beta-notice { padding: 12px 14px !important; }
+  .beta-notice .btn { width: 100%; justify-content: center; }
+  .hide-on-mobile { display: none !important; }
+
+  /* La campanita ya está en la barra superior móvil: el menú se abre pegado a los bordes */
+  .bell-dropdown {
+    position: fixed !important;
+    top: 64px !important;
+    left: 12px !important;
+    right: 12px !important;
+    width: auto !important;
+    max-height: calc(100vh - 80px);
+    overflow-y: auto;
+  }
+
   /* Protecciones Universales para Modales y Formularios en Celular */
   div[style*="position: fixed"], div[style*="position:fixed"] {
     padding: 8px !important;

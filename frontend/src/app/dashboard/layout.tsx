@@ -526,7 +526,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <ConnectionBanner />
         {/* Admin Selector Bar */}
         {user.is_admin && (
-          <div style={{
+          <div className="layout-banner" style={{
             background: 'linear-gradient(90deg, #0f1b2f 0%, #1e1b4b 100%)',
             borderBottom: '1px solid rgba(0,207,255,0.3)',
             padding: '10px 24px',
@@ -586,7 +586,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         )}
 
         {/* Top Bar: Plan y Apartado Superior de Cuota de Mensajes IA */}
-        <div style={{
+        <div className="layout-banner" style={{
           background: 'linear-gradient(90deg, rgba(13,20,40,0.95) 0%, rgba(19,29,53,0.95) 100%)',
           borderBottom: '1px solid rgba(0, 207, 255, 0.2)',
           padding: '10px 24px',
@@ -624,6 +624,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
             {/* Botón para ver explicación / tutorial de la sección actual */}
             <button
+              className="hide-on-mobile"
               onClick={() => openSectionGuide()}
               style={{
                 background: 'rgba(0, 207, 255, 0.12)',
@@ -690,6 +691,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           {/* Campanita de Notificaciones Desktop */}
           <div style={{ position: 'relative' }}>
             <button
+              className="hide-on-mobile"
               onClick={() => setIsBellOpen(!isBellOpen)}
               style={{
                 background: badgeData.totalNotifications > 0 ? 'rgba(239, 68, 68, 0.15)' : 'rgba(255, 255, 255, 0.05)',
@@ -734,6 +736,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             {/* Menú Desplegable de la Campanita */}
             {isBellOpen && (
               <div
+                className="bell-dropdown"
                 style={{
                   position: 'absolute',
                   top: 44,
@@ -828,7 +831,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
         {/* Quota Exceeded Alert Banner */}
         {usageInfo?.has_reached_limit && !user?.is_admin && (
-          <div style={{
+          <div className="layout-banner" style={{
             background: 'linear-gradient(90deg, rgba(239,68,68,0.25) 0%, rgba(220,38,38,0.15) 100%)',
             borderBottom: '2px solid #ef4444',
             padding: '12px 24px',
@@ -853,7 +856,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
         {/* Trial Active Banner */}
         {subInfo?.is_trial_active && (
-          <div style={{
+          <div className="layout-banner" style={{
             background: 'linear-gradient(90deg, rgba(26,107,255,0.25) 0%, rgba(0,207,255,0.18) 100%)',
             borderBottom: '1px solid rgba(0,207,255,0.4)',
             padding: '10px 24px',
@@ -965,7 +968,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         {/* Sin tarjeta ni pago: todo se puede configurar, pero el bot no responde hasta activar */}
         {subInfo && !user?.is_admin && !subInfo.is_trial_active && !subInfo.is_paid_active
           && subInfo.status !== 'past_due' && user?.status !== 'paused' && (
-          <div style={{
+          <div className="layout-banner" style={{
             background: 'linear-gradient(90deg, rgba(26,107,255,0.25) 0%, rgba(0,207,255,0.18) 100%)',
             borderBottom: '1px solid rgba(0,207,255,0.4)',
             padding: '12px 24px',
@@ -991,7 +994,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
         {/* Expired / Past Due Warning Banner */}
         {(subInfo?.status === 'past_due' || (user?.status === 'paused' && !user?.is_admin)) && (
-          <div style={{
+          <div className="layout-banner" style={{
             background: 'rgba(239, 68, 68, 0.2)',
             borderBottom: '1px solid rgba(239, 68, 68, 0.4)',
             padding: '10px 24px',
@@ -1017,12 +1020,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         )}
 
         {showBetaNotice && (
-          <div style={{
+          <div className="beta-notice" style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap',
             background: 'linear-gradient(90deg, rgba(26,107,255,0.18) 0%, rgba(0,207,255,0.10) 100%)',
             border: '1px solid rgba(0,207,255,0.4)', borderRadius: 12, padding: '14px 18px', marginBottom: 16,
           }}>
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, flex: 1, minWidth: 240 }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, flex: 1, minWidth: 0 }}>
               <span style={{ fontSize: 22, lineHeight: 1 }}>🎉</span>
               <div style={{ fontSize: 13, color: '#e2e8f0', lineHeight: 1.5 }}>
                 <strong style={{ color: '#fff' }}>BotWA ya salió de beta.</strong>{' '}
