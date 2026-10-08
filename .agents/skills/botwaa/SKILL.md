@@ -856,6 +856,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-10-08** | Merge pull request #25 from Kandresdiaz/fix/responsive-movil-dashboard (`81adb5b`) | Auto-deploy |
 
+| **2026-10-08** | Merge pull request #26 from Kandresdiaz/fix/errores-consola-403-websocket (`a6c99ff`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
