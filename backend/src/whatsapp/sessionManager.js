@@ -26,6 +26,18 @@ try {
 const sessions = new Map();
 const userDisconnectedMap = new Set();
 const reconnectTimers = new Map();
+// Intentos de reconexión consecutivos por sesión (validId). Se reinicia al conectar.
+// Sirve para aplicar backoff y para avisar al dueño si tras N intentos no vuelve.
+const reconnectAttempts = new Map();
+
+// Avisos de desconexión (require perezoso para evitar dependencia circular)
+let connectionAlerts = null;
+const getAlerts = () => {
+  if (!connectionAlerts) {
+    try { connectionAlerts = require('./connectionAlerts'); } catch (_) { connectionAlerts = {}; }
+  }
+  return connectionAlerts;
+};
 
 // Caché en memoria de contactos por usuario: userId → Map(jid → name)
 const userContacts = new Map();
@@ -180,6 +192,17 @@ const registerLidPnMapping = (jid1, jid2) => {
     lidToPnMap.set(d2, d1);
     pnToLidMap.set(d1, d2);
   }
+};
+
+// Registra el mapeo LID↔Teléfono real que la propia llave del mensaje trae (Baileys 7.x).
+// WhatsApp envía el remitente como <lid>@lid por privacidad, pero adjunta el número real en
+// key.remoteJidAlt (y participantAlt). Sin registrar esto, resolvePhoneAndJid no encuentra el
+// teléfono y cae a usar el LID crudo (un id interno de 14+ dígitos, ej. 77662169108695) como si
+// fuera el número del contacto: así quedaban guardados citas y chats con un "número" que no existe.
+const registerLidMappingFromKey = (key) => {
+  if (!key || typeof key !== 'object') return;
+  if (key.remoteJid && key.remoteJidAlt) registerLidPnMapping(key.remoteJid, key.remoteJidAlt);
+  if (key.participant && key.participantAlt) registerLidPnMapping(key.participant, key.participantAlt);
 };
 
 const storeChats = (userId, chats = []) => {
@@ -1113,6 +1136,7 @@ const createSession = async (userId, businessId, io, forceClean = false, isManua
     deleteSessionFolder(validUserId);
     sessions.delete(userId);
     sessions.delete(validUserId);
+    reconnectAttempts.delete(validUserId);
     userStores.delete(userId);
     userStores.delete(validUserId);
     userContacts.delete(userId);
@@ -1436,6 +1460,11 @@ const createSession = async (userId, businessId, io, forceClean = false, isManua
 
       const validId = getValidUserId(userId);
 
+      // Reconexión exitosa: reiniciar contador de intentos y avisar "ya volvió"
+      // (solo manda WhatsApp si antes habíamos enviado una alerta de caída).
+      reconnectAttempts.delete(validId);
+      try { getAlerts().notifyOwnerReconnect?.(userId); } catch (_) {}
+
       // ── REASIGNACIÓN AUTOMÁTICA Y SEGURA DE NÚMERO DE TELÉFONO ──
       try {
         if (phone) {
@@ -1577,6 +1606,13 @@ const createSession = async (userId, businessId, io, forceClean = false, isManua
       if (isLoggedOut || isExplicitDisconnect) {
         userDisconnectedMap.add(userId);
         userDisconnectedMap.add(validId);
+        reconnectAttempts.delete(validId);
+
+        // Si WhatsApp cerró la sesión (no fue el usuario desde el panel), avisar
+        // al dueño para que reescanee el QR. No se avisa en desconexión manual.
+        if (isLoggedOut && !isExplicitDisconnect) {
+          try { getAlerts().notifyOwnerDisconnect?.(userId, 'logged_out'); } catch (_) {}
+        }
 
         if (reconnectTimers.has(validId)) {
           clearTimeout(reconnectTimers.get(validId));
@@ -1635,15 +1671,37 @@ const createSession = async (userId, businessId, io, forceClean = false, isManua
           qr_code: null,
         }).catch(() => {});
 
+        // Contar intentos consecutivos de reconexión (se reinicia al conectar)
+        const attempts = (reconnectAttempts.get(validId) || 0) + 1;
+        reconnectAttempts.set(validId, attempts);
+
         if (io) {
-          const payload = { shouldReconnect: true, isLoggedOut: false, status: 'reconnecting' };
+          const payload = { shouldReconnect: true, isLoggedOut: false, status: 'reconnecting', attempt: attempts };
           emitToUserRooms(io, userId, 'reconnecting', payload);
           emitToUserRooms(io, validId, 'reconnecting', payload);
         }
 
-        // Si WhatsApp pide reinicio (515), reconectar casi de inmediato (1s); otros códigos en 3s
-        const delay = (code === DisconnectReason.restartRequired || code === 515) ? 1000 : 3000;
-        console.log(`[Baileys] 🔄 Reconectando ${userId} automáticamente en ${delay}ms... (código: ${code}, motivo: ${errMsg})`);
+        const MAX_FAST_ATTEMPTS = parseInt(process.env.MAX_RECONNECT_ATTEMPTS || '5', 10);
+        const isRestart = (code === DisconnectReason.restartRequired || code === 515);
+
+        // Dentro de los primeros intentos: 515/restartRequired (parte normal del
+        // emparejamiento) reconecta ya (1s); el resto con backoff exponencial
+        // (3s, 6s, 12s, 24s, 48s, tope 60s). Pasado el umbral, seguimos intentando
+        // lento (cada 60s) para auto-curarnos si vuelve la red, pero ya avisamos.
+        // Incluir 515 en el umbral evita bucles de reinicio cada 1s indefinidos.
+        let delay;
+        if (attempts <= MAX_FAST_ATTEMPTS) {
+          delay = isRestart ? 1000 : Math.min(3000 * Math.pow(2, attempts - 1), 60000);
+        } else {
+          delay = 60000;
+          // Avisar una sola vez, justo al cruzar el umbral.
+          if (attempts === MAX_FAST_ATTEMPTS + 1) {
+            console.warn(`[Baileys] ⛔ ${userId} lleva ${attempts - 1} intentos sin reconectar. Avisando al dueño y bajando a reintentos lentos.`);
+            try { getAlerts().notifyOwnerDisconnect?.(userId, 'reconnect_failed'); } catch (_) {}
+          }
+        }
+
+        console.log(`[Baileys] 🔄 Reconectando ${userId} automáticamente en ${delay}ms... (intento ${attempts}, código: ${code}, motivo: ${errMsg})`);
 
         if (reconnectTimers.has(validId)) {
           clearTimeout(reconnectTimers.get(validId));
@@ -1663,7 +1721,24 @@ const createSession = async (userId, businessId, io, forceClean = false, isManua
   });
 
   // ─── Mensajes procesados (Entrantes, Salientes e Historial append/notify) ─
+  // Baileys resuelve el número real detrás de un LID y lo anuncia por este evento: lo guardamos
+  // para que resolvePhoneAndJid devuelva el teléfono y no el id interno.
+  sock.ev.on('lid-mapping.update', (mapping) => {
+    try {
+      const pairs = Array.isArray(mapping) ? mapping : [mapping];
+      for (const m of pairs) {
+        if (m?.lid && m?.pn) registerLidPnMapping(m.lid, m.pn);
+      }
+    } catch (_) {}
+  });
+
   sock.ev.on('messages.upsert', async ({ messages, type }) => {
+    // Registrar el mapeo LID↔teléfono que trae cada mensaje ANTES de sincronizar o responder,
+    // para que el contacto y la cita queden con el número real y no con el LID.
+    if (Array.isArray(messages)) {
+      for (const m of messages) registerLidMappingFromKey(m?.key);
+    }
+
     storeMessages(userId, messages);
 
     if (Array.isArray(messages) && messages.length > 0) {
@@ -2080,6 +2155,46 @@ setInterval(() => {
   saveAllActiveSessions().catch(() => {});
 }, 10 * 60 * 1000);
 
+// ─── Monitor de salud de sesiones ──────────────────────────────────────────
+// Baileys avisa de casi todas las caídas por el evento connection.update, pero a
+// veces el socket queda "muerto en silencio" (figura conectado en RAM pero el
+// websocket ya se cerró y nunca saltó el 'close'). Este chequeo cada 90s detecta
+// esos casos y fuerza la reconexión, para no enterarnos tarde como pasaba antes.
+const HEALTH_CHECK_MS = parseInt(process.env.HEALTH_CHECK_MS || `${90 * 1000}`, 10);
+setInterval(() => {
+  try {
+    for (const [key, s] of sessions.entries()) {
+      const validId = getValidUserId(key);
+      if (key !== validId) continue;              // procesar cada sesión una sola vez
+      if (!s || userDisconnectedMap.has(validId)) continue; // desconectada a propósito
+
+      let needsReconnect = false;
+      let motivo = '';
+
+      if (s.status === 'connected') {
+        if (!s.sock) {
+          needsReconnect = true; motivo = 'sin socket';
+        } else {
+          try {
+            const rs = s.sock.ws?.readyState;        // 3 = CLOSED
+            if (rs === 3) { needsReconnect = true; motivo = 'websocket cerrado'; }
+          } catch (_) {}
+        }
+      } else if (s.status === 'reconnecting' && !reconnectTimers.has(validId)) {
+        // Debería existir un timer de reintento pendiente; si no, se perdió.
+        needsReconnect = true; motivo = 'reconexión colgada';
+      }
+
+      if (needsReconnect) {
+        console.warn(`[Health] Reactivando sesión ${validId} (estado=${s.status}, ${motivo}).`);
+        createSession(validId, s.businessId, global.io, false, false).catch(() => {});
+      }
+    }
+  } catch (e) {
+    console.warn('[Health] Error en monitor de salud:', e.message);
+  }
+}, HEALTH_CHECK_MS);
+
 const sendMessage = async (userId, to, text) => {
   const validUserId = getValidUserId(userId);
   let session = getSession(userId) || getSession(validUserId);
@@ -2291,6 +2406,7 @@ module.exports = {
   isExplicitlyDisconnected,
   clearExplicitDisconnect,
   resolvePhoneAndJid,
+  registerLidMappingFromKey,
   cleanPhoneFromJid,
   setContactBotStatus,
   isContactBotDisabled,

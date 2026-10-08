@@ -306,6 +306,61 @@ router.patch('/global-bot/:userId', ownsParam('userId'), async (req, res) => {
   }
 });
 
+// ── Configuración de avisos de desconexión ─────────────────────────────────
+// Número (y si está activo) donde el usuario recibe la alerta por WhatsApp si su
+// bot se cae. El aviso se envía desde el número maestro, no desde este número.
+router.get('/alert-config/:userId', ownsParam('userId'), async (req, res) => {
+  const { userId } = req.params;
+  try {
+    const validUserId = getValidUserId(userId);
+    if (!supabase) return res.json({ success: true, alert_phone: '', alert_enabled: true });
+
+    const { data } = await supabase
+      .from('users')
+      .select('alert_phone, alert_enabled')
+      .eq('id', validUserId)
+      .maybeSingle();
+
+    res.json({
+      success: true,
+      alert_phone: data?.alert_phone || '',
+      alert_enabled: data?.alert_enabled !== false,
+    });
+  } catch (e) {
+    res.json({ success: true, alert_phone: '', alert_enabled: true });
+  }
+});
+
+router.post('/alert-config', ownsBody(), async (req, res) => {
+  const { userId, alert_phone, alert_enabled } = req.body;
+  if (!userId) return res.status(400).json({ success: false, error: 'userId es requerido' });
+  if (!supabase) return res.status(503).json({ success: false, error: 'Base de datos no disponible' });
+
+  try {
+    const validUserId = getValidUserId(userId);
+
+    // Normalizar a solo dígitos. Vacío = desactivar avisos (sin número).
+    const phone = String(alert_phone || '').replace(/[^0-9]/g, '');
+    if (phone && (phone.length < 10 || phone.length > 15)) {
+      return res.status(400).json({ success: false, error: 'El número debe tener entre 10 y 15 dígitos, con indicativo de país (ej. 573001112233).' });
+    }
+
+    const { error } = await supabase
+      .from('users')
+      .update({
+        alert_phone: phone || null,
+        alert_enabled: alert_enabled !== false,
+      })
+      .eq('id', validUserId);
+
+    if (error) return res.status(500).json({ success: false, error: error.message });
+
+    res.json({ success: true, alert_phone: phone, alert_enabled: alert_enabled !== false });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 // Desconectar sesión
 router.post('/stop', ownsBody(), async (req, res) => {
   const { userId } = req.body;

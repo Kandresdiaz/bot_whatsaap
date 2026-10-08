@@ -257,12 +257,28 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
     return;
   }
 
-  const { resolvePhoneAndJid } = require('./sessionManager');
-  const resolved = resolvePhoneAndJid(jid);
+  const { resolvePhoneAndJid, registerLidMappingFromKey } = require('./sessionManager');
+  // Si el mensaje llega desde un LID (@lid), su llave trae el número real en remoteJidAlt:
+  // registrarlo aquí garantiza que el teléfono del contacto y de la cita sea el verdadero.
+  registerLidMappingFromKey(msg.key);
+  let resolved = resolvePhoneAndJid(jid);
 
   if (resolved.isGroup) {
     console.log(`[MSG Filter] 🛑 Ignorando grupo resuelto: ${jid}`);
     return;
+  }
+
+  // Último recurso: si tras resolver seguimos con un LID (el mapeo aún no estaba en memoria),
+  // preguntarle directamente a Baileys por el número real detrás de ese LID.
+  if (jid.endsWith('@lid') && resolved.jid.endsWith('@lid')) {
+    try {
+      const realPn = await sock?.signalRepository?.lidMapping?.getPNForLID?.(jid);
+      const realDigits = (realPn || '').replace(/[^0-9]/g, '');
+      if (realDigits) {
+        registerLidMappingFromKey({ remoteJid: jid, remoteJidAlt: `${realDigits}@s.whatsapp.net` });
+        resolved = resolvePhoneAndJid(jid);
+      }
+    } catch (_) {}
   }
 
   const contactPhone = resolved.phone;

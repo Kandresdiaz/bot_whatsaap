@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { BACKEND_URL } from '@/lib/config';
 import { apiFetch } from '@/lib/api';
 import GuidedTour from '@/components/GuidedTour';
+import ConnectionBanner from '@/components/ConnectionBanner';
 import SectionGuideModal from '@/components/SectionGuideModal';
 
 type ClientItem = {
@@ -521,6 +522,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       {/* Main Container */}
       <main className="main" style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+        {/* Banner global de estado de conexión de WhatsApp */}
+        <ConnectionBanner />
         {/* Admin Selector Bar */}
         {user.is_admin && (
           <div style={{
