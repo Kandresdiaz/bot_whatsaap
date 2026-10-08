@@ -211,7 +211,7 @@ const storeChats = (userId, chats = []) => {
   for (const c of list) {
     if (c && c.id && c.id !== 'status@broadcast') {
       if (c.lid) registerLidPnMapping(c.id, c.lid);
-      if (c.pn || c.phone) registerLidPnMapping(c.id, c.pn || c.phone);
+      if (c.pn || c.phone || c.phoneNumber) registerLidPnMapping(c.id, c.pn || c.phone || c.phoneNumber);
       if (c.lidJid) registerLidPnMapping(c.id, c.lidJid);
       if (c.pnJid) registerLidPnMapping(c.id, c.pnJid);
 
@@ -230,7 +230,7 @@ const storeContacts = (userId, contacts = []) => {
   for (const c of list) {
     if (c && c.id) {
       if (c.lid) registerLidPnMapping(c.id, c.lid);
-      if (c.pn || c.phone) registerLidPnMapping(c.id, c.pn || c.phone);
+      if (c.pn || c.phone || c.phoneNumber) registerLidPnMapping(c.id, c.pn || c.phone || c.phoneNumber);
       if (c.lidJid) registerLidPnMapping(c.id, c.lidJid);
       if (c.pnJid) registerLidPnMapping(c.id, c.pnJid);
 

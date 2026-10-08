@@ -3,11 +3,12 @@
 // excluyen allí: buscan en internet y traen datos que el dueño nunca configuró.
 const { chatComplete } = require('./llmPool');
 const { verifyReplyAmounts, verifyReplyCodes, reconcileOrderTotal } = require('./grounding');
+const { parseJsonTag, stripInternalTags } = require('./replyTags');
 
 // Lo que el cliente va a leer (sin etiquetas internas) debe ser una respuesta de verdad: una de
 // dos letras ("EM") es una respuesta cortada, no una respuesta.
 const MIN_REPLY_CHARS = 6;
-const visibleText = (text) => (text || '').replace(/\[[A-Z_]+(?::[^\]]*)?\]/g, '').trim();
+const visibleText = (text) => stripInternalTags(text);
 const isUsableReply = (text) => visibleText(text).length >= MIN_REPLY_CHARS;
 
 // Un producto sin precio (una página del catálogo que no lo traía se guarda con 0) NO es gratis:
@@ -565,7 +566,7 @@ const buildKnowledgeContext = (knowledge) => {
 const FULL_KNOWLEDGE_MAX_CHARS = 8000;
 
 // catalogInfo (solo catálogos grandes, buscados en SQL): { total, categories, noMatch, mode, orden }
-const buildSystemPrompt = (business, relevantKnowledge, allKnowledge, products = [], isFirstMessage = true, userMessage = '', subQueries = [], hasAlreadyGreeted = false, catalogInfo = null) => {
+const buildSystemPrompt = (business, relevantKnowledge, allKnowledge, products = [], isFirstMessage = true, userMessage = '', subQueries = [], hasAlreadyGreeted = false, catalogInfo = null, contactPhoneUnknown = false) => {
   const busName = business?.name || 'BotWA';
   const busCategory = business?.category || 'Atención Comercial y Servicios';
   // Datos opcionales: si el dueño no los configuró NO se rellenan con valores supuestos
@@ -739,13 +740,17 @@ ${business.closing_instructions}
 ` : ''}
 ## PEDIDOS
 ${orderRules}
-
+${contactPhoneUnknown ? `
+## CELULAR DEL CLIENTE (importante)
+- De este cliente NO tienes su número de celular (su WhatsApp lo oculta). Antes de confirmar una cita o un pedido, pídeselo ("¿a qué número de celular te contactamos?") y no cierres sin tenerlo.
+- Inclúyelo SIEMPRE como "telefono" (solo dígitos, con indicativo de país si lo dio) dentro de [NUEVA_CITA: ...] y [NUEVO_PEDIDO: ...].
+` : ''}
 ## CITAS (${isSales ? 'visitas al punto de venta, demostraciones, servicio técnico o asesorías' : 'objetivo principal del negocio'})
 - Horario: ${hoursText || 'NO configurado: no propongas horas; pregunta su preferencia y aclara que un asesor la confirma'}.
 ${daysText ? `- Días de atención: ${daysText}. Cerrado: ${closedDaysText}. Nunca agendes en un día cerrado: ofrece el día hábil más cercano.\n` : ''}${duration > 0 ? `- Cada cita dura ${duration} minutos: la última debe terminar antes del cierre.\n` : ''}- Nunca agendes en una fecha u hora que ya pasó.
 ${isSales ? '- Si el cliente quiere ver, probar o revisar algo en persona, ofrécele agendar la visita.\n' : ''}- Acuerda día y hora dentro del horario y pide su nombre si no lo tienes. Al confirmar, repite día y hora, felicítalo y añade al final (una sola vez por cita):
 [LEAD_CALIENTE]
-[NUEVA_CITA: {"nombre": "...", "servicio": "...", "fecha": "YYYY-MM-DD", "hora": "HH:MM:00"}]
+[NUEVA_CITA: {"nombre": "...", ${contactPhoneUnknown ? '"telefono": "...", ' : ''}"servicio": "...", "fecha": "YYYY-MM-DD", "hora": "HH:MM:00"}]
 - Si pide cancelar su cita, confírmalo con calidez en menos de 3 líneas y añade al final:
 [CANCELAR_CITA: {"nombre": "...", "fecha": "YYYY-MM-DD", "servicio": "..."}]
 - Si pide cambiar o reprogramar su cita a otra fecha u hora, confírmale los NUEVOS datos en menos de 3 líneas y añade al final (una sola vez):
@@ -971,7 +976,7 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
       subQueries = await getSubQueries(userMessage, safeBusiness, formattedHistory, knowledge, products);
     }
     const relevantKnowledge = await ragSearch(userMessage, knowledge, safeBusiness, formattedHistory, subQueries);
-    const systemPrompt = buildSystemPrompt(safeBusiness, relevantKnowledge, knowledge, catalogProducts, isFirstMessage, userMessage, subQueries, hasAlreadyGreeted, catalogInfo);
+    const systemPrompt = buildSystemPrompt(safeBusiness, relevantKnowledge, knowledge, catalogProducts, isFirstMessage, userMessage, subQueries, hasAlreadyGreeted, catalogInfo, Boolean(options.contactPhoneUnknown));
 
     // Total de un pedido: se recalcula con precios reales. En catálogo grande el producto del pedido
     // puede no estar en lo recuperado este turno, así que se busca por su nombre.
@@ -1095,67 +1100,32 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
     const imageMatch = fullReply.match(/\[ENVIAR_IMAGEN:\s*(.+?)\]/i);
     const imageName = imageMatch ? imageMatch[1].trim() : null;
 
-    const apptMatch = fullReply.match(/\[NUEVA_CITA:\s*(\{[\s\S]*?\})\]/i);
-    let newAppointmentData = null;
-    if (apptMatch) {
-      try {
-        newAppointmentData = JSON.parse(apptMatch[1]);
-      } catch (_) {}
-    }
+    // Las etiquetas se leen aunque el modelo olvide el "]" final o la respuesta quede cortada
+    const newAppointmentData = parseJsonTag(fullReply, 'NUEVA_CITA');
+    const cancelAppointmentData = parseJsonTag(fullReply, 'CANCELAR_CITA');
+    const clientData = parseJsonTag(fullReply, 'DATOS_CLIENTE');
+    const modifyAppointmentData = parseJsonTag(fullReply, 'MODIFICAR_CITA');
 
-    const cancelMatch = fullReply.match(/\[CANCELAR_CITA:\s*(\{[\s\S]*?\})\]/i);
-    let cancelAppointmentData = null;
-    if (cancelMatch) {
-      try {
-        cancelAppointmentData = JSON.parse(cancelMatch[1]);
-      } catch (_) {}
-    }
-
-    const orderMatch = fullReply.match(/\[NUEVO_PEDIDO:\s*(\{[\s\S]*?\})\]/i);
     let newOrderData = null;
-    if (orderMatch) {
+    const rawOrder = parseJsonTag(fullReply, 'NUEVO_PEDIDO');
+    if (rawOrder) {
       try {
         // El total se recalcula con los precios reales del catálogo: el del modelo no se guarda a ciegas
-        newOrderData = await reconcileWithCatalog(JSON.parse(orderMatch[1]));
+        newOrderData = await reconcileWithCatalog(rawOrder);
       } catch (_) {}
     }
 
-    const clientDataMatch = fullReply.match(/\[DATOS_CLIENTE:\s*(\{[\s\S]*?\})\]/i);
-    let clientData = null;
-    if (clientDataMatch) {
-      try {
-        clientData = JSON.parse(clientDataMatch[1]);
-      } catch (_) {}
-    }
-
-    const modifyApptMatch = fullReply.match(/\[MODIFICAR_CITA:\s*(\{[\s\S]*?\})\]/i);
-    let modifyAppointmentData = null;
-    if (modifyApptMatch) {
-      try {
-        modifyAppointmentData = JSON.parse(modifyApptMatch[1]);
-      } catch (_) {}
-    }
-
-    const modifyOrderMatch = fullReply.match(/\[MODIFICAR_PEDIDO:\s*(\{[\s\S]*?\})\]/i);
     let modifyOrderData = null;
-    if (modifyOrderMatch) {
+    const rawModifyOrder = parseJsonTag(fullReply, 'MODIFICAR_PEDIDO');
+    if (rawModifyOrder) {
       try {
-        modifyOrderData = await reconcileWithCatalog(JSON.parse(modifyOrderMatch[1]));
+        modifyOrderData = await reconcileWithCatalog(rawModifyOrder);
       } catch (_) {}
     }
 
     const isLeadHot = isLeadHotFlag || Boolean(newAppointmentData) || Boolean(newOrderData) || Boolean(clientData) || Boolean(cancelAppointmentData) || Boolean(modifyAppointmentData) || Boolean(modifyOrderData);
 
-    const reply = fullReply
-      .replace(/\[LEAD_CALIENTE\]/gi, '')
-      .replace(/\[ENVIAR_IMAGEN:[^\]]+\]/gi, '')
-      .replace(/\[NUEVA_CITA:[^\]]+\]/gi, '')
-      .replace(/\[CANCELAR_CITA:[^\]]+\]/gi, '')
-      .replace(/\[NUEVO_PEDIDO:[^\]]+\]/gi, '')
-      .replace(/\[MODIFICAR_CITA:[^\]]+\]/gi, '')
-      .replace(/\[MODIFICAR_PEDIDO:[^\]]+\]/gi, '')
-      .replace(/\[DATOS_CLIENTE:[^\]]+\]/gi, '')
-      .trim();
+    const reply = stripInternalTags(fullReply);
 
     // Guardar respuesta en caché Redis/RAM para consumo 0 tokens en siguientes consultas iguales.
     // Solo respuestas informativas: una que crea pedido o cita lleva datos de ESE cliente y no
