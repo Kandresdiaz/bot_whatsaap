@@ -848,6 +848,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-10-08** | Merge pull request #21 from Kandresdiaz/fix/telefono-real-lid-y-alertas (`3b3e818`) | Auto-deploy |
 
+| **2026-10-08** | Merge pull request #22 from Kandresdiaz/fix/etiquetas-incompletas-y-celular-oculto (`3531d75`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
