@@ -852,6 +852,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-10-08** | Merge pull request #23 from Kandresdiaz/fix/unir-chats-duplicados-lid (`ec0124c`) | Auto-deploy |
 
+| **2026-10-08** | Merge pull request #24 from Kandresdiaz/fix/modificar-cita-pedido-v2 (`b34752b`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
