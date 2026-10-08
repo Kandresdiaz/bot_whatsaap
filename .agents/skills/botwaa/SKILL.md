@@ -846,6 +846,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-10-07** | Merge pull request #20 from Kandresdiaz/fix/respuesta-cortada-y-codigos (`6781925`) | Auto-deploy |
 
+| **2026-10-08** | Merge pull request #21 from Kandresdiaz/fix/telefono-real-lid-y-alertas (`3b3e818`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
