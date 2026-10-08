@@ -854,6 +854,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-10-08** | Merge pull request #24 from Kandresdiaz/fix/modificar-cita-pedido-v2 (`b34752b`) | Auto-deploy |
 
+| **2026-10-08** | Merge pull request #25 from Kandresdiaz/fix/responsive-movil-dashboard (`81adb5b`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
