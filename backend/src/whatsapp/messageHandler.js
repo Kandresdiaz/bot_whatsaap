@@ -56,6 +56,9 @@ const isSupersededByNewer = async (burstKey, seq) => {
   }
 };
 
+// LID cuyo chat duplicado ya se unió al del celular real en este proceso
+const mergedLidChats = new Set();
+
 // ─── Extraer texto del mensaje Baileys ────────────────────────────────────────
 const extractText = (msg) => {
   if (!msg || !msg.message) return '';
@@ -279,6 +282,41 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
         resolved = resolvePhoneAndJid(jid);
       }
     } catch (_) {}
+  }
+
+  // Segundo intento: preguntarle a WhatsApp por el LID de los celulares de los chats que ya
+  // tenemos. Si coincide con este LID, es un cliente conocido que ahora escribe como LID.
+  if (jid.endsWith('@lid') && resolved.jid.endsWith('@lid')) {
+    try {
+      const { getSessionUuid } = require('./sessionManager');
+      const { discoverLidMappings } = require('./lidResolver');
+      const sessionUuid = await getSessionUuid(userId);
+      const lidDigits = jid.split('@')[0].split(':')[0].replace(/[^0-9]/g, '');
+      const found = await Promise.race([
+        discoverLidMappings(sock, sessionUuid, [lidDigits]),
+        new Promise(r => setTimeout(() => r(new Map()), 10000)),
+      ]);
+      if (found.size) resolved = resolvePhoneAndJid(jid);
+    } catch (e) {
+      console.warn('[LID] Aviso resolviendo por celulares conocidos:', e.message);
+    }
+  }
+
+  // Si el cliente ya tenía un chat con su celular y otro con el LID, se unen en uno solo
+  // (una vez por proceso y LID: después ya no hay nada que unir).
+  if (jid.endsWith('@lid') && !resolved.jid.endsWith('@lid')) {
+    const lidDigits = jid.split('@')[0].split(':')[0].replace(/[^0-9]/g, '');
+    const mergeKey = `${userId}:${lidDigits}`;
+    if (!mergedLidChats.has(mergeKey)) {
+      mergedLidChats.add(mergeKey);
+      try {
+        const { getSessionUuid } = require('./sessionManager');
+        const { mergeLidConversation } = require('./lidResolver');
+        await mergeLidConversation(await getSessionUuid(userId), lidDigits, resolved.phone);
+      } catch (e) {
+        console.warn('[LID] Aviso uniendo chats duplicados:', e.message);
+      }
+    }
   }
 
   const contactPhone = resolved.phone;
