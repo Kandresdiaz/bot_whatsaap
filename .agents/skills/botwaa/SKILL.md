@@ -858,6 +858,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-10-08** | Merge pull request #26 from Kandresdiaz/fix/errores-consola-403-websocket (`a6c99ff`) | Auto-deploy |
 
+| **2026-10-08** | Merge pull request #27 from Kandresdiaz/fix/chats-no-mezclar-numeros (`f3915b8`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
