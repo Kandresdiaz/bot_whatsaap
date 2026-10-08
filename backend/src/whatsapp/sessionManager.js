@@ -332,6 +332,27 @@ const clearUserConversationsFromDb = async (userId) => {
   console.log(`[Baileys Auth] Preservando conversaciones y datos de CRM en DB para ${userId}`);
 };
 
+// Borra los chats de la cuenta cuando se vincula un número DISTINTO al anterior
+// (como WhatsApp Web: lo que ves es solo lo del número conectado). Solo se llama
+// con un cambio de número confirmado; nunca en reconexiones del mismo número.
+// Citas, pedidos y productos no se tocan.
+const purgeConversationsForNumberChange = async (userId) => {
+  if (!supabase) return;
+  const sessionUuid = await getSessionUuid(userId);
+  if (!sessionUuid) return;
+  const { data: convs, error } = await supabase
+    .from('conversations').select('id').eq('session_id', sessionUuid);
+  if (error) { console.warn('[Baileys] No se pudieron leer chats a limpiar:', error.message); return; }
+  const ids = (convs || []).map(c => c.id);
+  for (let i = 0; i < ids.length; i += 200) {
+    const lote = ids.slice(i, i + 200);
+    await supabase.from('messages').delete().in('conversation_id', lote);
+    const { error: delErr } = await supabase.from('conversations').delete().in('id', lote);
+    if (delErr) console.warn('[Baileys] Error borrando chats del número anterior:', delErr.message);
+  }
+  console.log(`[Baileys] 🧹 ${ids.length} chats del número anterior eliminados para ${userId}`);
+};
+
 const PRIMARY_ADMIN_ID = '0b8c0710-b97a-4e2d-acf8-b7f33dcd5b3d';
 const ADMIN_UUID = '00000000-0000-0000-0000-000000000001';
 const sessionUuidToUserMap = new Map();
@@ -1490,17 +1511,23 @@ const createSession = async (userId, businessId, io, forceClean = false, isManua
         console.warn('[Baileys Reassignment] Aviso reasignando número:', reassignErr.message);
       }
 
-      // Si el número de teléfono cambió respecto a la sesión guardada en DB,
-      // purgar de raíz todo el historial previo (RAM y DB) para NUNCA mezclar conversaciones
+      // Si el número cambió respecto al último vinculado, borrar los chats del número
+      // anterior para NUNCA mezclar conversaciones de dos WhatsApp distintos.
+      // last_phone sobrevive al cierre de sesión (phone_number no); si la migración 007
+      // aún no existe, se usa phone_number como antes.
       try {
         if (supabase) {
-          const { data: currentDbSession } = await supabase
-            .from('whatsapp_sessions')
-            .select('phone_number')
-            .eq('user_id', validId)
-            .maybeSingle();
-
-          const prevPhone = (currentDbSession?.phone_number || '').replace(/[^0-9]/g, '');
+          let prevRaw = null;
+          const withLast = await supabase
+            .from('whatsapp_sessions').select('phone_number, last_phone').eq('user_id', validId).maybeSingle();
+          if (!withLast.error) {
+            prevRaw = withLast.data?.last_phone || withLast.data?.phone_number;
+          } else {
+            const basic = await supabase
+              .from('whatsapp_sessions').select('phone_number').eq('user_id', validId).maybeSingle();
+            prevRaw = basic.data?.phone_number;
+          }
+          const prevPhone = (prevRaw || '').replace(/[^0-9]/g, '');
 
           if (prevPhone && phone && prevPhone !== phone) {
             console.log(`[Baileys] 🔄 CAMBIO DE NÚMERO DETECTADO para ${validId}: Anterior (${prevPhone}) → Nuevo (${phone}). Limpiando historial previo.`);
@@ -1508,7 +1535,7 @@ const createSession = async (userId, businessId, io, forceClean = false, isManua
             userStores.delete(validId);
             userContacts.delete(userId);
             userContacts.delete(validId);
-            await clearUserConversationsFromDb(validId);
+            await purgeConversationsForNumberChange(validId);
           }
         }
       } catch (checkErr) {
@@ -1557,6 +1584,12 @@ const createSession = async (userId, businessId, io, forceClean = false, isManua
         qr_code: null,
         connected_at: new Date().toISOString(),
       }).catch(e => console.warn('[DB] Error guardando sesión en DB:', e.message));
+
+      if (supabase && phone) {
+        supabase.from('whatsapp_sessions').update({ last_phone: phone }).eq('user_id', validId)
+          .then(({ error }) => { if (error) console.warn('[DB] last_phone no guardado (¿falta migración 007?):', error.message); })
+          .catch(() => {});
+      }
 
       debouncedSaveFullSessionToDb(userId, sessionDir, 1000);
 
