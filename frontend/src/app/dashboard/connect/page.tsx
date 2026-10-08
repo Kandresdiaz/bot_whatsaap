@@ -35,6 +35,50 @@ export default function ConnectPage() {
   const [loadingSub, setLoadingSub] = useState<boolean>(true);
   const [isTrialModalOpen, setIsTrialModalOpen] = useState(false);
 
+  // ── Avisos de desconexión (número donde recibir la alerta por WhatsApp) ─────
+  const [alertPhone, setAlertPhone] = useState('');
+  const [alertEnabled, setAlertEnabled] = useState(true);
+  const [alertSaving, setAlertSaving] = useState(false);
+  const [alertSaved, setAlertSaved] = useState(false);
+
+  useEffect(() => {
+    if (!effectiveUserId) return;
+    apiFetch(`${BACKEND}/api/sessions/alert-config/${effectiveUserId}`)
+      .then(r => r.json())
+      .then(d => {
+        if (d?.success) {
+          setAlertPhone(d.alert_phone || '');
+          setAlertEnabled(d.alert_enabled !== false);
+        }
+      })
+      .catch(() => {});
+  }, [effectiveUserId]);
+
+  const saveAlertConfig = async () => {
+    if (!effectiveUserId) return;
+    setAlertSaving(true);
+    setAlertSaved(false);
+    try {
+      const r = await apiFetch(`${BACKEND}/api/sessions/alert-config`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: effectiveUserId, alert_phone: alertPhone, alert_enabled: alertEnabled }),
+      });
+      const d = await r.json();
+      if (r.ok && d.success) {
+        setAlertPhone(d.alert_phone || '');
+        setAlertSaved(true);
+        setTimeout(() => setAlertSaved(false), 2500);
+      } else {
+        alert(d.error || 'No se pudo guardar el número de avisos.');
+      }
+    } catch (e: any) {
+      alert('No se pudo guardar: ' + (e?.message || 'error'));
+    } finally {
+      setAlertSaving(false);
+    }
+  };
+
   useEffect(() => {
     if (!effectiveUserId) return;
     apiFetch(`${BACKEND}/api/billing/status/${effectiveUserId}`)
@@ -625,8 +669,62 @@ export default function ConnectPage() {
         </div>
       )}
 
+      {/* Avisos de desconexión */}
+      <div className="card" style={{ maxWidth: 520, marginTop: 16, borderColor: 'rgba(250,204,21,0.25)' }}>
+        <h3 style={{ fontWeight: 700, marginBottom: 6, fontSize: 15 }}>🔔 Avisos de desconexión</h3>
+        <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 0, marginBottom: 14 }}>
+          Si tu bot se desconecta o necesita reescanear el QR, te mandamos un WhatsApp a este número.
+          Escríbelo con indicativo de país, solo números (ej. <strong>573001112233</strong>).
+        </p>
+
+        <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
+          Número para recibir avisos
+        </label>
+        <input
+          type="tel"
+          inputMode="numeric"
+          value={alertPhone}
+          onChange={(e) => setAlertPhone(e.target.value.replace(/[^0-9]/g, ''))}
+          placeholder="573001112233"
+          style={{
+            width: '100%',
+            padding: '10px 12px',
+            borderRadius: 8,
+            border: '1px solid rgba(255,255,255,0.15)',
+            background: 'rgba(255,255,255,0.04)',
+            color: 'var(--text)',
+            fontSize: 14,
+          }}
+        />
+
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, fontSize: 13, cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={alertEnabled}
+            onChange={(e) => setAlertEnabled(e.target.checked)}
+          />
+          Avisos activados
+        </label>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 14 }}>
+          <button
+            className="btn btn-primary"
+            onClick={saveAlertConfig}
+            disabled={alertSaving}
+            style={{ fontSize: 13 }}
+          >
+            {alertSaving ? 'Guardando…' : 'Guardar'}
+          </button>
+          {alertSaved && <span style={{ fontSize: 13, color: '#4ade80', fontWeight: 600 }}>✓ Guardado</span>}
+        </div>
+
+        <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 12, marginBottom: 0 }}>
+          Nota: el aviso se envía desde el número maestro del sistema. Si prefieres no recibir avisos, deja el campo vacío o desactívalos.
+        </p>
+      </div>
+
       {/* Diagnóstico del servidor */}
-      <div className="card" style={{ maxWidth: 520, borderColor: 'rgba(26,107,255,0.15)' }}>
+      <div className="card" style={{ maxWidth: 520, marginTop: 16, borderColor: 'rgba(26,107,255,0.15)' }}>
         <h3 style={{ fontWeight: 700, marginBottom: 14, fontSize: 15 }}>🔧 Estado del servidor</h3>
         <ServerStatus backendUrl={BACKEND} />
       </div>

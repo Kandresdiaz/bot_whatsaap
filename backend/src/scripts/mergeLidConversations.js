@@ -46,6 +46,39 @@ async function mergeLidConversations() {
 
   let mergedCount = 0;
   let updatedPhoneCount = 0;
+  let fixedApptCount = 0;
+  let fixedOrderCount = 0;
+
+  // Corrige el teléfono de las citas y pedidos que se guardaron con el LID en lugar del número real.
+  // El número aparece en la agenda y en pedidos porque ambos guardan client_phone = contactPhone.
+  const fixApptsAndOrders = async (lidPhone, realPhone) => {
+    try {
+      const { data: fixedAppts } = await supabase
+        .from('appointments')
+        .update({ client_phone: realPhone })
+        .eq('client_phone', lidPhone)
+        .select('id');
+      if (fixedAppts?.length) {
+        fixedApptCount += fixedAppts.length;
+        console.log(`  -> ${fixedAppts.length} cita(s) corregidas a ${realPhone}`);
+      }
+    } catch (e) {
+      console.warn(`  Aviso corrigiendo citas de ${lidPhone}:`, e.message);
+    }
+    try {
+      const { data: fixedOrders } = await supabase
+        .from('orders')
+        .update({ client_phone: realPhone })
+        .eq('client_phone', lidPhone)
+        .select('id');
+      if (fixedOrders?.length) {
+        fixedOrderCount += fixedOrders.length;
+        console.log(`  -> ${fixedOrders.length} pedido(s) corregidos a ${realPhone}`);
+      }
+    } catch (e) {
+      console.warn(`  Aviso corrigiendo pedidos de ${lidPhone}:`, e.message);
+    }
+  };
 
   for (const conv of convs) {
     const phone = conv.contact_phone;
@@ -72,6 +105,10 @@ async function mergeLidConversations() {
     if (!realPhone || realPhone === phone) continue;
 
     console.log(`[MergeLID] Conversación detectada con LID ${phone} (${conv.contact_name}) -> Teléfono Real: ${realPhone}`);
+
+    // Pase lo que pase con la conversación (fusión o normalización), la cita y el pedido
+    // deben quedar con el número real para que se vean bien en la agenda y en pedidos.
+    await fixApptsAndOrders(phone, realPhone);
 
     let query = supabase.from('conversations').select('*').eq('contact_phone', realPhone);
     if (conv.session_id) query = query.eq('session_id', conv.session_id);
@@ -137,7 +174,25 @@ async function mergeLidConversations() {
     }
   }
 
-  console.log(`[MergeLID] Limpieza completada: ${mergedCount} conversaciones fusionadas, ${updatedPhoneCount} números normalizados.`);
+  // Barrido final: citas y pedidos que quedaron con un LID aunque su conversación ya no exista
+  // (p. ej. se fusionó en una corrida anterior). Se resuelven con el mapa que ya tenemos.
+  const sweepTable = async (table) => {
+    const { data: rows } = await supabase.from(table).select('id, client_phone');
+    for (const row of rows || []) {
+      const p = row.client_phone;
+      // LID = identificador interno largo (14+ dígitos); un teléfono real no llega a tanto
+      if (!p || p.replace(/[^0-9]/g, '').length < 14) continue;
+      const real = lidToPn.get(p);
+      if (!real || real === p) continue;
+      await supabase.from(table).update({ client_phone: real }).eq('id', row.id);
+      if (table === 'appointments') fixedApptCount++; else fixedOrderCount++;
+      console.log(`  -> ${table}: ${row.id} corregido ${p} -> ${real}`);
+    }
+  };
+  try { await sweepTable('appointments'); } catch (e) { console.warn('[MergeLID] Aviso barriendo citas:', e.message); }
+  try { await sweepTable('orders'); } catch (e) { console.warn('[MergeLID] Aviso barriendo pedidos:', e.message); }
+
+  console.log(`[MergeLID] Limpieza completada: ${mergedCount} conversaciones fusionadas, ${updatedPhoneCount} números normalizados, ${fixedApptCount} citas y ${fixedOrderCount} pedidos corregidos.`);
 }
 
 if (require.main === module) {
