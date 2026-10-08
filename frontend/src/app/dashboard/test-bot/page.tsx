@@ -13,6 +13,9 @@ type Detected = {
   order: Fields | null;
   appointment: Fields | null;
   cancellation: Fields | null;
+  appointmentChange?: Fields | null;
+  orderChange?: Fields | null;
+  orderCancellation?: Fields | null;
 };
 
 // Lo que el bot tuvo a la vista al responder: sirve para entender por qué dijo lo que dijo
@@ -85,6 +88,39 @@ function DetectedCard({ d }: { d: Detected }) {
         <div>Servicio: <b>{a.servicio || 'General'}</b></div>
         <div>Fecha: <b>{a.fecha || '—'}</b> a las <b>{String(a.hora || '').slice(0, 5) || '—'}</b></div>
         <div style={{ color: 'var(--text-muted)', marginTop: 6 }}>En WhatsApp quedaría en “Calendario y Citas”.</div>
+      </div>
+    );
+  }
+  if (d.appointmentChange) {
+    const a = d.appointmentChange;
+    return (
+      <div className="card" style={{ padding: 12, marginTop: 6, borderColor: 'rgba(250,204,21,0.4)', fontSize: 13, maxWidth: '85%' }}>
+        <div style={{ fontWeight: 700, color: '#facc15', marginBottom: 6 }}>🔁 Aquí el bot reprogramaría la cita</div>
+        {a.fecha_anterior && <div>Antes: <b>{a.fecha_anterior}</b></div>}
+        <div>Nueva fecha: <b>{a.fecha || 'la misma'}</b>{a.hora ? <> a las <b>{String(a.hora).slice(0, 5)}</b></> : ''}</div>
+        <div style={{ color: 'var(--text-muted)', marginTop: 6 }}>Solo se mueve esa cita, y solo si el horario está libre y dentro de tu horario de atención.</div>
+      </div>
+    );
+  }
+  if (d.orderChange) {
+    const o = d.orderChange;
+    return (
+      <div className="card" style={{ padding: 12, marginTop: 6, borderColor: 'rgba(250,204,21,0.4)', fontSize: 13, maxWidth: '85%' }}>
+        <div style={{ fontWeight: 700, color: '#facc15', marginBottom: 6 }}>🔁 Aquí el bot modificaría el pedido</div>
+        {o.producto && <div>Producto: <b>{o.producto}</b></div>}
+        {o.cantidad && <div>Cantidad: <b>{o.cantidad}</b></div>}
+        {Number(o.total) > 0 && <div>Nuevo total: <b>{fmtCOP(o.total)}</b></div>}
+        {(o.direccion || o.ciudad) && <div>Entrega: {[o.direccion, o.ciudad].filter(Boolean).join(', ')}</div>}
+        {o.metodo_pago && <div>Pago: {o.metodo_pago}</div>}
+        <div style={{ color: 'var(--text-muted)', marginTop: 6 }}>Cambia tu último pedido pendiente. Si ya lo confirmaste, solo te deja una nota para que lo revises.</div>
+      </div>
+    );
+  }
+  if (d.orderCancellation) {
+    return (
+      <div className="card" style={{ padding: 12, marginTop: 6, borderColor: 'rgba(239,68,68,0.4)', fontSize: 13, maxWidth: '85%' }}>
+        <div style={{ fontWeight: 700, color: '#f87171' }}>🛑 Aquí el bot cancelaría el pedido{d.orderCancellation.motivo ? ` (${d.orderCancellation.motivo})` : ''}</div>
+        <div style={{ color: 'var(--text-muted)', marginTop: 6 }}>Cancela tu último pedido pendiente. Si ya lo confirmaste, solo te deja una nota para que lo revises.</div>
       </div>
     );
   }

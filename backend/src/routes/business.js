@@ -344,7 +344,9 @@ router.post('/simulate/:userId', ownsParam('userId'), async (req, res) => {
       .map(m => ({ content: m.text.slice(0, 2000), direction: m.from === 'bot' ? 'outbound' : 'inbound' }));
 
     const { askGroq } = require('../ai/groq');
-    const r = await askGroq(message, business, knowledge || [], history, products || [], catalog.options);
+    const { loadBusySlots } = require('../services/bookingActions');
+    const busySlots = await loadBusySlots(supabase, business).catch(() => []);
+    const r = await askGroq(message, business, knowledge || [], history, products || [], { ...catalog.options, busySlots });
 
     let image = null;
     if (r.imageName) {
@@ -387,6 +389,7 @@ router.post('/simulate/:userId', ownsParam('userId'), async (req, res) => {
         order,
         appointment: r.newAppointmentData || null,
         cancellation: r.cancelAppointmentData || null,
+        orderCancellation: r.cancelOrderData || null,
         appointmentChange: r.modifyAppointmentData || null,
         orderChange: r.modifyOrderData || null,
       },
