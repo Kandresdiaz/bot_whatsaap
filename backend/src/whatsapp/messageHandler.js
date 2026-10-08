@@ -284,6 +284,19 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
   const contactPhone = resolved.phone;
   if (!contactPhone || contactPhone.includes('-')) return;
 
+  // Si WhatsApp no entrega el número real de este cliente (lo oculta), contactPhone es solo el
+  // identificador interno (LID): no se puede llamar ni escribir. En ese caso el bot le pide su
+  // celular al cliente al agendar o tomar un pedido (ver phoneUnknown más abajo).
+  const phoneUnknown = resolved.jid.endsWith('@lid');
+  if (phoneUnknown) {
+    console.log(`[LID] ⚠️ Sin número real para ${jid} (remoteJidAlt=${msg.key.remoteJidAlt || 'ausente'}, addressingMode=${msg.key.addressingMode || '?'}): el bot pedirá el celular al cliente`);
+  }
+  // Celular que el cliente escribió en la conversación (solo se usa si el real es desconocido)
+  const givenPhone = (data) => {
+    const digits = String(data?.telefono || data?.celular || '').replace(/[^0-9]/g, '');
+    return digits.length >= 7 && digits.length <= 15 ? digits : null;
+  };
+
   const { enqueueIncomingMessage } = require('../queues/messageQueue');
 
   // Se registra al llegar (antes de la cola) para que el mensaje anterior sepa que hay uno nuevo
@@ -833,7 +846,7 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
 
   // ── 10. RAG + Groq: generar respuesta ─────────────────────────────────────
   const { reply, isLeadHot, tokensUsed, imageName, newAppointmentData, cancelAppointmentData, modifyAppointmentData, newOrderData, modifyOrderData, clientData, ragChunksUsed, productsUsed } = await askGroq(
-    aiText, business, knowledge, history, products, catalogOptions
+    aiText, business, knowledge, history, products, { ...catalogOptions, contactPhoneUnknown: phoneUnknown }
   );
   // Para enviar la foto de un producto: lo que el bot tuvo a la vista este turno, más lo cargado
   const imageCatalog = Array.isArray(productsUsed) && productsUsed.length ? [...productsUsed, ...products] : products;
@@ -860,7 +873,7 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
         conversation_id: conversation.id,
         business_id: business.id,
         client_name: capturedName || contactName,
-        client_phone: contactPhone,
+        client_phone: phoneUnknown ? (givenPhone(newAppointmentData) || contactPhone) : contactPhone,
         service: newAppointmentData.servicio || 'Servicio General',
         appointment_date: apptDate,
         appointment_time: apptTime,
@@ -965,7 +978,7 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
         conversation_id: conversation.id,
         business_id: business.id,
         client_name: capturedName || contactName,
-        client_phone: contactPhone,
+        client_phone: phoneUnknown ? (givenPhone(orderDetails) || contactPhone) : contactPhone,
         items: itemsList,
         total_amount: isNaN(parseFloat(orderTotal)) ? 0 : parseFloat(orderTotal),
         currency: 'COP',
@@ -1031,7 +1044,10 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
   if (isLeadHot && conversation?.id) {
     await safeQuery(() => supabase.from('conversations').update({ is_lead: true }).eq('id', conversation.id));
     try {
-      await notifyLead(business, contactPhone, capturedName || contactName, text, conversation.id, sock, jid, { newAppointmentData, newOrderData, clientData });
+      const leadPhone = phoneUnknown
+        ? (givenPhone(newAppointmentData) || givenPhone(newOrderData) || givenPhone(clientData) || contactPhone)
+        : contactPhone;
+      await notifyLead(business, leadPhone, capturedName || contactName, text, conversation.id, sock, jid, { newAppointmentData, newOrderData, clientData });
     } catch (e) {
       console.error('[MSG] Error notificando lead:', e.message);
     }
