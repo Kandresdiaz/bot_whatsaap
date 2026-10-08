@@ -116,7 +116,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     window.location.href = '/login';
   };
 
-  const effectiveUserId = (user?.is_admin && selectedClientId) ? selectedClientId : (user?.id || 'admin');
+  const effectiveUserId = (user?.is_admin && selectedClientId) ? selectedClientId : (user?.id || '');
 
   return (
     <AuthContext.Provider value={{

@@ -82,7 +82,7 @@ export default function AppointmentsPage() {
 
   // 1. Cargar Negocio y Catálogo de Servicios
   useEffect(() => {
-    const targetId = effectiveUserId || user?.id || 'admin';
+    const targetId = effectiveUserId || user?.id;
     if (!targetId) return;
 
     apiFetch(`${BACKEND}/api/business/${targetId}`)
@@ -128,7 +128,12 @@ export default function AppointmentsPage() {
 
   // 3. Conectar WebSockets para Tiempo Real (Socket.io)
   useEffect(() => {
-    const socket = socketIO(BACKEND, { transports: ['websocket', 'polling'] });
+    const socket = socketIO(BACKEND, {
+      // El proxy de Vercel no soporta WebSockets: con BACKEND relativo solo polling.
+      transports: BACKEND ? ['websocket', 'polling'] : ['polling'],
+      reconnectionAttempts: 10,
+      reconnectionDelay: 2000,
+    });
 
     socket.on('new_appointment', (newAppt: Appointment) => {
       if (!newAppt || !newAppt.id) return;
