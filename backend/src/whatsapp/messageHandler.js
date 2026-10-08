@@ -1,7 +1,7 @@
 const { supabase } = require('../db/supabase');
 const { askGroq } = require('../ai/groq');
 const { loadCatalogContext } = require('../services/catalogContext');
-const { extraOrderFields } = require('../ai/orderNotes');
+const { applyBookingActions, loadBusySlots } = require('../services/bookingActions');
 const { resolveUserBusiness } = require('../services/businessResolver');
 const { notifyLead } = require('./notifier');
 const { handleAppointmentFlow } = require('./appointmentFlow');
@@ -883,8 +883,10 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
   }
 
   // ── 10. RAG + Groq: generar respuesta ─────────────────────────────────────
-  const { reply, isLeadHot, tokensUsed, imageName, newAppointmentData, cancelAppointmentData, modifyAppointmentData, newOrderData, modifyOrderData, clientData, ragChunksUsed, productsUsed } = await askGroq(
-    aiText, business, knowledge, history, products, { ...catalogOptions, contactPhoneUnknown: phoneUnknown }
+  const { reply, isLeadHot, tokensUsed, imageName, newAppointmentData, cancelAppointmentData, modifyAppointmentData, newOrderData, modifyOrderData, cancelOrderData, clientData, ragChunksUsed, productsUsed } = await askGroq(
+    aiText, business, knowledge, history, products,
+    // Horarios ya ocupados: el bot no los ofrece y no confirma una cita que no se puede agendar
+    { ...catalogOptions, contactPhoneUnknown: phoneUnknown, busySlots: await loadBusySlots(supabase, business).catch(() => []) }
   );
   // Para enviar la foto de un producto: lo que el bot tuvo a la vista este turno, más lo cargado
   const imageCatalog = Array.isArray(productsUsed) && productsUsed.length ? [...productsUsed, ...products] : products;
@@ -897,184 +899,31 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
     await safeQuery(() => supabase.from('conversations').update({ contact_name: capturedName }).eq('id', conversation.id));
   }
 
-  // ── 12. Registrar Cita Automática en Base de Datos (si aplica) ────────────
-  if (newAppointmentData && conversation?.id && business?.id) {
-    try {
-      const apptDate = newAppointmentData.fecha || new Date().toISOString().split('T')[0];
-      const apptTime = newAppointmentData.hora || '10:00:00';
-      // La IA a veces repite la etiqueta al seguir conversando: la misma cita no se guarda dos veces
-      const { data: sameAppt } = await supabase.from('appointments').select('id')
-        .eq('conversation_id', conversation.id).eq('status', 'confirmed')
-        .eq('appointment_date', apptDate).eq('appointment_time', apptTime).limit(1);
-
-      const { data: newAppt } = sameAppt?.length ? { data: null } : await supabase.from('appointments').insert({
-        conversation_id: conversation.id,
-        business_id: business.id,
-        client_name: capturedName || contactName,
-        client_phone: phoneUnknown ? (givenPhone(newAppointmentData) || contactPhone) : contactPhone,
-        service: newAppointmentData.servicio || 'Servicio General',
-        appointment_date: apptDate,
-        appointment_time: apptTime,
-        status: 'confirmed',
-        notes: `Cita agendada por Bot IA para ${business.name}`,
-      }).select().limit(1);
-      if (sameAppt?.length) console.log('[MSG] Cita repetida por la IA, no se duplica.');
-
-      if (newAppt && newAppt.length > 0 && global.io) {
-        const { emitToUserRooms } = require('./sessionManager');
-        emitToUserRooms(global.io, userId, 'new_appointment', newAppt[0]);
-      }
-    } catch (eAppt) {
-      console.error('[MSG] Error guardando cita automática:', eAppt.message);
-    }
-  }
-
-  // ── 12.0 Cancelar o Borrar Cita en Base de Datos (si aplica) ─────────────
-  if (cancelAppointmentData && business?.id) {
-    try {
-      let cancelQuery = supabase
-        .from('appointments')
-        .update({ status: 'cancelled' })
-        .eq('business_id', business.id)
-        .eq('status', 'confirmed');
-
-      if (conversation?.id) {
-        cancelQuery = cancelQuery.or(`conversation_id.eq.${conversation.id},client_phone.eq.${contactPhone}`);
-      } else {
-        cancelQuery = cancelQuery.eq('client_phone', contactPhone);
-      }
-
-      if (cancelAppointmentData.fecha) {
-        cancelQuery = cancelQuery.eq('appointment_date', cancelAppointmentData.fecha);
-      }
-
-      const { data: cancelledList } = await cancelQuery.select();
-      console.log(`[MSG] 🛑 Citas canceladas en DB: ${cancelledList?.length || 0}`);
-
-      if (cancelledList && cancelledList.length > 0 && global.io) {
-        const { emitToUserRooms } = require('./sessionManager');
-        emitToUserRooms(global.io, userId, 'appointment_cancelled', cancelledList[0]);
-      }
-    } catch (eCancel) {
-      console.error('[MSG] Error cancelando cita en DB:', eCancel.message);
-    }
-  }
-
-  // ── 12.0.1 Modificar / Reprogramar Cita en Base de Datos (si aplica) ─────
-  if (modifyAppointmentData && business?.id && (modifyAppointmentData.fecha || modifyAppointmentData.hora)) {
-    try {
-      const updates = {};
-      if (modifyAppointmentData.fecha) updates.appointment_date = modifyAppointmentData.fecha;
-      if (modifyAppointmentData.hora) updates.appointment_time = modifyAppointmentData.hora;
-      if (modifyAppointmentData.servicio) updates.service = modifyAppointmentData.servicio;
-
-      if (Object.keys(updates).length > 0) {
-        let modQuery = supabase.from('appointments').update(updates)
-          .eq('business_id', business.id).eq('status', 'confirmed');
-
-        if (conversation?.id) {
-          modQuery = modQuery.or(`conversation_id.eq.${conversation.id},client_phone.eq.${contactPhone}`);
-        } else {
-          modQuery = modQuery.eq('client_phone', contactPhone);
-        }
-        // Si el cliente dijo cuál cita cambiaba, apuntamos a esa fecha original
-        if (modifyAppointmentData.fecha_anterior) {
-          modQuery = modQuery.eq('appointment_date', modifyAppointmentData.fecha_anterior);
-        }
-
-        const { data: modifiedList } = await modQuery.select();
-        console.log(`[MSG] 🔁 Citas modificadas en DB: ${modifiedList?.length || 0}`);
-
-        if (modifiedList && modifiedList.length > 0 && global.io) {
-          const { emitToUserRooms } = require('./sessionManager');
-          emitToUserRooms(global.io, userId, 'appointment_modified', modifiedList[0]);
-        }
-      }
-    } catch (eMod) {
-      console.error('[MSG] Error modificando cita en DB:', eMod.message);
-    }
-  }
-
-  // ── 12.1 Registrar Pedido Automático en Base de Datos (si aplica venta de productos) ──
+  // ── 12. Citas y pedidos: crear, reprogramar, cancelar (services/bookingActions.js) ────────────
+  // Valida antes de guardar (fecha y hora completas, no pasada, día abierto, dentro del horario, sin choque)
+  // y toca UNA cita o pedido, no todos. Lo que no se pudo guardar queda en el log y en bookingResult.
   const orderDetails = newOrderData || (clientData && (clientData.producto || clientData.ciudad) ? clientData : null);
-  if (orderDetails && conversation?.id && business?.id) {
-    try {
-      const itemsList = orderDetails.producto || orderDetails.items || 'Pedido por WhatsApp';
-      const address = orderDetails.direccion || orderDetails.ciudad || '';
-      const city = orderDetails.ciudad || '';
-      const payMethod = orderDetails.metodo_pago || 'Por confirmar';
-      const orderTotal = orderDetails.total || orderDetails.precio || 0;
-      const extraNotes = [orderDetails.notas, ...extraOrderFields(orderDetails), orderDetails.telefono && `Tel. que dio: ${orderDetails.telefono}`].filter(Boolean).join(' · ');
-
-      // Mismo pedido repetido por la IA en las últimas horas de esta conversación: no se duplica
-      const since = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
-      const { data: sameOrder } = await supabase.from('orders').select('id')
-        .eq('conversation_id', conversation.id).eq('items', itemsList).gte('created_at', since).limit(1);
-      if (sameOrder?.length) throw Object.assign(new Error('pedido repetido'), { duplicate: true });
-
-      const { data: newOrder } = await supabase.from('orders').insert({
-        conversation_id: conversation.id,
-        business_id: business.id,
-        client_name: capturedName || contactName,
-        client_phone: phoneUnknown ? (givenPhone(orderDetails) || contactPhone) : contactPhone,
-        items: itemsList,
-        total_amount: isNaN(parseFloat(orderTotal)) ? 0 : parseFloat(orderTotal),
-        currency: 'COP',
-        shipping_address: address,
-        city: city,
-        payment_method: payMethod,
-        status: 'pending',
-        notes: `Pedido capturado por Bot IA en WhatsApp (${business.name})${extraNotes ? ` · ${extraNotes}` : ''}`,
-      }).select().limit(1);
-
-      if (newOrder && newOrder.length > 0 && global.io) {
+  const bookingResult = await applyBookingActions(
+    {
+      supabase, business, conversation, contactPhone, contactName, capturedName, phoneUnknown, givenPhone,
+      emit: (event, row) => {
+        if (!global.io || !row) return;
         const { emitToUserRooms } = require('./sessionManager');
-        emitToUserRooms(global.io, userId, 'new_order', newOrder[0]);
-      }
-    } catch (eOrder) {
-      if (eOrder.duplicate) console.log('[MSG] Pedido repetido por la IA, no se duplica.');
-      else console.error('[MSG] Error guardando pedido automático:', eOrder.message);
-    }
-  }
-
-  // ── 12.2 Modificar Pedido ya tomado en Base de Datos (si aplica) ─────────
-  if (modifyOrderData && conversation?.id && business?.id) {
-    try {
-      // Apuntamos al último pedido pendiente de esta conversación
-      const { data: existingOrders } = await supabase.from('orders')
-        .select('id, items, total_amount, shipping_address, city, payment_method, notes')
-        .eq('conversation_id', conversation.id).eq('business_id', business.id)
-        .eq('status', 'pending').order('created_at', { ascending: false }).limit(1);
-
-      if (existingOrders && existingOrders.length > 0) {
-        const prev = existingOrders[0];
-        const updates = {};
-        if (modifyOrderData.producto) updates.items = modifyOrderData.producto;
-        const newTotal = modifyOrderData.total ?? modifyOrderData.precio;
-        if (newTotal !== undefined && newTotal !== '' && !isNaN(parseFloat(newTotal))) {
-          updates.total_amount = parseFloat(newTotal);
-        }
-        if (modifyOrderData.direccion) updates.shipping_address = modifyOrderData.direccion;
-        if (modifyOrderData.ciudad) updates.city = modifyOrderData.ciudad;
-        if (modifyOrderData.metodo_pago) updates.payment_method = modifyOrderData.metodo_pago;
-        const changeNote = [modifyOrderData.notas, ...extraOrderFields(modifyOrderData, { alwaysQuantity: true })].filter(Boolean).join(' · ');
-        if (changeNote) {
-          updates.notes = `${prev.notes || ''} · Modificado por Bot IA: ${changeNote}`.trim();
-        }
-
-        if (Object.keys(updates).length > 0) {
-          const { data: modOrder } = await supabase.from('orders').update(updates).eq('id', prev.id).select().limit(1);
-          console.log(`[MSG] 🔁 Pedido modificado en DB: ${modOrder?.length || 0}`);
-          if (modOrder && modOrder.length > 0 && global.io) {
-            const { emitToUserRooms } = require('./sessionManager');
-            emitToUserRooms(global.io, userId, 'order_modified', modOrder[0]);
-          }
-        }
-      } else {
-        console.log('[MSG] MODIFICAR_PEDIDO sin pedido pendiente previo: se ignora (no se crea uno nuevo).');
-      }
-    } catch (eModOrder) {
-      console.error('[MSG] Error modificando pedido en DB:', eModOrder.message);
+        emitToUserRooms(global.io, userId, event, row);
+      },
+    },
+    {
+      newAppointment: newAppointmentData,
+      cancelAppointment: cancelAppointmentData,
+      modifyAppointment: modifyAppointmentData,
+      newOrder: orderDetails,
+      modifyOrder: modifyOrderData,
+      cancelOrder: cancelOrderData,
+    },
+  );
+  for (const [action, result] of Object.entries(bookingResult)) {
+    if (result.status === 'invalid' || result.status === 'error' || result.status === 'none' || result.status === 'needs_review') {
+      console.warn(`[RESERVAS] ${action}: ${result.status}${result.reason ? ' — ' + result.reason : ''}`);
     }
   }
 

@@ -13,6 +13,7 @@ const JSON_TAGS = [
   'MODIFICAR_CITA',
   'NUEVO_PEDIDO',
   'MODIFICAR_PEDIDO',
+  'CANCELAR_PEDIDO',
   'DATOS_CLIENTE',
 ];
 
@@ -34,6 +35,17 @@ const findObjectEnd = (text, start) => {
   return -1;
 };
 
+// Una etiqueta que quedó sin cerrar ("...\"hora\": \"10:00:00\"" y se acabó) conserva los campos que
+// sí llegaron completos. Solo se rescatan pares con valor entre comillas cerradas o número: un valor
+// cortado a la mitad ("fecha": "2026-10-1) no se usa. Quien consume los datos valida lo que necesita.
+const salvagePairs = (text) => {
+  const out = {};
+  const re = /"([A-Za-z_]+)"\s*:\s*(?:"((?:[^"\\]|\\.)*)"|(-?\d+(?:\.\d+)?))/g;
+  let m;
+  while ((m = re.exec(text))) out[m[1]] = m[2] !== undefined ? m[2] : Number(m[3]);
+  return Object.keys(out).length ? out : null;
+};
+
 // Ubica la primera etiqueta `name`: { data, start, end }. `data` es null si el JSON no se pudo
 // leer (cortado o inválido), pero `start`/`end` siguen sirviendo para borrarla.
 const findJsonTag = (text, name) => {
@@ -46,7 +58,8 @@ const findJsonTag = (text, name) => {
     return { data: null, start, end: close === -1 ? text.length : close + 1 };
   }
   const objEnd = findObjectEnd(text, braceAt);
-  if (objEnd === -1) return { data: null, start, end: text.length }; // cortada: se borra hasta el final
+  // Cortada: se borra hasta el final, y se rescatan los campos que llegaron completos
+  if (objEnd === -1) return { data: salvagePairs(text.slice(braceAt)), start, end: text.length };
   let data = null;
   try { data = JSON.parse(text.slice(braceAt, objEnd)); } catch (_) {}
   let end = objEnd;

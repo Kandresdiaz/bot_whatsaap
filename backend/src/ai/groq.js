@@ -4,6 +4,7 @@
 const { chatComplete } = require('./llmPool');
 const { verifyReplyAmounts, verifyReplyCodes, reconcileOrderTotal } = require('./grounding');
 const { parseJsonTag, stripInternalTags } = require('./replyTags');
+const { validateSlot } = require('../services/bookingActions');
 
 // Lo que el cliente va a leer (sin etiquetas internas) debe ser una respuesta de verdad: una de
 // dos letras ("EM") es una respuesta cortada, no una respuesta.
@@ -566,7 +567,7 @@ const buildKnowledgeContext = (knowledge) => {
 const FULL_KNOWLEDGE_MAX_CHARS = 8000;
 
 // catalogInfo (solo catálogos grandes, buscados en SQL): { total, categories, noMatch, mode, orden }
-const buildSystemPrompt = (business, relevantKnowledge, allKnowledge, products = [], isFirstMessage = true, userMessage = '', subQueries = [], hasAlreadyGreeted = false, catalogInfo = null, contactPhoneUnknown = false) => {
+const buildSystemPrompt = (business, relevantKnowledge, allKnowledge, products = [], isFirstMessage = true, userMessage = '', subQueries = [], hasAlreadyGreeted = false, catalogInfo = null, contactPhoneUnknown = false, busySlots = []) => {
   const busName = business?.name || 'BotWA';
   const busCategory = business?.category || 'Atención Comercial y Servicios';
   // Datos opcionales: si el dueño no los configuró NO se rellenan con valores supuestos
@@ -675,7 +676,10 @@ ${business?.payment_or_booking_link ? `Enlace o Método de Pago / Agenda: ${busi
 (Si las INSTRUCCIONES DE CIERRE del dueño piden datos que no tienen campo propio —fecha y hora de entrega, quién recibe, dedicatoria, referencia, alergias, etc.— agrégalos al mismo JSON como campos extra con nombre corto, por ejemplo "fecha_entrega": "sábado 14 8:00 am", "recibe": "Laura", "dedicatoria": "...". Solo lo que el cliente dijo; nunca los inventes.)
 - Si pide cambiar un pedido ya tomado (cantidad, producto, dirección, ciudad o medio de pago), confírmale el cambio en 1 o 2 líneas y añade al final (una sola vez):
 [MODIFICAR_PEDIDO: {"producto": "...", "cantidad": 1, "total": 0, "direccion": "...", "ciudad": "...", "metodo_pago": "...", "notas": "..."}]
-(Incluye SOLO los campos que cambian; deja "" u omite lo que no cambia. "total" = precio del catálogo × cantidad, solo números; nunca inventes precios.)`;
+(Incluye SOLO los campos que cambian; deja "" u omite lo que no cambia. "total" = precio del catálogo × cantidad, solo números; nunca inventes precios.)
+- Si pide cancelar su pedido ("ya no lo quiero", "cancela mi pedido"), confírmalo con calidez en 1 o 2 líneas y añade al final (una sola vez):
+[CANCELAR_PEDIDO: {"motivo": "..."}]
+("motivo" solo si el cliente lo dijo.) Cambiar algo del pedido NO es cancelarlo: usa [MODIFICAR_PEDIDO]. Si el negocio ya lo tiene en proceso, el equipo lo revisa: no prometas que quedó cancelado de inmediato.`;
 
   const dayNames = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
   let activeDays = business?.active_days;
@@ -753,9 +757,10 @@ ${isSales ? '- Si el cliente quiere ver, probar o revisar algo en persona, ofré
 [NUEVA_CITA: {"nombre": "...", ${contactPhoneUnknown ? '"telefono": "...", ' : ''}"servicio": "...", "fecha": "YYYY-MM-DD", "hora": "HH:MM:00"}]
 - Si pide cancelar su cita, confírmalo con calidez en menos de 3 líneas y añade al final:
 [CANCELAR_CITA: {"nombre": "...", "fecha": "YYYY-MM-DD", "servicio": "..."}]
-- Si pide cambiar o reprogramar su cita a otra fecha u hora, confírmale los NUEVOS datos en menos de 3 líneas y añade al final (una sola vez):
+- Si pide cambiar, mover o reprogramar su cita a otra fecha u hora ("no puedo ese día, ponla para el sábado", "cámbiala a las 3", "mejor para otro día"), confírmale los NUEVOS datos en menos de 3 líneas y añade al final (una sola vez):
 [MODIFICAR_CITA: {"nombre": "...", "fecha_anterior": "YYYY-MM-DD", "fecha": "YYYY-MM-DD", "hora": "HH:MM:00", "servicio": "..."}]
-("fecha" y "hora" son los NUEVOS; incluye "fecha_anterior" solo si la conoces. Respeta horario, días hábiles y no uses fechas pasadas.)
+("fecha" y "hora" son los NUEVOS; incluye "fecha_anterior" solo si la conoces. Respeta horario, días hábiles y no uses fechas pasadas.) Mover la cita NO es cancelarla: no uses [CANCELAR_CITA] si el cliente quiere otra fecha. Nunca digas que quedó cambiada sin añadir la etiqueta: sin ella no se guarda.
+${busySlots.length ? `- HORARIOS YA OCUPADOS (otras citas; NO los ofrezcas ni los aceptes): ${busySlots.slice(0, 60).join(', ')}.\n` : ''}
 
 ## FOTOS / IMÁGENES (importante)
 - En el CATÁLOGO, cada producto con foto trae "Foto/Imagen: <url>". Si el cliente quiere VER un producto —aunque lo pida mal o informal ("mándame una foto", "la puedo ver?", "cómo se ve", "muéstrame", "y una imagen?")— identifica de cuál habla (si no lo nombra, es el que están viendo en la conversación) y añade al final: [ENVIAR_IMAGEN: Nombre exacto del producto del catálogo].
@@ -976,7 +981,7 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
       subQueries = await getSubQueries(userMessage, safeBusiness, formattedHistory, knowledge, products);
     }
     const relevantKnowledge = await ragSearch(userMessage, knowledge, safeBusiness, formattedHistory, subQueries);
-    const systemPrompt = buildSystemPrompt(safeBusiness, relevantKnowledge, knowledge, catalogProducts, isFirstMessage, userMessage, subQueries, hasAlreadyGreeted, catalogInfo, Boolean(options.contactPhoneUnknown));
+    const systemPrompt = buildSystemPrompt(safeBusiness, relevantKnowledge, knowledge, catalogProducts, isFirstMessage, userMessage, subQueries, hasAlreadyGreeted, catalogInfo, Boolean(options.contactPhoneUnknown), Array.isArray(options.busySlots) ? options.busySlots : []);
 
     // Total de un pedido: se recalcula con precios reales. En catálogo grande el producto del pedido
     // puede no estar en lo recuperado este turno, así que se busca por su nombre.
@@ -1037,7 +1042,20 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
       const verifyAll = (text) => {
         const amounts = verifyReplyAmounts(text, groundingCtx);
         const codes = verifyReplyCodes(text, groundingCtx);
-        return { ok: amounts.ok && codes.ok, amounts: amounts.invalid, codes: codes.invalid, invalid: [...amounts.invalid, ...codes.invalid] };
+        // Una cita que el modelo confirma debe poder agendarse: día abierto, dentro del horario, no pasada, no ocupada
+        const slots = [];
+        for (const name of ['NUEVA_CITA', 'MODIFICAR_CITA']) {
+          const tag = parseJsonTag(text, name);
+          if (tag?.fecha && tag?.hora) {
+            const slot = validateSlot(safeBusiness, tag.fecha, tag.hora, { busy: options.busySlots || [] });
+            if (!slot.ok) slots.push(slot.reason);
+          }
+        }
+        return {
+          ok: amounts.ok && codes.ok && slots.length === 0,
+          amounts: amounts.invalid, codes: codes.invalid, slots,
+          invalid: [...amounts.invalid, ...codes.invalid, ...slots],
+        };
       };
       let check = verifyAll(fullReply);
       if (!check.ok && largeCatalog) {
@@ -1058,7 +1076,10 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
           ...check.amounts.map(v => `$${v.toLocaleString('es-CO')}`),
           ...check.codes.map(c => `"${c}"`),
         ].join(', ');
-        const correction = `\n\n## CORRECCIÓN OBLIGATORIA\nTu respuesta anterior mencionó datos que NO están registrados en el negocio: ${listed}. Responde de nuevo SIN inventar, calcular ni cambiar nada: copia los nombres, referencias y precios EXACTOS del catálogo o de la base de conocimiento; si no tienes el dato, di que lo confirmas con un asesor.`;
+        const slotsNote = check.slots.length
+          ? `\nLa cita que confirmaste NO se puede agendar: ${check.slots.join('; ')}. No la confirmes ni añadas la etiqueta de cita: explícale al cliente con amabilidad por qué y ofrécele otro día y hora válidos dentro del horario.`
+          : '';
+        const correction = `\n\n## CORRECCIÓN OBLIGATORIA${listed ? `\nTu respuesta anterior mencionó datos que NO están registrados en el negocio: ${listed}. Responde de nuevo SIN inventar, calcular ni cambiar nada: copia los nombres, referencias y precios EXACTOS del catálogo o de la base de conocimiento; si no tienes el dato, di que lo confirmas con un asesor.` : ''}${slotsNote}`;
         const retry = await chatComplete({
           messages: [{ role: 'system', content: systemPrompt + correction }, ...messages.slice(1)],
           max_tokens: 350,
@@ -1073,7 +1094,9 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
         if (!retry || !check.ok) {
           console.warn('[GROUNDING] 🛑 El reintento sigue con valores sin respaldo: se deriva a un asesor');
           groundingBlocked = true;
-          fullReply = 'Ese dato te lo confirmo con un asesor del equipo en un momento 🙏 ¿Mientras tanto, te ayudo con algo más del catálogo?';
+          fullReply = check.slots.length && !check.amounts.length && !check.codes.length
+            ? 'Ese horario no lo puedo confirmar yo: un asesor del equipo te lo confirma en un momento 🙏 Si quieres, dime otro día y hora y lo reviso.'
+            : 'Ese dato te lo confirmo con un asesor del equipo en un momento 🙏 ¿Mientras tanto, te ayudo con algo más del catálogo?';
         }
       }
     }
@@ -1123,6 +1146,9 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
       } catch (_) {}
     }
 
+    // Cancelar un pedido (no marca al cliente como interesado, pero sí es una acción: no se cachea)
+    const cancelOrderData = parseJsonTag(fullReply, 'CANCELAR_PEDIDO');
+
     const isLeadHot = isLeadHotFlag || Boolean(newAppointmentData) || Boolean(newOrderData) || Boolean(clientData) || Boolean(cancelAppointmentData) || Boolean(modifyAppointmentData) || Boolean(modifyOrderData);
 
     const reply = stripInternalTags(fullReply);
@@ -1130,7 +1156,7 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
     // Guardar respuesta en caché Redis/RAM para consumo 0 tokens en siguientes consultas iguales.
     // Solo respuestas informativas: una que crea pedido o cita lleva datos de ESE cliente y no
     // puede entregarse a otro que escriba lo mismo.
-    if (reply && isFirstOrIsolated && !usedFallback && !groundingBlocked && !isLeadHot) {
+    if (reply && isFirstOrIsolated && !usedFallback && !groundingBlocked && !isLeadHot && !cancelOrderData) {
       setCachedAiResponse(safeBusiness?.id, userMessage, {
         reply,
         isLeadHot,
@@ -1149,6 +1175,7 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
       modifyAppointmentData,
       newOrderData,
       modifyOrderData,
+      cancelOrderData,
       clientData,
       ragChunksUsed: relevantKnowledge.length,
       usedFallback,
@@ -1184,6 +1211,7 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
       modifyAppointmentData: null,
       newOrderData: null,
       modifyOrderData: null,
+      cancelOrderData: null,
       clientData: null,
       ragChunksUsed: 0,
       usedFallback: true,
