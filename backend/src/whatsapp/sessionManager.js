@@ -1541,6 +1541,14 @@ const createSession = async (userId, businessId, io, forceClean = false, isManua
         emitToUserRooms(io, validId, 'session_ready', payload);
       }
 
+      // Unir los chats duplicados (mismo cliente con celular y con LID). Se espera un poco para
+      // que Baileys termine de sincronizar y no compita con el arranque de la sesión.
+      setTimeout(() => {
+        getSessionUuid(userId)
+          .then(sessUuid => require('./lidResolver').reconcileLidConversations(sock, sessUuid))
+          .catch(e => console.warn('[LID] Aviso revisando chats duplicados:', e.message));
+      }, 30000);
+
       // 3. Persistir en DB en segundo plano sin bloquear
       safeUpsert('whatsapp_sessions', {
         user_id: validId,
