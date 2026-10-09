@@ -37,4 +37,14 @@ const isBrowseRequest = (text) => {
   return isCatalogRequest(text) || LIST_RE.test(norm);
 };
 
-module.exports = { isCatalogRequest, isBrowseRequest, normalizeIntentText: normalize };
+// Pide TODO, no una categoría ni "más opciones": "la lista de precios", "muéstrame todo"
+const FULL_LIST_RE = /\b(lista de precios|listado (completo|de precios)|lista completa|todo lo que (hay|tienen|tienes|venden|manejan)|(ver|mostrar|muestrame|ensename|mandame|enviame) todo)\b/;
+
+/** Pide el catálogo o la lista completa: se responde con el PDF o la lista entera, sin IA. */
+const isFullListRequest = (text) => {
+  const norm = normalize(text);
+  if (!norm || DECLINE_RE.test(norm)) return false;
+  return isCatalogRequest(text) || FULL_LIST_RE.test(norm);
+};
+
+module.exports = { isCatalogRequest, isBrowseRequest, isFullListRequest, normalizeIntentText: normalize };
