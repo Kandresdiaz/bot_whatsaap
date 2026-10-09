@@ -1,5 +1,6 @@
 const { supabase } = require('../db/supabase');
-const { askGroq } = require('../ai/groq');
+const { askGroq, detectCategory } = require('../ai/groq');
+const { loadListableProducts, buildCatalogMessages } = require('../services/catalogText');
 const { loadCatalogContext } = require('../services/catalogContext');
 const { applyBookingActions, loadBusySlots } = require('../services/bookingActions');
 const { resolveUserBusiness } = require('../services/businessResolver');
@@ -7,7 +8,7 @@ const { notifyLead } = require('./notifier');
 const { handleAppointmentFlow } = require('./appointmentFlow');
 const { isOutsideHours } = require('../services/businessHours');
 const { norm } = require('../ai/catalogUtils');
-const { isCatalogRequest } = require('../ai/catalogIntent');
+const { isFullListRequest } = require('../ai/catalogIntent');
 const { getCatalogPdf } = require('../db/storage');
 
 // Marca que queda en el historial cuando se envía el PDF del catálogo: el bot la ve y no lo reenvía
@@ -941,18 +942,46 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
       return false;
     }
   };
-  if (catalogPdf && !incomingImage && isCatalogRequest(aiText) && !catalogSentRecently(history)) {
-    const greeted = history.some(m => m.direction === 'outbound');
+  if (business?.id && !incomingImage && isFullListRequest(aiText) && !catalogSentRecently(history)) {
+    const greeting = history.some(m => m.direction === 'outbound') ? '¡Claro!' : '¡Hola! 👋';
+    const closing = business?.main_goal === 'agendar_citas'
+      ? '¿Qué servicio te interesa? Te ayudo a agendarlo. 😊'
+      : '¿Qué te llamó la atención o qué estás buscando? Te ayudo a elegir la mejor opción. 😊';
     await randomDelay();
-    // Primero el archivo: si WhatsApp no lo acepta, sigue la IA con la lista y no queda un "ahí va" sin PDF
-    if (await sendCatalogPdf()) {
-      const pdfReply = `${greeted ? '¡Claro!' : '¡Hola! 👋'} Ahí tienes nuestro catálogo completo 👆\n${business?.main_goal === 'agendar_citas'
-        ? '¿Qué servicio te interesa? Te ayudo a agendarlo. 😊'
-        : '¿Qué te llamó la atención o qué estás buscando? Te ayudo a elegir la mejor opción. 😊'}`;
+    // Primero el archivo: si WhatsApp no lo acepta, sigue la lista y no queda un "ahí va" sin PDF
+    if (catalogPdf && await sendCatalogPdf()) {
+      const pdfReply = `${greeting} Ahí tienes nuestro catálogo completo 👆\n${closing}`;
       await sendText(sock, jid, pdfReply);
       console.log(`[MSG] 📄 Catálogo en PDF enviado a ${contactPhone} sin usar IA`);
       await recordBotReply(`${CATALOG_SENT_MARK} ${catalogPdf.fileName}\n${pdfReply}`);
       return;
+    }
+
+    // Sin PDF: la lista completa en texto, armada de la base de datos (0 tokens, precios exactos).
+    // Si nombra una categoría ("el catálogo de motos") va solo esa. Si son demasiados productos
+    // para leer en el celular, sigue la IA, que le muestra las categorías para elegir.
+    try {
+      const categories = catalogOptions.categories?.length
+        ? catalogOptions.categories
+        : [...new Set(products.map(p => (p.category || '').trim()).filter(Boolean))];
+      const category = detectCategory([aiText], categories);
+      const list = await loadListableProducts(supabase, business.id, category);
+      if (list?.length) {
+        const parts = buildCatalogMessages(list);
+        parts[0] = `${greeting} ${category
+          ? `Estos son todos los productos de *${category}* (${list.length}):`
+          : `Este es nuestro catálogo completo (${list.length} productos):`}\n\n${parts[0]}`;
+        for (const part of parts) {
+          await sendText(sock, jid, part);
+          await recordBotReply(part);
+        }
+        await sendText(sock, jid, closing);
+        await recordBotReply(`${CATALOG_SENT_MARK} lista completa en texto\n${closing}`);
+        console.log(`[MSG] 📋 Catálogo en texto (${list.length} productos, ${parts.length} mensajes) enviado a ${contactPhone} sin usar IA`);
+        return;
+      }
+    } catch (e) {
+      console.error('[MSG] Error armando el catálogo en texto:', e.message);
     }
   }
 

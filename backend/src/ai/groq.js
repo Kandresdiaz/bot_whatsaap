@@ -372,6 +372,8 @@ const retrieveFromLargeCatalog = async ({ userMessage, business, history, knowle
 // No es una búsqueda: se entrega la categoría de la que habla el cliente (o de la que se venía
 // hablando) completa y en orden de precio. Sin sub-consultas a la IA: sale de reglas y SQL.
 const BROWSE_MAX = 20;
+// Tope de cada mensaje del historial que se le pasa al modelo
+const MAX_HISTORY_MSG_CHARS = 1200;
 
 // Categoría del catálogo que nombra el mensaje o, si no nombra ninguna, la de la conversación.
 const detectCategory = (texts, categories) => {
@@ -1126,7 +1128,8 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
       { role: 'system', content: systemPrompt },
       ...formattedHistory.slice(-8).map(m => ({
         role: m.direction === 'inbound' ? 'user' : 'assistant',
-        content: m.content,
+        // Un mensaje largo (p. ej. el catálogo completo en texto) no se repite entero en cada turno
+        content: m.content.length > MAX_HISTORY_MSG_CHARS ? `${m.content.slice(0, MAX_HISTORY_MSG_CHARS)}…` : m.content,
       })),
       { role: 'user', content: userMessage },
     ];
