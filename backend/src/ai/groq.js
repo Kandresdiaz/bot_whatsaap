@@ -4,6 +4,7 @@
 const { chatComplete } = require('./llmPool');
 const { verifyReplyAmounts, verifyReplyCodes, reconcileOrderTotal } = require('./grounding');
 const { parseJsonTag, stripInternalTags } = require('./replyTags');
+const { isBrowseRequest } = require('./catalogIntent');
 const { validateSlot } = require('../services/bookingActions');
 
 // Lo que el cliente va a leer (sin etiquetas internas) debe ser una respuesta de verdad: una de
@@ -367,6 +368,68 @@ const retrieveFromLargeCatalog = async ({ userMessage, business, history, knowle
   };
 };
 
+// ─── Lista completa ("el catálogo", "la lista de precios", "qué más hay") ────────
+// No es una búsqueda: se entrega la categoría de la que habla el cliente (o de la que se venía
+// hablando) completa y en orden de precio. Sin sub-consultas a la IA: sale de reglas y SQL.
+const BROWSE_MAX = 20;
+
+// Categoría del catálogo que nombra el mensaje o, si no nombra ninguna, la de la conversación.
+const detectCategory = (texts, categories) => {
+  const cats = (categories || []).filter(Boolean).map(c => ({
+    c, words: [...new Set(normalizeSearchText(c).split(' ').filter(w => w.length >= 4 && !SPANISH_STOPWORDS.has(w)))],
+  }));
+  if (!cats.length) return null;
+  // Una palabra presente en más de la mitad de las categorías ("eléctricas") no distingue ninguna
+  const freq = new Map();
+  cats.forEach(x => x.words.forEach(w => freq.set(w, (freq.get(w) || 0) + 1)));
+  const maxFreq = cats.length < 3 ? Infinity : Math.floor(cats.length / 2);
+  for (const text of texts) {
+    const tokens = normalizeSearchText(text || '').split(' ').filter(w => w.length >= 4);
+    if (!tokens.length) continue;
+    let best = null;
+    let bestScore = 0;
+    for (const x of cats) {
+      const score = x.words.filter(w => freq.get(w) <= maxFreq && tokens.some(t => isFuzzyWordMatch(t, w))).length;
+      if (score > bestScore) { best = x.c; bestScore = score; }
+    }
+    if (best) return best;
+  }
+  return null;
+};
+
+// { mode: 'category' | 'all' | 'categories', list, category, total, categoryCounts }, o null si
+// no se pudo armar (el llamador sigue con la búsqueda normal).
+const buildBrowse = async ({ userMessage, history, products, options }) => {
+  const recent = [...history].reverse();
+  const texts = [
+    userMessage,
+    ...recent.filter(m => m.direction === 'inbound').slice(0, 2).map(m => m.content),
+    ...recent.filter(m => m.direction === 'outbound').slice(0, 1).map(m => m.content),
+  ];
+
+  if (typeof options?.listCategory === 'function') {
+    const counts = options.categoryCounts || {};
+    const category = detectCategory(texts, options.categories || []);
+    if (!category) return { mode: 'categories', list: [], category: null, total: options.catalogTotal, categoryCounts: counts };
+    const list = await options.listCategory(category, BROWSE_MAX);
+    if (!list) return null;
+    return { mode: 'category', list, category, total: counts[category] || list.length, categoryCounts: counts };
+  }
+
+  const all = Array.isArray(products) ? products : [];
+  if (!all.length) return null;
+  const counts = {};
+  all.forEach(p => { const c = (p.category || '').trim(); if (c) counts[c] = (counts[c] || 0) + 1; });
+  const byPrice = (a, b) => (Number(a.price) || 0) - (Number(b.price) || 0);
+  const category = detectCategory(texts, Object.keys(counts));
+  if (category) {
+    const inCategory = all.filter(p => (p.category || '').trim() === category).sort(byPrice);
+    return { mode: 'category', list: inCategory.slice(0, BROWSE_MAX), category, total: inCategory.length, categoryCounts: counts };
+  }
+  if (all.length <= BROWSE_MAX) return { mode: 'all', list: all, category: null, total: all.length, categoryCounts: counts };
+  return { mode: 'categories', list: [], category: null, total: all.length, categoryCounts: counts };
+};
+
 // ─── 3. RAG Multi-Query ───────────────────────────────────────────────────────
 // `precomputedSubQueries` evita pedirle a Groq las mismas sub-consultas dos veces por mensaje
 const ragSearch = async (userMessage, knowledge, business = null, chatHistory = [], precomputedSubQueries = null) => {
@@ -567,7 +630,7 @@ const buildKnowledgeContext = (knowledge) => {
 const FULL_KNOWLEDGE_MAX_CHARS = 8000;
 
 // catalogInfo (solo catálogos grandes, buscados en SQL): { total, categories, noMatch, mode, orden }
-const buildSystemPrompt = (business, relevantKnowledge, allKnowledge, products = [], isFirstMessage = true, userMessage = '', subQueries = [], hasAlreadyGreeted = false, catalogInfo = null, contactPhoneUnknown = false, busySlots = []) => {
+const buildSystemPrompt = (business, relevantKnowledge, allKnowledge, products = [], isFirstMessage = true, userMessage = '', subQueries = [], hasAlreadyGreeted = false, catalogInfo = null, contactPhoneUnknown = false, busySlots = [], browseInfo = null, catalogPdf = null) => {
   const busName = business?.name || 'BotWA';
   const busCategory = business?.category || 'Atención Comercial y Servicios';
   // Datos opcionales: si el dueño no los configuró NO se rellenan con valores supuestos
@@ -593,10 +656,15 @@ const buildSystemPrompt = (business, relevantKnowledge, allKnowledge, products =
   // En catálogos grandes la lista de productos es solo lo encontrado: las categorías son las de TODO el catálogo
   const distinctCategories = catalogInfo?.categories?.length
     ? catalogInfo.categories
+    : browseInfo?.categoryCounts && Object.keys(browseInfo.categoryCounts).length
+    ? Object.keys(browseInfo.categoryCounts)
     : Array.from(new Set((products || []).map(p => p.category?.trim()).filter(Boolean)));
+  // En modo lista se muestran cuántos productos tiene cada categoría, para que el cliente elija
+  const browseCounts = browseInfo?.categoryCounts || {};
   const categoriesOverview = distinctCategories.length > 0
-    ? `=== COLECCIONES Y CATEGORÍAS REGISTRADAS EN EL CATÁLOGO ===\n${distinctCategories.map(c => `• ${c}`).join('\n')}\n=== FIN DE COLECCIONES ===`
+    ? `=== COLECCIONES Y CATEGORÍAS REGISTRADAS EN EL CATÁLOGO ===\n${distinctCategories.map(c => `• ${c}${browseInfo && browseCounts[c] ? ` (${browseCounts[c]})` : ''}`).join('\n')}\n=== FIN DE COLECCIONES ===`
     : '';
+  const browseCategories = browseInfo?.mode === 'categories';
 
   // Si la base de conocimiento es pequeña va completa: el buscador por palabras falla con
   // preguntas redactadas distinto y, sin contexto, el modelo termina rellenando con inventos.
@@ -610,33 +678,60 @@ const buildSystemPrompt = (business, relevantKnowledge, allKnowledge, products =
   // En catálogo grande, los "de contexto" no son resultados de la búsqueda: se muestran aparte
   const contextProducts = catalogInfo?.contextProducts || [];
   if (contextProducts.length) products = products.filter(p => !contextProducts.includes(p));
-  const prodResult = rankAndFilterProducts(userMessage, products, subQueries);
+  // En modo lista los productos ya vienen escogidos (toda la categoría): no se vuelven a filtrar
+  const prodResult = browseInfo
+    ? { list: products, specific: true, noMatch: false, totalMatched: products.length }
+    : rankAndFilterProducts(userMessage, products, subQueries);
   const filteredProducts = prodResult.list;
   const hasProducts = Array.isArray(filteredProducts) && filteredProducts.length > 0;
   const noProductMatch = prodResult.noMatch === true || (!hasProducts && catalogInfo?.noMatch === true);
   const isPartialSample = hasProducts && !catalogInfo && !prodResult.specific && Array.isArray(products) && products.length > filteredProducts.length;
   // Hay más coincidencias de las que caben: el modelo no debe creer que lo mostrado es todo lo que hay
-  const moreMatchesNote = hasProducts && !catalogInfo && prodResult.specific && prodResult.totalMatched > filteredProducts.length
+  const moreMatchesNote = hasProducts && !catalogInfo && !browseInfo && prodResult.specific && prodResult.totalMatched > filteredProducts.length
     ? `\n(Se muestran ${filteredProducts.length} de ${prodResult.totalMatched} productos que coinciden, repartidos entre las categorías. Hay más: si el cliente quiere ver otros o afinar, pregúntale por modelo, uso o presupuesto.)`
     : '';
   const ordenLabel = { precio_asc: 'de menor a mayor precio', precio_desc: 'de mayor a menor precio', similares: 'por parecido al producto de referencia (el primero)' }[catalogInfo?.orden] || 'por relevancia';
   const contextBlock = contextProducts.length
     ? `\nProductos de los que ya se venía hablando en esta conversación (datos oficiales; si el cliente continúa con ellos, úsalos):\n${contextProducts.map(p => `- [${p.category || 'General'}] ${p.name}: ${priceLabel(p)}${p.description ? ` (${p.description})` : ''}`).join('\n')}`
     : '';
-  const catalogNote = !hasProducts || !catalogInfo
+  const browseNote = !browseInfo || !hasProducts
+    ? ''
+    : `\n(El cliente pidió ver la lista. ${browseInfo.mode === 'all'
+      ? `Este es el catálogo COMPLETO (${filteredProducts.length} productos).`
+      : `Son ${filteredProducts.length} de los ${browseInfo.total} productos de "${browseInfo.category}", de menor a mayor precio.`} Preséntalos TODOS en lista compacta, uno por línea: "• Nombre – $precio", sin descripciones.${browseInfo.total > filteredProducts.length ? ` Aclara que hay ${browseInfo.total - filteredProducts.length} más y pregunta por presupuesto o modelo para mostrárselos.` : ''} Cierra con UNA pregunta que le ayude a elegir.)`;
+  const catalogNote = browseInfo
+    ? browseNote
+    : !hasProducts || !catalogInfo
     ? ''
     : catalogInfo.mode === 'context'
       ? '\n(Son los productos de los que ya se venía hablando: el cliente está respondiendo datos de su pedido. No presentes otros productos.)'
     : catalogInfo.mode === 'sample'
       ? `\n(Es solo una MUESTRA de un catálogo de ${catalogInfo.total} productos, no está completo. Si el cliente busca algo puntual que no aparezca aquí, pídele el nombre/modelo para ubicarlo; no asumas que no existe.)`
       : `\n(Resultado de buscar lo que pide el cliente entre los ${catalogInfo.total} productos del negocio, ordenados ${ordenLabel}. Preséntalos solo si responden a lo que pidió; el resto del catálogo no se muestra aquí. No afirmes que no hay más: ofrécele precisar nombre, modelo o característica.)`;
-  const productsContext = hasProducts
+  // La lista va sin descripción ni foto: son más productos y no hacen falta para listarlos
+  const productsContext = hasProducts && browseInfo
+    ? filteredProducts.map(p => `- [${p.category || 'General'}] ${p.name}: ${priceLabel(p)}`).join('\n')
+    : hasProducts
     ? filteredProducts.map(p => `- [${p.category || 'General'}] ${p.name}: ${priceLabel(p)}${p.description ? ` (${p.description})` : ''}${p.image_url ? ` | Foto/Imagen: ${p.image_url}` : ''}`).join('\n')
     : null;
 
   const mainGoalText = isSales
-    ? `BRINDAR ASESORÍA, ATENCIÓN Y ACOMPAÑAMIENTO en los productos y servicios de "${busName}". Responde dudas con calidez y cercanía, presenta las opciones del catálogo oficial y acompaña al cliente en su decisión de compra o pedido.`
-    : `BRINDAR ATENCIÓN Y COORDINAR CITAS O RESERVAS para "${busName}". Atiende todas las dudas con cortesía, consulta el calendario y horarios disponibles y facilita el agendamiento del cliente.`;
+    ? `llevar a cada cliente de "${busName}" de la duda a la compra: entiende qué necesita, recomiéndale la opción del catálogo oficial que mejor le sirve y guíalo hasta cerrar el pedido.`
+    : `convertir cada consulta de "${busName}" en una cita o reserva confirmada: resuelve sus dudas, entiende qué servicio necesita y agéndalo en un horario disponible.`;
+
+  // Método comercial según el objetivo del negocio: qué hacer en cada etapa de la conversación
+  const playbook = isSales
+    ? `1. DIAGNOSTICA: si la consulta es amplia ("motos", "qué tienen", "precios"), muestra 2 o 3 opciones representativas (de rangos de precio distintos) y haz UNA pregunta que filtre: uso, presupuesto o preferencia (ej. "¿la buscas para ciudad o para trabajo?").
+2. RECOMIENDA CON RAZÓN: conecta la opción con lo que el cliente dijo ("como la usarás para X, te sirve Y porque Z"), usando solo características registradas. Si hay un "⭐ Más Recomendado/Popular" que encaja, destácalo.
+3. LO QUE PIDE EL CLIENTE MANDA: si pide "el catálogo completo", "todas", "más opciones", "la lista" o "qué más hay", entrégale la lista de lo que tienes en el CATÁLOGO OFICIAL (de la categoría que le interesa) en formato compacto, una por línea: "• Nombre – $precio", sin descripciones. Aquí sí puedes pasar de 4 líneas. Si lo que ves es solo una muestra o parte del catálogo, dilo y pregunta por categoría o presupuesto para mostrarle el resto.
+4. NO TE REPITAS: nunca respondas un pedido nuevo con las mismas opciones del mensaje anterior. Si ya mostraste unos productos, avanza: otros distintos, la comparación que pide o el siguiente paso.
+5. OBJECIONES: "está caro" → resalta el valor y ofrece la alternativa más económica del catálogo (financiación o descuentos solo si están registrados). "Lo voy a pensar" → pregunta qué duda le queda y resuélvela; ofrece apartarlo o agendar una visita, sin presionar.
+6. CIERRA: ante señales de compra (pregunta por pago, envío, disponibilidad, "me gusta", "cuál me recomiendas") deja de mostrar opciones y propón el paso concreto: confirmar producto y pedir los datos del pedido.`
+    : `1. ENTIENDE EL MOTIVO: qué servicio necesita, para quién y si tiene urgencia o preferencia de día. Una pregunta a la vez.
+2. RESUELVE CON DATOS OFICIALES: precio, duración, preparación o requisitos solo si están registrados.
+3. PROPÓN HORARIOS CONCRETOS: ofrece 2 opciones dentro del horario y que no estén ocupadas ("¿te sirve el jueves 10:00 am o el viernes 3:00 pm?"), no un "¿cuándo puedes?" abierto.
+4. CONFIRMA: repite servicio, día y hora y lo que debe traer o saber (solo si está registrado).
+5. Si duda o pospone, pregunta qué le frena, resuélvelo y deja la puerta abierta con una opción de horario.`;
 
   const isGreetingOnly = isFirstMessage && !hasAlreadyGreeted && isSimpleGreeting(userMessage);
 
@@ -694,9 +789,9 @@ ${business?.payment_or_booking_link ? `Enlace o Método de Pago / Agenda: ${busi
     : '';
   const duration = parseInt(business?.appointment_duration, 10);
 
-  return `Eres el asesor de atención por WhatsApp de "${busName}" (${busCategory}).
+  return `Eres el asesor comercial experto de "${busName}" (${busCategory}) por WhatsApp: conoces el catálogo a fondo, atiendes como el mejor asesor de tienda y ayudas al cliente a decidir.
 Misión: ${mainGoalText}
-Tono: ${personality}. Cercano, servicial y humano. Nunca digas que te dedicas a vender ni que eres un vendedor; habla desde la asesoría.
+Tono: ${personality}. Cercano, seguro y humano, como una persona del equipo. No te presentes como vendedor ni como bot: eres un asesor que ayuda a elegir.
 
 ## FUENTE ÚNICA DE VERDAD (regla por encima de todas)
 Solo sabes lo que aparece en: DATOS DEL NEGOCIO, CATÁLOGO, BASE DE CONOCIMIENTO e INSTRUCCIONES DEL DUEÑO.
@@ -712,13 +807,25 @@ ${business?.custom_instructions ? `
 ## INSTRUCCIONES DEL DUEÑO (máxima prioridad, cúmplelas al pie de la letra)
 ${business.custom_instructions}
 ` : ''}
+## MÉTODO COMERCIAL
+${playbook}
+
+## ATENCIÓN AL CLIENTE
+- Lee la intención aunque el cliente escriba con errores o abreviado ("manden e catlog comple" = quiere el catálogo completo).
+- Si sabes su nombre, úsalo de vez en cuando. Adapta tu registro al suyo (formal o informal).
+- Quejas, reclamos, garantías o estado de un pedido: primero empatía ("Lamento mucho eso, te ayudo"), pide el dato que falte (producto, fecha, número de pedido) y ofrece que un asesor lo revise. Nunca discutas ni prometas soluciones no registradas.
+- Si pide hablar con una persona, acéptalo con amabilidad y di que un asesor del equipo le escribe.
+
 ## ESTILO DE RESPUESTA
-- Máximo 4 líneas cortas, 1 o 2 emojis, que se lea sin hacer scroll en el celular.
-- Estructura: valida lo que dijo el cliente → solución, precio o dato clave → UNA sola pregunta al final.
+- Máximo 4 líneas cortas, 1 o 2 emojis, que se lea sin hacer scroll en el celular (excepción: la lista que el cliente pidió).
+- Estructura: valida lo que dijo el cliente → solución, precio o dato clave → UNA sola pregunta al final que lo acerque al siguiente paso.
 - Nunca hagas dos preguntas en el mismo mensaje. Prefiere preguntas fáciles de opción ("¿mañana o tarde?", "¿domicilio o recoges?").
-- No sueltes el catálogo completo ni precios de golpe si el cliente aún no dice qué busca.
+- Evita cierres genéricos que no avanzan ("¿te gustaría ver alguna en detalle?", "¿te llama la atención alguna?"): pregunta algo que filtre (uso, presupuesto, preferencia) o que cierre (cuál se lleva, cómo paga, cuándo viene).
+- No sueltes el catálogo completo ni precios de golpe si el cliente aún no dice qué busca (salvo que él lo pida).
 ${hasProducts
-  ? '- Con catálogo: presenta 2 o 3 opciones relevantes con precio y beneficio; si alguna dice "⭐ Más Recomendado/Popular", recomiéndala.'
+  ? (browseInfo ? '- El cliente pidió la lista: entrégala completa (ver CATÁLOGO OFICIAL).' : '- Con catálogo: presenta 2 o 3 opciones relevantes con precio y un beneficio concreto de cada una.')
+  : browseCategories
+  ? '- El cliente pidió ver todo el catálogo: muéstrale las categorías con cuántos productos tiene cada una y pregúntale cuál quiere ver.'
   : noProductMatch
   ? '- No encontraste ese producto en el catálogo: no inventes modelos, precios ni características. Pregunta el nombre o modelo, ofrece las categorías o confirma con un asesor.'
   : '- No hay productos cargados: no inventes modelos ni precios. Usa las FAQs si responden la duda; si no, pregunta qué necesita y ofrece confirmarlo con un asesor.'}
@@ -732,6 +839,8 @@ ${businessInfo}
 
 ${categoriesOverview ? `${categoriesOverview}\n\n` : ''}${hasProducts
   ? `## CATÁLOGO OFICIAL\n${productsContext}${catalogNote}${moreMatchesNote}${contextBlock}${isPartialSample ? '\n(Es solo una MUESTRA del catálogo, no está completo. Si el cliente busca algo puntual que no aparezca aquí, pídele el nombre/modelo para ubicarlo; no asumas que no existe.)' : ''}`
+  : browseCategories
+  ? `## CATÁLOGO\nEl cliente pidió ver el catálogo completo, pero tiene ${browseInfo.total} productos y no caben en un mensaje. Muéstrale las categorías de arriba (con su número de productos) y pregúntale cuál quiere ver. No inventes productos.`
   : noProductMatch
   ? `## CATÁLOGO\nEl negocio SÍ tiene catálogo, pero NINGÚN producto coincide con lo que el cliente pregunta. NO afirmes que existe ni que no existe, y NO inventes nombre, precio, stock ni características. Pídele que precise el nombre o modelo, muéstrale las categorías de arriba, u ofrece confirmarlo con un asesor.${contextBlock}`
   : `## CATÁLOGO\nNo hay productos individuales registrados. El negocio atiende en ${busCategory}.${business?.description ? ` ${business.description}` : ''}`}
@@ -744,6 +853,11 @@ ${business.closing_instructions}
 ` : ''}
 ## PEDIDOS
 ${orderRules}
+${catalogPdf ? `
+## CATÁLOGO EN PDF
+- El negocio tiene su catálogo en PDF. Si el cliente pide el catálogo, el PDF o "todo lo que tienen", añade al final [ENVIAR_CATALOGO] y dile en 1 línea que ahí va y que le ayudas a elegir.
+- El PDF se envía SOLO con esa etiqueta: nunca prometas mandarlo después. Si en el historial ya aparece "📄 Catálogo", ya lo tiene: no lo reenvíes salvo que lo pida de nuevo.
+` : ''}
 ${contactPhoneUnknown ? `
 ## CELULAR DEL CLIENTE (importante)
 - De este cliente NO tienes su número de celular (su WhatsApp lo oculta). Antes de confirmar una cita o un pedido, pídeselo ("¿a qué número de celular te contactamos?") y no cierres sin tenerlo.
@@ -901,7 +1015,8 @@ const buildHumanAssistantReply = (userMessage, business, products = [], chatHist
 const { getCachedAiResponse, setCachedAiResponse, normalizeText } = require('./aiCache');
 
 // options (solo catálogos grandes, ver services/catalogContext.js): { catalogTotal, categories, sample,
-// searchProducts(terms, opts), similarProducts(id, limit) }. Sin options, `products` es el catálogo completo.
+// searchProducts(terms, opts), similarProducts(id, limit), listCategory(cat, limit) }, más
+// contactPhoneUnknown, busySlots y catalogPdf (el PDF que el bot puede enviar, o null). Sin options, `products` es el catálogo completo.
 const askGroq = async (userMessage, business, knowledge, chatHistory = [], products = [], options = {}) => {
   const safeBusiness = business || {
     name: 'Asistente Virtual',
@@ -971,7 +1086,17 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
     let catalogProducts = products;
     let catalogInfo = null;
     let subQueries;
-    if (largeCatalog) {
+    // "El catálogo", "la lista", "qué más hay": se entrega la categoría completa, sin buscar ni gastar IA
+    const browseInfo = isBrowseRequest(userMessage)
+      ? await buildBrowse({ userMessage, history: formattedHistory, products, options }).catch(() => null)
+      : null;
+    if (browseInfo) {
+      subQueries = [];
+      catalogProducts = browseInfo.list;
+      if (largeCatalog) {
+        catalogInfo = { total: options.catalogTotal, categories: options.categories || [], noMatch: false, mode: 'browse', orden: 'precio_asc', contextProducts: [] };
+      }
+    } else if (largeCatalog) {
       const found = await retrieveFromLargeCatalog({ userMessage, business: safeBusiness, history: formattedHistory, knowledge, options });
       subQueries = found.subQueries;
       catalogInfo = { total: options.catalogTotal, categories: options.categories || [], noMatch: found.noMatch, mode: found.mode, orden: found.orden, contextProducts: found.contextProducts || [] };
@@ -981,7 +1106,7 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
       subQueries = await getSubQueries(userMessage, safeBusiness, formattedHistory, knowledge, products);
     }
     const relevantKnowledge = await ragSearch(userMessage, knowledge, safeBusiness, formattedHistory, subQueries);
-    const systemPrompt = buildSystemPrompt(safeBusiness, relevantKnowledge, knowledge, catalogProducts, isFirstMessage, userMessage, subQueries, hasAlreadyGreeted, catalogInfo, Boolean(options.contactPhoneUnknown), Array.isArray(options.busySlots) ? options.busySlots : []);
+    const systemPrompt = buildSystemPrompt(safeBusiness, relevantKnowledge, knowledge, catalogProducts, isFirstMessage, userMessage, subQueries, hasAlreadyGreeted, catalogInfo, Boolean(options.contactPhoneUnknown), Array.isArray(options.busySlots) ? options.busySlots : [], browseInfo, options.catalogPdf || null);
 
     // Total de un pedido: se recalcula con precios reales. En catálogo grande el producto del pedido
     // puede no estar en lo recuperado este turno, así que se busca por su nombre.
@@ -1014,10 +1139,12 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
 
     let fullReply = null;
     let tokensUsed = 0;
+    // Una lista de hasta BROWSE_MAX productos no cabe en el tope normal sin quedar cortada
+    const replyMaxTokens = browseInfo?.list?.length ? 550 : 350;
 
     const response = await chatComplete({
       messages,
-      max_tokens: 350,
+      max_tokens: replyMaxTokens,
       temperature: 0.25,
       // Si el modelo solo gastó tokens pensando, la respuesta queda vacía: probar el siguiente
       accept: (text) => isUsableReply(stripThink(text)),
@@ -1082,7 +1209,7 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
         const correction = `\n\n## CORRECCIÓN OBLIGATORIA${listed ? `\nTu respuesta anterior mencionó datos que NO están registrados en el negocio: ${listed}. Responde de nuevo SIN inventar, calcular ni cambiar nada: copia los nombres, referencias y precios EXACTOS del catálogo o de la base de conocimiento; si no tienes el dato, di que lo confirmas con un asesor.` : ''}${slotsNote}`;
         const retry = await chatComplete({
           messages: [{ role: 'system', content: systemPrompt + correction }, ...messages.slice(1)],
-          max_tokens: 350,
+          max_tokens: replyMaxTokens,
           temperature: 0.1,
           accept: (text) => isUsableReply(stripThink(text)),
         });
@@ -1122,6 +1249,8 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
     const isLeadHotFlag = fullReply.includes('[LEAD_CALIENTE]');
     const imageMatch = fullReply.match(/\[ENVIAR_IMAGEN:\s*(.+?)\]/i);
     const imageName = imageMatch ? imageMatch[1].trim() : null;
+    // Solo cuenta si el negocio tiene PDF: si no, la etiqueta se borra y no pasa nada
+    const sendCatalog = Boolean(options.catalogPdf) && /\[\s*ENVIAR_CATALOGO\s*\]?/i.test(fullReply);
 
     // Las etiquetas se leen aunque el modelo olvide el "]" final o la respuesta quede cortada
     const newAppointmentData = parseJsonTag(fullReply, 'NUEVA_CITA');
@@ -1161,6 +1290,7 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
         reply,
         isLeadHot,
         imageName,
+        sendCatalog,
         ragChunksUsed: relevantKnowledge.length,
       }).catch(() => {});
     }
@@ -1170,6 +1300,7 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
       isLeadHot,
       tokensUsed,
       imageName,
+      sendCatalog,
       newAppointmentData,
       cancelAppointmentData,
       modifyAppointmentData,
@@ -1184,7 +1315,7 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
       productsUsed: catalogProducts,
       // Para "Probar bot": qué vio y qué modelo respondió
       debugInfo: {
-        catalogMode: largeCatalog ? (catalogInfo?.mode === 'sample' ? 'muestra del catálogo (búsqueda SQL)' : 'búsqueda SQL') : 'catálogo en memoria',
+        catalogMode: browseInfo ? `lista completa (${browseInfo.mode}${browseInfo.category ? `: ${browseInfo.category}` : ''})` : largeCatalog ? (catalogInfo?.mode === 'sample' ? 'muestra del catálogo (búsqueda SQL)' : 'búsqueda SQL') : 'catálogo en memoria',
         subQueries: subQueries || [],
         noMatch: Boolean(catalogInfo?.noMatch),
         aiModel: response ? `${response.provider}:${response.model}` : null,
@@ -1219,4 +1350,4 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
   }
 };
 
-module.exports = { askGroq, ragSearch, searchKnowledge, rankAndFilterProducts, shouldExpandWithLLM, buildVocabulary, getSubQueries, extractSearchTerms, retrieveFromLargeCatalog };
+module.exports = { askGroq, ragSearch, searchKnowledge, rankAndFilterProducts, shouldExpandWithLLM, buildVocabulary, getSubQueries, extractSearchTerms, retrieveFromLargeCatalog, detectCategory, buildBrowse, isBrowseRequest, buildSystemPrompt };

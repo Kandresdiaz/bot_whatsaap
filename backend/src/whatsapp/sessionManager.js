@@ -22,6 +22,27 @@ try {
   handleIncomingMessage = require('./messageHandler').handleIncomingMessage;
 } catch (_) {}
 
+// Archivos ya subidos a WhatsApp, por URL (catálogo en PDF, fotos de producto). Con esto Baileys
+// no vuelve a descargar ni a subir el mismo archivo en cada envío: un PDF de 30 MB se sube una
+// vez y no se come el ancho de banda del servidor. Se guarda solo la referencia (~1 KB).
+const MEDIA_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const MEDIA_CACHE_MAX = 500;
+const mediaCacheEntries = new Map(); // key → { value, expiresAt }
+const mediaCache = {
+  get: (key) => {
+    const hit = mediaCacheEntries.get(key);
+    if (!hit) return undefined;
+    if (hit.expiresAt <= Date.now()) { mediaCacheEntries.delete(key); return undefined; }
+    return hit.value;
+  },
+  set: (key, value) => {
+    if (mediaCacheEntries.size >= MEDIA_CACHE_MAX) mediaCacheEntries.delete(mediaCacheEntries.keys().next().value);
+    mediaCacheEntries.set(key, { value, expiresAt: Date.now() + MEDIA_CACHE_TTL_MS });
+  },
+  del: (key) => { mediaCacheEntries.delete(key); },
+  flushAll: () => { mediaCacheEntries.clear(); },
+};
+
 // Mapa de sesiones activas: userId → { sock, businessId, status, qr, phone }
 const sessions = new Map();
 const userDisconnectedMap = new Set();
@@ -1245,6 +1266,7 @@ const createSession = async (userId, businessId, io, forceClean = false, isManua
 
   const sock = makeWASocket({
     version: WA_VERSION,
+    mediaCache,
     auth: {
       creds: state.creds,
       keys: makeCacheableSignalKeyStore(state.keys, logger),

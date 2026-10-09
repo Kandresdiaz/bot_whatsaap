@@ -7,6 +7,13 @@ const { notifyLead } = require('./notifier');
 const { handleAppointmentFlow } = require('./appointmentFlow');
 const { isOutsideHours } = require('../services/businessHours');
 const { norm } = require('../ai/catalogUtils');
+const { isCatalogRequest } = require('../ai/catalogIntent');
+const { getCatalogPdf } = require('../db/storage');
+
+// Marca que queda en el historial cuando se envía el PDF del catálogo: el bot la ve y no lo reenvía
+const CATALOG_SENT_MARK = '📄 Catálogo:';
+// ¿Se le envió el PDF en los últimos mensajes? Entonces una nueva petición la responde la IA
+const catalogSentRecently = (history) => history.slice(-8).some(m => m.direction === 'outbound' && (m.content || '').includes(CATALOG_SENT_MARK));
 
 // ─── ANTI-BAN: delays aleatorios humanizados ──────────────────────────────────
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
@@ -882,11 +889,78 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
     }
   }
 
+  // Guarda la respuesta del bot y la muestra en el panel en vivo
+  const recordBotReply = async (content, tokens = 0) => {
+    if (!conversation?.id) return;
+    const timestamp = new Date().toISOString();
+    await safeQuery(() => supabase.from('messages').insert({
+      conversation_id: conversation.id,
+      content,
+      direction: 'outbound',
+      sent_by: 'bot',
+      timestamp,
+      groq_tokens_used: tokens,
+    }));
+
+    if (global.io) {
+      try {
+        const { emitToUserRooms, getSessionUuid } = require('./sessionManager');
+        const sessionUuid = await getSessionUuid(userId);
+        const msgObj = { id: Date.now().toString(), content, direction: 'outbound', sent_by: 'bot', timestamp };
+        emitToUserRooms(global.io, userId, 'new_message', {
+          conversationId: conversation?.id || `conv_${contactPhone}`,
+          contactPhone,
+          message: msgObj,
+        }, sessionUuid);
+        emitToUserRooms(global.io, userId, 'conversation_updated', {
+          conversationId: conversation?.id || `conv_${contactPhone}`,
+          contactPhone,
+          lastMessage: content,
+          timestamp,
+        }, sessionUuid);
+      } catch (errIo) {
+        console.warn('[MSG Handler] Aviso emitiendo socket outbound:', errIo.message);
+      }
+    }
+  };
+
+  // ── 9.9 Catálogo en PDF ────────────────────────────────────────────────────
+  // Si el dueño subió su catálogo en PDF y el cliente lo pide, se envía el archivo sin llamar a
+  // la IA (0 tokens). La consulta a Storage va en caché, y Baileys reutiliza la subida a WhatsApp.
+  const catalogPdf = await getCatalogPdf(business?.id).catch(() => null);
+  const sendCatalogPdf = async () => {
+    try {
+      await sock.sendMessage(jid, {
+        document: { url: catalogPdf.url },
+        mimetype: 'application/pdf',
+        fileName: catalogPdf.fileName,
+      });
+      return true;
+    } catch (e) {
+      console.error('[MSG] Error enviando el catálogo en PDF:', e.message);
+      return false;
+    }
+  };
+  if (catalogPdf && !incomingImage && isCatalogRequest(aiText) && !catalogSentRecently(history)) {
+    const greeted = history.some(m => m.direction === 'outbound');
+    await randomDelay();
+    // Primero el archivo: si WhatsApp no lo acepta, sigue la IA con la lista y no queda un "ahí va" sin PDF
+    if (await sendCatalogPdf()) {
+      const pdfReply = `${greeted ? '¡Claro!' : '¡Hola! 👋'} Ahí tienes nuestro catálogo completo 👆\n${business?.main_goal === 'agendar_citas'
+        ? '¿Qué servicio te interesa? Te ayudo a agendarlo. 😊'
+        : '¿Qué te llamó la atención o qué estás buscando? Te ayudo a elegir la mejor opción. 😊'}`;
+      await sendText(sock, jid, pdfReply);
+      console.log(`[MSG] 📄 Catálogo en PDF enviado a ${contactPhone} sin usar IA`);
+      await recordBotReply(`${CATALOG_SENT_MARK} ${catalogPdf.fileName}\n${pdfReply}`);
+      return;
+    }
+  }
+
   // ── 10. RAG + Groq: generar respuesta ─────────────────────────────────────
-  const { reply, isLeadHot, tokensUsed, imageName, newAppointmentData, cancelAppointmentData, modifyAppointmentData, newOrderData, modifyOrderData, cancelOrderData, clientData, ragChunksUsed, productsUsed } = await askGroq(
+  const { reply, isLeadHot, tokensUsed, imageName, sendCatalog, newAppointmentData, cancelAppointmentData, modifyAppointmentData, newOrderData, modifyOrderData, cancelOrderData, clientData, ragChunksUsed, productsUsed } = await askGroq(
     aiText, business, knowledge, history, products,
     // Horarios ya ocupados: el bot no los ofrece y no confirma una cita que no se puede agendar
-    { ...catalogOptions, contactPhoneUnknown: phoneUnknown, busySlots: await loadBusySlots(supabase, business).catch(() => []) }
+    { ...catalogOptions, contactPhoneUnknown: phoneUnknown, busySlots: await loadBusySlots(supabase, business).catch(() => []), catalogPdf }
   );
   // Para enviar la foto de un producto: lo que el bot tuvo a la vista este turno, más lo cargado
   const imageCatalog = Array.isArray(productsUsed) && productsUsed.length ? [...productsUsed, ...products] : products;
@@ -985,41 +1059,12 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
     }
   }
 
-  // ── 14. Enviar respuesta de texto ──────────────────────────────────────────
+  // ── 14. Enviar respuesta de texto (y el catálogo en PDF si el modelo dejó [ENVIAR_CATALOGO]) ──
   await sendText(sock, jid, reply);
+  const catalogSent = Boolean(sendCatalog && catalogPdf) && await sendCatalogPdf();
 
   // ── 15. Guardar respuesta del bot en DB ───────────────────────────────────
-  if (conversation?.id) {
-    await safeQuery(() => supabase.from('messages').insert({
-      conversation_id: conversation.id,
-      content: reply,
-      direction: 'outbound',
-      sent_by: 'bot',
-      timestamp: new Date().toISOString(),
-      groq_tokens_used: tokensUsed,
-    }));
-
-    if (global.io) {
-      try {
-        const { emitToUserRooms, getSessionUuid } = require('./sessionManager');
-        const sessionUuid = await getSessionUuid(userId);
-        const msgObj = { id: Date.now().toString(), content: reply, direction: 'outbound', sent_by: 'bot', timestamp: new Date().toISOString() };
-        emitToUserRooms(global.io, userId, 'new_message', {
-          conversationId: conversation?.id || `conv_${contactPhone}`,
-          contactPhone,
-          message: msgObj,
-        }, sessionUuid);
-        emitToUserRooms(global.io, userId, 'conversation_updated', {
-          conversationId: conversation?.id || `conv_${contactPhone}`,
-          contactPhone,
-          lastMessage: reply,
-          timestamp: msgObj.timestamp,
-        }, sessionUuid);
-      } catch (errIo) {
-        console.warn('[MSG Handler] Aviso emitiendo socket outbound:', errIo.message);
-      }
-    }
-  }
+  await recordBotReply(catalogSent ? `${reply}\n${CATALOG_SENT_MARK} ${catalogPdf.fileName}` : reply, tokensUsed);
   });
 };
 
