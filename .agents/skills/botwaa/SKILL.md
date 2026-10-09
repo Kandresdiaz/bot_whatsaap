@@ -862,6 +862,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-10-09** | Merge pull request #28 from Kandresdiaz/feat/seo-nichos (`1f10e59`) | Auto-deploy |
 
+| **2026-10-09** | Merge pull request #29 from Kandresdiaz/feat/catalogo-pdf-asesor (`cdc061a`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
