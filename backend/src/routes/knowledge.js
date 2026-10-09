@@ -8,6 +8,7 @@ const { distributePdfKnowledge } = require('../ai/catalogExtractor');
 const { isVisionEnabled, MAX_PAGES } = require('../ai/catalogVision');
 const { countPageImages } = require('../ai/pdfPageImages');
 const { startCatalogJob, getJob } = require('../ai/catalogJobs');
+const { saveCatalogPdf, getCatalogPdf, removeCatalogPdf } = require('../db/storage');
 
 // El servidor tiene 512 MB compartidos con todas las sesiones de WhatsApp, así que los
 // PDFs se procesan de a uno. Los topes salen de una medición real, no de un número al
@@ -193,6 +194,14 @@ router.post('/:businessId/upload', ownsParam('businessId'), uploadPdf, async (re
     }
     if (!error) clearBusinessAiCache(businessId).catch(() => {});
 
+    // Si es un catálogo (salieron productos, o tiene páginas ilustradas que se leerán como productos),
+    // se guarda el archivo para que el bot se lo envíe al cliente que pida "el catálogo".
+    // Un PDF de políticas o de información no reemplaza al catálogo ya guardado.
+    let catalogPdf = null;
+    if (!error && (distributed?.products > 0 || canReadImages)) {
+      catalogPdf = await saveCatalogPdf(businessId, buffer, baseTitle);
+    }
+
     // La lectura de las páginas tarda minutos: se responde ya y el panel consulta el avance.
     let visionJob = null;
     if (canReadImages) {
@@ -207,6 +216,7 @@ router.post('/:businessId/upload', ownsParam('businessId'), uploadPdf, async (re
       item: data?.[0],
       distributed,
       visionJob,
+      catalogPdf: catalogPdf ? { fileName: catalogPdf.fileName } : null,
       parts: rows.length,
       pages: parsed.numpages,
       truncated,
@@ -214,6 +224,21 @@ router.post('/:businessId/upload', ownsParam('businessId'), uploadPdf, async (re
     });
   } catch (err) {
     res.status(500).json({ success: false, error: 'Error procesando PDF: ' + err.message });
+  }
+});
+
+// PDF del catálogo que el bot envía cuando un cliente lo pide
+router.get('/:businessId/catalog-pdf', ownsParam('businessId'), async (req, res) => {
+  const pdf = await getCatalogPdf(req.params.businessId);
+  res.json({ success: true, pdf: pdf ? { fileName: pdf.fileName, size: pdf.size, url: pdf.url } : null });
+});
+
+router.delete('/:businessId/catalog-pdf', ownsParam('businessId'), async (req, res) => {
+  try {
+    await removeCatalogPdf(req.params.businessId);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
   }
 });
 

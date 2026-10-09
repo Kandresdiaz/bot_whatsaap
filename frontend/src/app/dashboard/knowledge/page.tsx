@@ -35,6 +35,8 @@ export default function KnowledgePage() {
   const [loading, setLoading] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [catalogJob, setCatalogJob] = useState<CatalogJob | null>(null);
+  // PDF que el bot le envía al cliente cuando pide "el catálogo"
+  const [catalogPdf, setCatalogPdf] = useState<{ fileName: string; size: number | null; url: string } | null>(null);
   const BACKEND = BACKEND_URL;
 
   useEffect(() => {
@@ -47,6 +49,7 @@ export default function KnowledgePage() {
           setBusinessId(d.business.id);
           loadItems(d.business.id);
           restoreCatalogJob(d.business.id);
+          loadCatalogPdf(d.business.id);
         }
       });
   }, [effectiveUserId, user, BACKEND]);
@@ -172,6 +175,20 @@ export default function KnowledgePage() {
     } catch (_) {}
   };
 
+  const loadCatalogPdf = async (bId: string) => {
+    try {
+      const r = await apiFetch(`${BACKEND}/api/knowledge/${bId}/catalog-pdf`);
+      const d = await r.json();
+      setCatalogPdf(d.pdf || null);
+    } catch (_) {}
+  };
+
+  const removeCatalogPdf = async () => {
+    if (!businessId || !confirm('¿Quitar el PDF? El bot dejará de enviarlo cuando pidan el catálogo (los productos no se borran).')) return;
+    await apiFetch(`${BACKEND}/api/knowledge/${businessId}/catalog-pdf`, { method: 'DELETE' });
+    setCatalogPdf(null);
+  };
+
   const uploadPdf = async () => {
     if (!businessId || !file) return;
     if (file.size > 40 * 1024 * 1024) {
@@ -207,6 +224,7 @@ export default function KnowledgePage() {
             : 'Ya hay una lectura de catálogo en curso para este negocio.');
         }
         if (!partes.length) partes.push('PDF guardado como conocimiento. No se pudo separar en productos; revisa el catálogo.');
+        if (data.catalogPdf) partes.push('📄 Cuando un cliente pida el catálogo, el bot le enviará este PDF.');
         if (data.truncated) partes.push(`El PDF es muy largo: se guardaron las primeras ${data.parts} partes del texto.`);
         alert('✅ ' + partes.join('\n\n'));
       }
@@ -214,7 +232,7 @@ export default function KnowledgePage() {
       alert('Error al subir el PDF: ' + e.message);
     }
     setFile(null);
-    await loadItems(businessId);
+    await Promise.all([loadItems(businessId), loadCatalogPdf(businessId)]);
     setLoading(false);
   };
 
@@ -412,6 +430,16 @@ export default function KnowledgePage() {
               <button className="btn btn-primary" onClick={uploadPdf} disabled={loading || !file || !businessId}>
                 {loading ? 'Procesando...' : 'Subir PDF'}
               </button>
+
+              {catalogPdf && (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 14px', fontSize: 13 }}>
+                  <span style={{ color: 'var(--text-muted)', minWidth: 0, overflowWrap: 'anywhere' }}>
+                    📄 El bot envía <a href={catalogPdf.url} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>{catalogPdf.fileName}</a>
+                    {catalogPdf.size ? ` (${(catalogPdf.size / 1024 / 1024).toFixed(1)} MB)` : ''} cuando un cliente pide el catálogo.
+                  </span>
+                  <button className="btn btn-ghost" onClick={removeCatalogPdf} style={{ padding: '6px 12px', fontSize: 12 }}>Quitar</button>
+                </div>
+              )}
 
               {catalogJob && (
                 <div style={{ border: '1px solid var(--border)', borderRadius: 10, padding: '12px 14px', fontSize: 13 }}>

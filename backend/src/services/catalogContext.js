@@ -52,8 +52,10 @@ const getCatalogSummary = async (supabase, businessId) => {
     const c = (row.category || '').trim();
     if (c) counts.set(c, (counts.get(c) || 0) + 1);
   }
-  const categories = [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([c]) => c).slice(0, 60);
-  const summary = { total: (data || []).length, categories, expiresAt: Date.now() + SUMMARY_TTL_MS };
+  const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 60);
+  const categories = sorted.map(([c]) => c);
+  const categoryCounts = Object.fromEntries(sorted);
+  const summary = { total: (data || []).length, categories, categoryCounts, expiresAt: Date.now() + SUMMARY_TTL_MS };
   summaryCache.set(businessId, summary);
   return summary;
 };
@@ -85,6 +87,19 @@ const callSearch = async (supabase, businessId, terms, { limit = 12, orden = 're
     } else {
       console.error('[CATALOGO] Error en buscar_productos:', error.message);
     }
+    return null;
+  }
+  return data || [];
+};
+
+// Lista de una categoría ("muéstrame todas las motos"): una consulta directa, sin ranking ni IA.
+const listCategory = async (supabase, businessId, category, limit = 20) => {
+  const { data, error } = await supabase
+    .from('products_services').select(PRODUCT_COLUMNS)
+    .eq('business_id', businessId).eq('is_active', true).eq('category', category)
+    .order('price', { ascending: true }).limit(limit);
+  if (error) {
+    console.error('[CATALOGO] Error listando la categoría:', error.message);
     return null;
   }
   return data || [];
@@ -128,9 +143,11 @@ const loadCatalogContext = async ({ supabase, business, text }) => {
       options: {
         catalogTotal: summary.total,
         categories: summary.categories,
+        categoryCounts: summary.categoryCounts,
         sample,
         searchProducts: (terms, opts = {}) => callSearch(supabase, businessId, terms, { maxPrice, ...opts }),
         similarProducts: (productId, limit) => callSimilar(supabase, businessId, productId, limit),
+        listCategory: (category, limit) => listCategory(supabase, businessId, category, limit),
         // La foto que manda el cliente se compara contra el catálogo cargado en modo anterior
         visionProducts: async () => (await loadLegacyProducts(supabase, businessId, '')).products,
       },
