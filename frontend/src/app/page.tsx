@@ -2,10 +2,14 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import SessionRedirect from '@/components/SessionRedirect';
 import { PLANS, FAQS, TRIAL_DAYS, TRIAL_MESSAGES, formatCOP, formatThousands, salesWhatsAppLink } from '@/lib/plans';
+import { SITE_NAME, absoluteUrl } from '@/lib/site';
+import { LANDING_CSS } from '@/components/landing/landingCss';
+import { PublicFooter, JsonLd } from '@/components/landing/PublicChrome';
 
 export const metadata: Metadata = {
-  title: 'BotWA — Tu WhatsApp responde solo, 24/7',
+  title: { absolute: 'Bot de WhatsApp con IA para tu negocio, 24/7 | BotWA' },
   description: 'Conecta tu WhatsApp a una IA que responde con la información de tu negocio: precios, horarios, catálogo, citas y pedidos. Prueba 7 días con $0 hoy.',
+  alternates: { canonical: '/' },
 };
 
 // Si hay sesión guardada (o vienen tokens de OAuth), se oculta la landing ANTES del primer
@@ -30,9 +34,9 @@ const STEPS = [
   },
 ];
 
-const AUDIENCES = [
-  { icon: '🍔', title: 'Restaurantes y comidas', text: 'Menú, precios, domicilios y pedidos a cualquier hora.' },
-  { icon: '🦷', title: 'Clínicas y consultorios', text: 'Servicios, valores de consulta y agendamiento de citas.' },
+const AUDIENCES: { icon: string; title: string; text: string; href?: string }[] = [
+  { icon: '🍔', title: 'Restaurantes y comidas', text: 'Menú, precios, domicilios y pedidos a cualquier hora.', href: '/bot-whatsapp-restaurantes' },
+  { icon: '🦷', title: 'Clínicas y consultorios', text: 'Servicios, valores de consulta y agendamiento de citas.', href: '/bot-whatsapp-clinicas' },
   { icon: '🛍️', title: 'Tiendas y e-commerce', text: 'Catálogo con fotos, disponibilidad y link de pago.' },
   { icon: '💈', title: 'Peluquerías, barberías y spas', text: 'Turnos, servicios y recordatorio de horarios.' },
   { icon: '🏋️', title: 'Gimnasios y academias', text: 'Planes, horarios de clases e inscripciones.' },
@@ -51,12 +55,47 @@ const LANDING_FAQS = [
   ...FAQS,
 ];
 
+const HOME_JSON_LD = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'Organization',
+      name: SITE_NAME,
+      url: absoluteUrl('/'),
+      logo: absoluteUrl('/favicon.png'),
+    },
+    {
+      '@type': 'SoftwareApplication',
+      name: SITE_NAME,
+      applicationCategory: 'BusinessApplication',
+      operatingSystem: 'Web',
+      url: absoluteUrl('/'),
+      description: 'Bot de WhatsApp con inteligencia artificial que responde a los clientes con la información del negocio, agenda citas y toma pedidos.',
+      offers: Object.values(PLANS).map(p => ({
+        '@type': 'Offer',
+        name: p.name,
+        price: p.priceCOP,
+        priceCurrency: 'COP',
+      })),
+    },
+    {
+      '@type': 'FAQPage',
+      mainEntity: LANDING_FAQS.map(f => ({
+        '@type': 'Question',
+        name: f.q,
+        acceptedAnswer: { '@type': 'Answer', text: f.a },
+      })),
+    },
+  ],
+};
+
 export default function HomePage() {
   const waLink = salesWhatsAppLink();
 
   return (
     <>
       <script dangerouslySetInnerHTML={{ __html: SESSION_CHECK_SCRIPT }} />
+      <JsonLd data={HOME_JSON_LD} />
       <SessionRedirect />
 
       <div
@@ -79,6 +118,7 @@ export default function HomePage() {
             <a href="#como-funciona">Cómo funciona</a>
             <a href="#planes">Planes</a>
             <a href="#preguntas">Preguntas</a>
+            <Link href="/guias">Guías</Link>
           </nav>
           <div className="lp-nav-actions">
             <Link href="/login" className="btn btn-ghost lp-btn-sm">Iniciar sesión</Link>
@@ -155,15 +195,23 @@ export default function HomePage() {
           <h2 className="lp-h2">¿Para quién es BotWA?</h2>
           <p className="lp-sub">Para cualquier negocio que recibe las mismas preguntas por WhatsApp todos los días.</p>
           <div className="lp-grid-audience">
-            {AUDIENCES.map(a => (
-              <div key={a.title} className="card lp-audience">
-                <span style={{ fontSize: 28 }}>{a.icon}</span>
-                <div>
-                  <h3 className="lp-h3" style={{ fontSize: 15, marginBottom: 4 }}>{a.title}</h3>
-                  <p className="lp-text" style={{ fontSize: 13 }}>{a.text}</p>
-                </div>
-              </div>
-            ))}
+            {AUDIENCES.map(a => {
+              const body = (
+                <>
+                  <span style={{ fontSize: 28 }}>{a.icon}</span>
+                  <div>
+                    <h3 className="lp-h3" style={{ fontSize: 15, marginBottom: 4 }}>{a.title}</h3>
+                    <p className="lp-text" style={{ fontSize: 13 }}>{a.text}</p>
+                    {a.href && <span style={{ color: '#00CFFF', fontSize: 13, fontWeight: 700 }}>Ver más →</span>}
+                  </div>
+                </>
+              );
+              return a.href ? (
+                <Link key={a.title} href={a.href} className="card lp-audience lp-guide-card">{body}</Link>
+              ) : (
+                <div key={a.title} className="card lp-audience">{body}</div>
+              );
+            })}
           </div>
         </section>
 
@@ -240,18 +288,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* ── Footer ─────────────────────────────────────────────────── */}
-        <footer className="lp-wrap lp-footer">
-          <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', justifyContent: 'center', marginBottom: 12 }}>
-            <Link href="/pricing">Planes</Link>
-            <Link href="/login">Iniciar sesión</Link>
-            <a href={waLink} target="_blank" rel="noopener noreferrer">Contacto por WhatsApp</a>
-          </div>
-          <p>
-            BotWA es un software independiente. No está afiliado ni respaldado por Meta Platforms, Inc. ni WhatsApp LLC.
-            WhatsApp es una marca registrada de Meta Platforms, Inc.
-          </p>
-        </footer>
+        <PublicFooter />
 
         {/* Botón flotante de WhatsApp */}
         <a href={waLink} target="_blank" rel="noopener noreferrer" className="lp-wa-float" aria-label="Pruébalo por WhatsApp">
@@ -261,83 +298,3 @@ export default function HomePage() {
     </>
   );
 }
-
-const LANDING_CSS = `
-.lp { min-height: 100vh; background: radial-gradient(ellipse at 50% 0%, rgba(26,107,255,0.16) 0%, #080E1F 60%); color: #f8fafc; padding-bottom: 40px; }
-.lp-wrap { max-width: 1180px; margin: 0 auto; padding-left: 16px; padding-right: 16px; }
-.lp a { text-decoration: none; }
-.lp-nav { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 18px; padding-bottom: 18px; }
-.lp-logo { display: flex; align-items: center; gap: 10px; color: #fff; font-size: 22px; font-weight: 800; }
-.lp-logo-icon { font-size: 22px; background: linear-gradient(135deg, #1A6BFF, #00CFFF); border-radius: 12px; padding: 6px 9px; line-height: 1; }
-.lp-nav-links { display: flex; gap: 26px; }
-.lp-nav-links a { color: #94a3b8; font-size: 14px; font-weight: 600; }
-.lp-nav-links a:hover { color: #fff; }
-.lp-nav-actions { display: flex; gap: 8px; }
-.lp-btn-sm { padding: 8px 14px; font-size: 13px; }
-.lp-btn-lg { padding: 14px 22px; font-size: 15px; font-weight: 800; border-radius: 12px; }
-.lp-btn-wa { background: rgba(34,197,94,0.12); color: #4ade80; border: 1px solid rgba(34,197,94,0.45); }
-.lp-btn-wa:hover { background: rgba(34,197,94,0.2); }
-.lp-btn-outline { background: rgba(26,107,255,0.15); color: #fff; border: 1px solid rgba(26,107,255,0.6); }
-.lp-btn-outline:hover { background: rgba(26,107,255,0.3); }
-
-.lp-hero { display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 48px; align-items: center; padding-top: 48px; padding-bottom: 40px; }
-.lp-pill { display: inline-flex; background: rgba(0,207,255,0.1); border: 1px solid rgba(0,207,255,0.35); color: #00CFFF; border-radius: 30px; padding: 6px 16px; font-size: 13px; font-weight: 700; margin-bottom: 18px; }
-.lp-h1 { font-size: clamp(32px, 5vw, 52px); font-weight: 900; line-height: 1.1; letter-spacing: -0.02em; margin-bottom: 18px; }
-.lp-grad { background: linear-gradient(135deg, #1A6BFF, #00CFFF); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
-.lp-lead { font-size: 17px; color: #cbd5e1; line-height: 1.6; max-width: 600px; margin-bottom: 26px; }
-.lp-cta-row { display: flex; gap: 12px; flex-wrap: wrap; }
-.lp-fineprint { margin-top: 14px; font-size: 13px; color: #94a3b8; }
-
-.lp-phone { background: #0B132B; border: 1px solid rgba(0,207,255,0.3); border-radius: 24px; overflow: hidden; box-shadow: 0 24px 60px rgba(0,0,0,0.5), 0 0 40px rgba(26,107,255,0.2); max-width: 400px; width: 100%; justify-self: center; }
-.lp-phone-head { display: flex; align-items: center; gap: 10px; padding: 14px 16px; background: #0D1A36; border-bottom: 1px solid rgba(255,255,255,0.06); }
-.lp-avatar { width: 36px; height: 36px; border-radius: 50%; background: rgba(26,107,255,0.25); display: flex; align-items: center; justify-content: center; font-size: 18px; }
-.lp-chat { display: flex; flex-direction: column; gap: 10px; padding: 18px 14px; }
-.lp-msg { max-width: 86%; padding: 9px 12px 18px; border-radius: 12px; font-size: 13px; line-height: 1.45; position: relative; }
-.lp-msg span { position: absolute; right: 10px; bottom: 4px; font-size: 10px; color: #94a3b8; }
-.lp-msg-in { align-self: flex-start; background: #16213F; border-top-left-radius: 4px; }
-.lp-msg-out { align-self: flex-end; background: linear-gradient(135deg, rgba(26,107,255,0.45), rgba(0,207,255,0.3)); border-top-right-radius: 4px; }
-
-.lp-section { padding-top: 64px; padding-bottom: 16px; }
-.lp-h2 { font-size: clamp(24px, 3.4vw, 34px); font-weight: 900; text-align: center; color: #fff; }
-.lp-sub { text-align: center; color: #94a3b8; font-size: 15px; margin-top: 8px; margin-bottom: 30px; }
-.lp-h3 { font-size: 17px; font-weight: 800; color: #fff; margin-bottom: 8px; }
-.lp-text { color: #cbd5e1; font-size: 14px; line-height: 1.6; }
-.lp-grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; align-items: stretch; }
-.lp-step { position: relative; }
-.lp-step-num { position: absolute; top: 18px; right: 20px; font-size: 13px; font-weight: 800; color: #00CFFF; border: 1px solid rgba(0,207,255,0.4); border-radius: 50%; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; }
-.lp-grid-audience { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
-.lp-audience { display: flex; gap: 14px; align-items: flex-start; padding: 18px; }
-
-.lp-plan { display: flex; flex-direction: column; position: relative; }
-.lp-plan-popular { border: 2px solid #00CFFF; background: linear-gradient(180deg, rgba(26,107,255,0.14) 0%, #0D1428 100%); }
-.lp-plan-badge { position: absolute; top: -12px; left: 50%; transform: translateX(-50%); background: linear-gradient(135deg, #1A6BFF, #00CFFF); color: #080E1F; font-weight: 800; font-size: 11px; text-transform: uppercase; padding: 4px 12px; border-radius: 20px; white-space: nowrap; }
-.lp-list { list-style: none; display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px; }
-.lp-list li { display: flex; gap: 8px; font-size: 13px; color: #e2e8f0; }
-.lp-list li span { color: #00CFFF; font-weight: 800; }
-
-.lp-faq { padding: 18px 20px; }
-.lp-faq summary { cursor: pointer; font-weight: 700; font-size: 15px; color: #fff; list-style: none; display: flex; justify-content: space-between; gap: 12px; }
-.lp-faq summary::-webkit-details-marker { display: none; }
-.lp-faq summary::after { content: '+'; color: #00CFFF; font-size: 20px; line-height: 1; }
-.lp-faq[open] summary::after { content: '−'; }
-
-.lp-final { margin-top: 72px; text-align: center; padding: 44px 24px; border-radius: 20px; border: 1px solid rgba(0,207,255,0.3); background: linear-gradient(135deg, rgba(26,107,255,0.14) 0%, rgba(0,207,255,0.06) 100%); }
-.lp-footer { margin-top: 48px; padding-top: 24px; border-top: 1px solid rgba(255,255,255,0.06); text-align: center; font-size: 12px; color: #64748b; line-height: 1.6; }
-.lp-footer a { color: #94a3b8; font-size: 13px; }
-
-.lp-wa-float { position: fixed; right: 18px; bottom: 18px; z-index: 50; background: #22c55e; color: #fff; font-weight: 800; font-size: 14px; padding: 12px 18px; border-radius: 30px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
-
-@media (max-width: 900px) {
-  .lp-hero { grid-template-columns: 1fr; gap: 36px; padding-top: 24px; }
-  .lp-grid-3, .lp-grid-audience { grid-template-columns: 1fr; }
-  .lp-grid-audience { grid-template-columns: repeat(2, 1fr); }
-  .lp-nav-links { display: none; }
-  .lp-plan-popular { margin-top: 8px; }
-}
-@media (max-width: 560px) {
-  .lp-grid-audience { grid-template-columns: 1fr; }
-  .lp-hide-mobile { display: none; }
-  .lp-cta-row .btn { width: 100%; }
-  .lp-wa-float { padding: 12px 14px; font-size: 20px; }
-}
-`;

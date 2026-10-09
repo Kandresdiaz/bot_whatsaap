@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
 import AttributionCapture from "@/components/AttributionCapture";
+import { SITE_URL, SITE_NAME } from "@/lib/site";
 
 // Versión del Frontend: 1.1.3 (Persistencia F5 absoluta: consulta global de DB e hidratación inmediata de RAM)
 const inter = Inter({ subsets: ["latin"] });
@@ -15,8 +16,17 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "BotWA — Bot de WhatsApp con IA 24/7",
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: "BotWA — Bot de WhatsApp con IA 24/7",
+    template: "%s | BotWA",
+  },
   description: "Automatiza tu WhatsApp con IA. Responde clientes 24/7 como un empleado real. Para restaurantes, dentistas, consultorías y más.",
+  applicationName: SITE_NAME,
+  // Código de Google Search Console (método "etiqueta HTML"): se pega en la variable de Vercel.
+  verification: process.env.NEXT_PUBLIC_GSC_VERIFICATION
+    ? { google: process.env.NEXT_PUBLIC_GSC_VERIFICATION }
+    : undefined,
   icons: {
     icon: [
       { url: '/favicon.svg', type: 'image/svg+xml' },
@@ -29,7 +39,10 @@ export const metadata: Metadata = {
     title: 'BotWA — Bot de WhatsApp con IA',
     description: 'Automatiza tu WhatsApp con IA. Responde clientes 24/7.',
     type: 'website',
+    siteName: SITE_NAME,
+    locale: 'es_CO',
   },
+  twitter: { card: 'summary_large_image' },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
