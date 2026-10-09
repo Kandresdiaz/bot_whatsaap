@@ -860,6 +860,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-10-08** | Merge pull request #27 from Kandresdiaz/fix/chats-no-mezclar-numeros (`f3915b8`) | Auto-deploy |
 
+| **2026-10-09** | Merge pull request #28 from Kandresdiaz/feat/seo-nichos (`1f10e59`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
