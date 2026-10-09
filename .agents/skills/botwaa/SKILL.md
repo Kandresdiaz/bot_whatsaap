@@ -864,6 +864,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-10-09** | Merge pull request #29 from Kandresdiaz/feat/catalogo-pdf-asesor (`cdc061a`) | Auto-deploy |
 
+| **2026-10-09** | Merge pull request #30 from Kandresdiaz/fix/catalogo-completo-texto (`79b93b8`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
