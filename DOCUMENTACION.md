@@ -49,6 +49,12 @@ Fuente de verdad: `frontend/src/app/pricing/page.tsx` (precios y característica
 
 ---
 
+## ⚡ Alta rápida de un cliente (plantillas por nicho)
+
+En **Admin → Clientes → Registrar cliente** se elige una *plantilla de nicho* (Distribuidora / Mayorista, Tienda, Restaurante, Servicios con cita). La plantilla llena personalidad, objetivo, saludo, mensaje fuera de horario, horario típico e instrucciones de cierre; si hay nombre del negocio, queda marcado como configurado. Faltan solo la descripción, el link de pago y el catálogo (Conocimiento → PDF).
+
+Las plantillas están en `backend/src/services/nicheTemplates.js`. En un negocio ya configurado, la plantilla solo llena los campos vacíos.
+
 ## 🛡️ Medidas para reducir el riesgo de bloqueo
 
 1. **Retraso humano aleatorio (800–2800 ms)** antes de responder.

@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { supabase } = require('../db/supabase');
 const { verifyToken, bearerFrom } = require('../auth/token');
+const { listNicheTemplates, buildTemplateFields } = require('../services/nicheTemplates');
 
 // Middleware admin: token de sesión firmado de un admin, o la clave ADMIN_PASSWORD del servidor
 // (para scripts). Antes aceptaba 'admin123' y cualquier token, y cualquiera podía activarse gratis.
@@ -36,6 +37,11 @@ const calculatePaidUntil = (days, months, currentPaidUntil) => {
   }
   return result;
 };
+
+// Plantillas de configuración por nicho para el formulario de crear cliente
+router.get('/templates', isAdmin, (req, res) => {
+  res.json({ success: true, templates: listNicheTemplates() });
+});
 
 // Listar todos los clientes enriquecidos con su estado de WhatsApp y QR
 router.get('/clients', isAdmin, async (req, res) => {
@@ -92,10 +98,14 @@ router.get('/clients', isAdmin, async (req, res) => {
 // Crear o actualizar cliente (Upsert amigable para evitar errores de unicidad de email)
 router.post('/clients', isAdmin, async (req, res) => {
   try {
-    const { name, email, phone, plan, days, months, businessName, category } = req.body;
+    const { name, email, phone, plan, days, months, businessName, category, template } = req.body;
     if (!email || !name) {
       return res.status(400).json({ success: false, error: 'Nombre y email son obligatorios' });
     }
+    if (template && !buildTemplateFields(template, '')) {
+      return res.status(400).json({ success: false, error: 'Plantilla de nicho desconocida' });
+    }
+    const hasOwnCategory = Boolean(category && category.trim() && category !== 'General');
 
     const cleanEmail = email.trim().toLowerCase();
 
@@ -166,18 +176,27 @@ router.post('/clients', isAdmin, async (req, res) => {
           is_configured: false,
           bot_enabled: true,
           active_days: [1, 2, 3, 4, 5, 6],
+          // La plantilla define mensajes, horario y cierre del nicho (y la categoría si no se escribió una)
+          ...(template ? buildTemplateFields(template, businessName, hasOwnCategory ? { category } : null) : {}),
+          // Con plantilla y nombre el negocio ya queda configurado; falta su catálogo
+          ...(template && businessName?.trim() ? { is_configured: true } : {}),
         })
         .select()
         .single();
 
       if (busErr) console.warn('[ADMIN POST CLIENTS] Advertencia negocio:', busErr.message);
       bus = newBusiness;
-    } else if (businessName || category) {
+    } else if (businessName || category || template) {
+      const finalName = businessName || bus.name;
       const { data: updatedBus } = await supabase
         .from('businesses')
         .update({
-          name: businessName || bus.name,
+          name: finalName,
           category: category || bus.category,
+          // Si el negocio ya estaba configurado, la plantilla solo llena lo que esté vacío
+          ...(template ? buildTemplateFields(template, finalName,
+            bus.is_configured ? bus : (hasOwnCategory ? { category } : null)) : {}),
+          ...(template && finalName?.trim() ? { is_configured: true } : {}),
         })
         .eq('id', bus.id)
         .select()

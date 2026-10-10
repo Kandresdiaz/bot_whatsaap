@@ -84,8 +84,10 @@ export default function AdminClientsPage() {
     plan: 'starter',
     businessName: '',
     category: 'General',
+    template: '',
     durationDays: 30,
   });
+  const [templates, setTemplates] = useState<{ id: string; label: string; category: string }[]>([]);
 
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
@@ -101,6 +103,10 @@ export default function AdminClientsPage() {
 
   useEffect(() => {
     loadClients();
+    fetch(`${BACKEND}/api/admin/templates`, { headers: getHeaders() })
+      .then(r => r.json())
+      .then(d => { if (d.success) setTemplates(d.templates || []); })
+      .catch(() => {});
   }, []);
 
   const loadClients = async () => {
@@ -247,6 +253,7 @@ export default function AdminClientsPage() {
           plan: 'starter',
           businessName: '',
           category: 'General',
+          template: '',
           durationDays: 30,
         });
         await loadClients();
@@ -683,6 +690,25 @@ export default function AdminClientsPage() {
                   />
                 </div>
               </div>
+
+              {templates.length > 0 && (
+                <div>
+                  <label style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4, display: 'block' }}>Plantilla de nicho</label>
+                  <select
+                    className="input" value={newClientForm.template}
+                    onChange={e => {
+                      const t = templates.find(x => x.id === e.target.value);
+                      setNewClientForm({ ...newClientForm, template: e.target.value, category: t ? t.category : 'General' });
+                    }}
+                  >
+                    <option value="">Sin plantilla (configurar a mano)</option>
+                    {templates.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+                  </select>
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)', display: 'block', marginTop: 4 }}>
+                    Llena personalidad, mensajes, horario e instrucciones de cierre. Después solo falta la descripción, el link de pago y el catálogo.
+                  </span>
+                </div>
+              )}
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
                 <div>
