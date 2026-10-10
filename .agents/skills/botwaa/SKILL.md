@@ -866,6 +866,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-10-09** | Merge pull request #30 from Kandresdiaz/fix/catalogo-completo-texto (`79b93b8`) | Auto-deploy |
 
+| **2026-10-10** | Merge pull request #31 from Kandresdiaz/feat/plantillas-nicho (`289cbf7`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
