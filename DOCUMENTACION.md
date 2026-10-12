@@ -55,6 +55,10 @@ En **Admin → Clientes → Registrar cliente** se elige una *plantilla de nicho
 
 Las plantillas están en `backend/src/services/nicheTemplates.js`. En un negocio ya configurado, la plantilla solo llena los campos vacíos.
 
+Las mismas plantillas (clínica, inmobiliaria, belleza, distribuidora, tienda, restaurante y otros servicios) aparecen para cada usuario como sugerencias:
+- **Configurar Bot → "¿Qué tipo de negocio es?"**: llena el prompt, el cierre, los saludos, el horario y una descripción de ejemplo. El usuario la revisa, la pule y guarda. El panel no deja guardar mientras quede algún `[COMPLETAR: ...]`.
+- **Knowledge Base → "📋 FAQs recomendadas"**: carga las preguntas típicas del nicho en tarjetas editables. Solo se aprueban cuando ya no tienen `[COMPLETAR: ...]`.
+
 ## 🛡️ Medidas para reducir el riesgo de bloqueo
 
 1. **Retraso humano aleatorio (800–2800 ms)** antes de responder.

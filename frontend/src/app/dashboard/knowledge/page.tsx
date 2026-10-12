@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { BACKEND_URL } from '@/lib/config';
 import { apiFetch } from '@/lib/api';
+import { NicheTemplate, fetchNicheTemplates, hasPlaceholder, templateForCategory, withBusinessName } from '@/lib/nicheTemplates';
 
 type KBItem = { id: string; type: string; title: string; content: string; is_active: boolean; created_at: string };
 
@@ -36,6 +37,7 @@ export default function KnowledgePage() {
   const [file, setFile] = useState<File | null>(null);
   const [catalogJob, setCatalogJob] = useState<CatalogJob | null>(null);
   // PDF que el bot le envía al cliente cuando pide "el catálogo"
+  const [business, setBusiness] = useState<{ name: string; category: string }>({ name: '', category: '' });
   const [catalogPdf, setCatalogPdf] = useState<{ fileName: string; size: number | null; url: string } | null>(null);
   const BACKEND = BACKEND_URL;
 
@@ -47,6 +49,7 @@ export default function KnowledgePage() {
       .then(d => {
         if (d.business?.id) {
           setBusinessId(d.business.id);
+          setBusiness({ name: d.business.name || '', category: d.business.category || '' });
           loadItems(d.business.id);
           restoreCatalogJob(d.business.id);
           loadCatalogPdf(d.business.id);
@@ -255,6 +258,32 @@ export default function KnowledgePage() {
 
   const [generatingFaqs, setGeneratingFaqs] = useState(false);
   const [suggestedFaqs, setSuggestedFaqs] = useState<{ title: string; content: string }[]>([]);
+  // De dónde salen las FAQs sugeridas: de los chats (IA) o del tipo de negocio (plantilla)
+  const [faqSource, setFaqSource] = useState<'ia' | 'plantilla'>('ia');
+  const [templates, setTemplates] = useState<NicheTemplate[]>([]);
+  const [chosenFaqNiche, setFaqNiche] = useState('');
+  // Si no se ha elegido, se toma el tipo de negocio que corresponde a la categoría guardada
+  const faqNiche = chosenFaqNiche || templateForCategory(templates, business.category)?.id || '';
+
+  useEffect(() => { fetchNicheTemplates().then(setTemplates); }, []);
+
+  const loadRecommendedFaqs = () => {
+    const t = templates.find(x => x.id === faqNiche);
+    if (!t) return;
+    const existing = new Set(items.filter(i => i.type === 'faq').map(i => i.title.trim().toLowerCase()));
+    const faqs = t.faqs
+      .map(f => ({ title: withBusinessName(f.title, business.name), content: withBusinessName(f.content, business.name) }))
+      .filter(f => !existing.has(f.title.trim().toLowerCase()));
+    if (faqs.length === 0) {
+      alert('Ya tienes todas las preguntas recomendadas para este tipo de negocio.');
+      return;
+    }
+    setSuggestedFaqs(faqs);
+    setFaqSource('plantilla');
+  };
+
+  const editSuggestedFaq = (index: number, key: 'title' | 'content', value: string) =>
+    setSuggestedFaqs(prev => prev.map((f, i) => (i === index ? { ...f, [key]: value } : f)));
 
   const handleGenerateFaqs = async () => {
     if (!user?.id) return;
@@ -264,6 +293,7 @@ export default function KnowledgePage() {
       const d = await r.json();
       if (d.success && Array.isArray(d.faqs)) {
         setSuggestedFaqs(d.faqs);
+        setFaqSource('ia');
       } else {
         alert(d.error || 'No se pudieron extraer FAQs en este momento');
       }
@@ -274,15 +304,21 @@ export default function KnowledgePage() {
     }
   };
 
-  const approveFaq = async (faq: { title: string; content: string }) => {
-    if (!businessId) return;
+  const approveFaq = async (index: number) => {
+    const faq = suggestedFaqs[index];
+    if (!businessId || !faq) return;
+    if (hasPlaceholder(faq.title) || hasPlaceholder(faq.content)) {
+      alert('Completa los datos marcados con [COMPLETAR: ...] con la información de tu negocio antes de aprobar.');
+      return;
+    }
+    if (!faq.title.trim() || !faq.content.trim()) return;
     setLoading(true);
     await apiFetch(`${BACKEND}/api/knowledge/${businessId}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ type: 'faq', title: faq.title, content: faq.content }),
     });
-    setSuggestedFaqs(prev => prev.filter(f => f.title !== faq.title));
+    setSuggestedFaqs(prev => prev.filter((_, i) => i !== index));
     await loadItems(businessId);
     setLoading(false);
   };
@@ -295,6 +331,18 @@ export default function KnowledgePage() {
           <p className="page-subtitle">Alimenta al bot con información de tu negocio — como NotebookLM</p>
         </div>
 
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        {templates.length > 0 && (
+          <>
+            <select className="input" style={{ width: 'auto', minWidth: 200, fontSize: 13 }} value={faqNiche} onChange={e => setFaqNiche(e.target.value)}>
+              <option value="">Tipo de negocio…</option>
+              {templates.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+            </select>
+            <button className="btn btn-ghost" style={{ fontSize: 13, fontWeight: 700 }} disabled={!faqNiche || !businessId} onClick={loadRecommendedFaqs}>
+              📋 FAQs recomendadas
+            </button>
+          </>
+        )}
         <button
           className="btn btn-primary"
           onClick={handleGenerateFaqs}
@@ -310,6 +358,7 @@ export default function KnowledgePage() {
         >
           {generatingFaqs ? '⚡ Analizando...' : '✨ Generar FAQs con IA'}
         </button>
+        </div>
       </div>
 
       {/* FAQs Sugeridas por IA */}
@@ -321,14 +370,16 @@ export default function KnowledgePage() {
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
             <h3 style={{ fontWeight: 700, fontSize: 15, color: '#00CFFF' }}>
-              💡 Preguntas Frecuentes Detectadas en tus Chats ({suggestedFaqs.length})
+              💡 {faqSource === 'plantilla' ? 'Preguntas Frecuentes Recomendadas para tu Negocio' : 'Preguntas Frecuentes Detectadas en tus Chats'} ({suggestedFaqs.length})
             </h3>
             <button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={() => setSuggestedFaqs([])}>
               Descartar
             </button>
           </div>
           <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16 }}>
-            La IA analizó tus conversaciones de WhatsApp y redactó estas plantillas de respuesta. Haz clic en <strong>"Aprobar"</strong> para agregarlas a la memoria de tu bot.
+            {faqSource === 'plantilla'
+              ? <>Son las preguntas que más reciben los negocios como el tuyo. Edita cada respuesta, completa lo marcado con <strong>[COMPLETAR: ...]</strong> y haz clic en <strong>“Aprobar”</strong>. Las que no te sirvan, ignóralas.</>
+              : <>La IA analizó tus conversaciones de WhatsApp y redactó estas plantillas de respuesta. Puedes editarlas y luego hacer clic en <strong>“Aprobar”</strong> para agregarlas a la memoria de tu bot.</>}
           </p>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 14 }}>
@@ -343,17 +394,26 @@ export default function KnowledgePage() {
                 justifyContent: 'space-between',
               }}>
                 <div>
-                  <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6, color: 'var(--text)' }}>
-                    ❓ {faq.title}
-                  </div>
-                  <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5, marginBottom: 14 }}>
-                    {faq.content}
-                  </div>
+                  <input
+                    className="input"
+                    value={faq.title}
+                    onChange={e => editSuggestedFaq(i, 'title', e.target.value)}
+                    style={{ fontWeight: 700, fontSize: 13, marginBottom: 8 }}
+                    aria-label="Pregunta"
+                  />
+                  <textarea
+                    className="input"
+                    value={faq.content}
+                    onChange={e => editSuggestedFaq(i, 'content', e.target.value)}
+                    style={{ fontSize: 12, lineHeight: 1.5, minHeight: 80, marginBottom: 14 }}
+                    aria-label="Respuesta"
+                  />
                 </div>
                 <button
                   className="btn btn-success"
                   style={{ width: '100%', justifyContent: 'center', fontSize: 12, padding: '8px 12px' }}
-                  onClick={() => approveFaq(faq)}
+                  disabled={loading}
+                  onClick={() => approveFaq(i)}
                 >
                   ✅ Aprobar FAQ
                 </button>

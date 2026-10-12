@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { BACKEND_URL } from '@/lib/config';
 import { apiFetch } from '@/lib/api';
+import { NicheTemplate, fetchNicheTemplates, hasPlaceholder, templateForCategory, withBusinessName } from '@/lib/nicheTemplates';
 
 const DAYS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 const CATEGORIES = [
@@ -22,6 +23,16 @@ const PERSONALITIES = [
   { value: 'amigable', label: '😊 Amigable', desc: 'Cercano, cálido, conversacional' },
   { value: 'casual', label: '😎 Casual', desc: 'Relajado, informal, con humor' },
 ];
+
+// Campos de texto donde una sugerencia puede dejar datos por completar
+const FIELD_LABELS: Record<string, string> = {
+  description: 'Descripción del negocio (pestaña Datos del Negocio)',
+  custom_instructions: 'Instrucciones del prompt',
+  closing_instructions: 'Instrucciones de cierre',
+  greeting_msg: 'Mensaje de bienvenida',
+  away_msg: 'Mensaje fuera de horario',
+  payment_or_booking_link: 'Cuentas de recaudo / link de pago',
+};
 
 export default function BotConfigPage() {
   const { user, effectiveUserId } = useAuth();
@@ -44,7 +55,31 @@ export default function BotConfigPage() {
   });
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [templates, setTemplates] = useState<NicheTemplate[]>([]);
+  const [chosenNicheId, setNicheId] = useState('');
+  const [nicheApplied, setNicheApplied] = useState(false);
   const BACKEND = BACKEND_URL;
+
+  // Si no se ha elegido, se preselecciona el tipo de negocio según la categoría guardada
+  const nicheId = chosenNicheId || templateForCategory(templates, config.category)?.id || '';
+
+  useEffect(() => { fetchNicheTemplates().then(setTemplates); }, []);
+
+  const applyNiche = () => {
+    const t = templates.find(x => x.id === nicheId);
+    if (!t) return;
+    if (!window.confirm(`Se llenarán el prompt, el cierre, los saludos y el horario con las sugerencias para "${t.label}". Lo que tengas escrito en esos campos se reemplaza. ¿Continuar?`)) return;
+    setConfig((prev: any) => {
+      const next = { ...prev };
+      for (const [key, value] of Object.entries(t.fields)) {
+        if (typeof value !== 'string') { next[key] = value; continue; }
+        // Los campos de hora usan HH:MM
+        next[key] = key.startsWith('active_hours_') ? value.slice(0, 5) : withBusinessName(value, prev.name);
+      }
+      return next;
+    });
+    setNicheApplied(true);
+  };
 
   useEffect(() => {
     const targetId = effectiveUserId || user?.id || 'admin';
@@ -66,6 +101,11 @@ export default function BotConfigPage() {
   const save = async () => {
     const targetId = effectiveUserId || user?.id || 'admin';
     if (!targetId) return;
+    const pending = Object.entries(FIELD_LABELS).filter(([key]) => hasPlaceholder(config[key])).map(([, label]) => label);
+    if (pending.length > 0) {
+      alert(`Completa los datos marcados con [COMPLETAR: ...] antes de guardar:\n\n• ${pending.join('\n• ')}`);
+      return;
+    }
     setLoading(true);
     try {
       const res = await apiFetch(`${BACKEND}/api/business/${targetId}`, {
@@ -107,6 +147,31 @@ export default function BotConfigPage() {
         <h1 className="page-title">⚙️ Configurar Bot & Prompt IA</h1>
         <p className="page-subtitle">Controla cómo vende tu bot, las reglas del System Prompt y qué datos solicita para cerrar</p>
       </div>
+
+      {/* Negocios predeterminados: sugerencias para configurar rápido */}
+      {templates.length > 0 && (
+        <div className="card" style={{ marginBottom: 20, borderColor: 'rgba(26,107,255,0.35)' }}>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+            <div style={{ flex: '1 1 260px' }}>
+              <label style={{ fontSize: 13, color: 'var(--text)', fontWeight: 700, marginBottom: 6, display: 'block' }}>
+                🏷️ ¿Qué tipo de negocio es?
+              </label>
+              <select className="input" value={nicheId} onChange={e => { setNicheId(e.target.value); setNicheApplied(false); }}>
+                <option value="">Elige uno para ver sugerencias…</option>
+                {templates.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+              </select>
+            </div>
+            <button type="button" className="btn btn-primary" disabled={!nicheId} onClick={applyNiche}>
+              ✨ Usar sugerencias
+            </button>
+          </div>
+          <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '10px 0 0 0', lineHeight: 1.5 }}>
+            {nicheApplied
+              ? '✅ Listo. Revisa cada pestaña, cambia lo que quieras y completa lo marcado con [COMPLETAR: ...]. Luego toca Guardar.'
+              : 'Llenamos el prompt, el cierre, los saludos y el horario con lo que mejor funciona para tu tipo de negocio. Puedes usarlo tal cual, pulirlo o escribir lo tuyo.'}
+          </p>
+        </div>
+      )}
 
       {/* Pestañas Principales */}
       <div style={{ display: 'flex', gap: 10, borderBottom: '1px solid var(--border)', paddingBottom: 12, marginBottom: 24, flexWrap: 'wrap' }}>
