@@ -868,6 +868,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-10-10** | Merge pull request #31 from Kandresdiaz/feat/plantillas-nicho (`289cbf7`) | Auto-deploy |
 
+| **2026-10-12** | Merge pull request #32 from Kandresdiaz/feat/negocios-predeterminados (`5af32a0`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
