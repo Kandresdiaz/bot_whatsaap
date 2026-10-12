@@ -65,6 +65,14 @@ export default function BotConfigPage() {
 
   useEffect(() => { fetchNicheTemplates().then(setTemplates); }, []);
 
+  // Categorías fijas + las de los negocios predeterminados + la guardada, sin repetir ('Otro' al final)
+  const categoryOptions = Array.from(new Set([
+    ...CATEGORIES.filter(c => c !== 'Otro'),
+    ...templates.map(t => t.fields.category).filter((c): c is string => typeof c === 'string'),
+    ...(config.category ? [config.category as string] : []),
+    'Otro',
+  ]));
+
   const applyNiche = () => {
     const t = templates.find(x => x.id === nicheId);
     if (!t) return;
@@ -437,7 +445,7 @@ ${config.closing_instructions ? `=== INSTRUCCIONES ESPECÍFICAS DE CIERRE ===\n$
                 <label style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 6, display: 'block' }}>Categoría</label>
                 <select className="input" value={config.category} onChange={e => set('category', e.target.value)}>
                   <option value="">Seleccionar...</option>
-                  {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                  {categoryOptions.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
               <div>

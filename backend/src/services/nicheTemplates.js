@@ -148,8 +148,127 @@ const NICHE_TEMPLATES = {
       { title: '¿Hacen pedidos para eventos?', content: '[COMPLETAR: ej. Sí, con 2 días de anticipación. Cuéntanos la fecha y el número de personas.]' },
     ],
   },
+  concesionario: {
+    label: 'Concesionario / Vehículos (motos, carros, eléctricos)',
+    fields: {
+      category: 'Concesionario / Vehículos',
+      bot_personality: 'persuasivo',
+      main_goal: 'vender',
+      description: '{negocio} es un concesionario de [COMPLETAR: motos, carros, vehículos eléctricos] en [COMPLETAR: ciudad]. Vendemos [COMPLETAR: marcas o tipos] de contado y financiados, con [COMPLETAR: garantía, repuestos, taller].',
+      greeting_msg: '¡Hola! 👋 Bienvenid@ a {negocio}. ¿Qué vehículo estás buscando? Cuéntame para qué lo vas a usar y te recomiendo la mejor opción.',
+      away_msg: 'Gracias por escribir a {negocio} 🏍️ Estamos fuera de horario. Déjanos el modelo que te interesa y tu nombre, y un asesor te contacta mañana.',
+      active_hours_start: '08:00:00',
+      active_hours_end: '18:00:00',
+      active_days: [1, 2, 3, 4, 5, 6],
+      closing_instructions: 'Antes de recomendar pregunta de forma natural, una cosa a la vez: qué tipo de vehículo busca, para qué lo va a usar y su presupuesto aproximado. Pregunta si compra de contado o financiado. Cuando tenga intención de compra pide: nombre completo, celular, ciudad y el modelo de interés, y ofrece agendar una visita o prueba de manejo en el punto de venta.',
+      custom_instructions: 'Habla como un asesor comercial real: respuestas cortas y cercanas, sin sonar robótico. Recomienda solo modelos del catálogo con su precio y características. No apruebes créditos ni confirmes cuotas exactas o tiempos de entrega si no están registrados: eso lo confirma un asesor. Si preguntan por financiación, explica las opciones cargadas y pide los datos para que un asesor haga el estudio.',
+    },
+    faqs: [
+      { title: '¿Tienen financiación? ¿Qué necesito?', content: 'Sí, financiamos con [COMPLETAR: entidades, ej. Banco X, Sistecrédito]. Necesitas [COMPLETAR: cédula, cuota inicial desde X%, soportes de ingresos]. Un asesor te hace el estudio sin compromiso.' },
+      { title: '¿Cuánto es la cuota inicial?', content: 'La cuota inicial es desde [COMPLETAR: porcentaje o valor], según el modelo y la entidad.' },
+      { title: '¿Qué garantía tiene?', content: 'Tiene garantía de [COMPLETAR: tiempo o kilometraje] que cubre [COMPLETAR: motor, batería, partes].' },
+      { title: '¿Puedo hacer una prueba de manejo?', content: 'Claro. Te agendamos la prueba en [COMPLETAR: dirección del punto de venta]. ¿Qué día te queda bien?' },
+      { title: '¿Reciben mi vehículo como parte de pago?', content: '[COMPLETAR: ej. Sí, lo peritamos en el punto de venta / Por ahora no recibimos vehículos usados.]' },
+      { title: '¿Lo entregan matriculado y con SOAT?', content: '[COMPLETAR: ej. Sí, te lo entregamos matriculado y con SOAT; los trámites cuestan $X.]' },
+    ],
+  },
+  taller: {
+    label: 'Taller mecánico / Lavadero / Servicio técnico',
+    fields: {
+      category: 'Taller mecánico',
+      bot_personality: 'profesional',
+      main_goal: 'agendar_citas',
+      appointment_duration: 60,
+      description: '{negocio} es un [COMPLETAR: taller de motos, de carros, servicio técnico de celulares] en [COMPLETAR: ciudad y barrio]. Hacemos [COMPLETAR: servicios principales, ej. mantenimiento, frenos, cambio de aceite, diagnóstico].',
+      greeting_msg: '¡Hola! 👋 Bienvenid@ a {negocio} 🔧 ¿Qué le pasa a tu vehículo o qué servicio necesitas? Te ayudo a agendar.',
+      away_msg: 'Gracias por escribir a {negocio} 🔧 Estamos fuera de horario. Cuéntanos qué necesitas y el modelo, y te confirmamos el turno mañana.',
+      active_hours_start: '08:00:00',
+      active_hours_end: '18:00:00',
+      active_days: [1, 2, 3, 4, 5, 6],
+      closing_instructions: 'Para agendar pide: nombre, celular, marca, modelo y año del vehículo o equipo, qué falla tiene o qué servicio necesita, y el día y la hora que prefiere. Confirma la cita antes de registrarla.',
+      custom_instructions: 'No des diagnósticos definitivos ni precios de reparaciones sin revisión: da los precios de los servicios cargados y, para fallas, ofrece una revisión en el taller. No prometas tiempos de llegada de repuestos.',
+    },
+    faqs: [
+      { title: '¿Cuánto cuesta la revisión o el diagnóstico?', content: 'El diagnóstico cuesta [COMPLETAR: precio o "es gratis si haces la reparación con nosotros"].' },
+      { title: '¿Cuánto se demora el servicio?', content: 'Depende del trabajo: [COMPLETAR: ej. cambio de aceite 30 min, mantenimiento general 1 día].' },
+      { title: '¿Tienen garantía en los trabajos?', content: 'Sí, damos [COMPLETAR: tiempo] de garantía en mano de obra.' },
+      { title: '¿Dónde están ubicados?', content: 'Estamos en [COMPLETAR: dirección y barrio].' },
+      { title: '¿Qué formas de pago reciben?', content: 'Recibimos [COMPLETAR: efectivo, Nequi, tarjeta].' },
+    ],
+  },
+  academia: {
+    label: 'Academia / Cursos / Colegio / Idiomas',
+    fields: {
+      category: 'Educación / Cursos',
+      bot_personality: 'amigable',
+      main_goal: 'vender',
+      description: '{negocio} es [COMPLETAR: academia, instituto, colegio] en [COMPLETAR: ciudad] que ofrece [COMPLETAR: cursos o programas] en modalidad [COMPLETAR: presencial, virtual o ambas].',
+      greeting_msg: '¡Hola! 👋 Bienvenid@ a {negocio} 📚 ¿Qué curso o programa te interesa? Te cuento horarios, precios y cómo inscribirte.',
+      away_msg: 'Gracias por escribir a {negocio} 📚 Estamos fuera de horario. Déjanos el curso que te interesa y tu nombre, y te escribimos mañana.',
+      active_hours_start: '08:00:00',
+      active_hours_end: '19:00:00',
+      active_days: [1, 2, 3, 4, 5, 6],
+      closing_instructions: 'Pregunta qué curso le interesa, para quién es (edad o nivel) y qué horario le sirve. Para inscribir pide: nombre completo del estudiante, documento, celular, correo y el curso con su horario. Explica cómo se paga la matrícula.',
+      custom_instructions: 'Informa solo cursos, horarios, fechas de inicio y precios cargados. No prometas cupos ni certificados que no estén registrados; si no tienes el dato, ofrece pasar con un asesor.',
+    },
+    faqs: [
+      { title: '¿Cuándo empiezan los cursos?', content: 'El próximo grupo empieza el [COMPLETAR: fecha]. [COMPLETAR: ej. Abrimos grupos cada mes.]' },
+      { title: '¿Cuánto cuesta y cómo se paga?', content: 'La matrícula cuesta [COMPLETAR: valor] y la mensualidad [COMPLETAR: valor]. Puedes pagar por [COMPLETAR: medios de pago].' },
+      { title: '¿Las clases son presenciales o virtuales?', content: '[COMPLETAR: modalidad, y dirección si es presencial.]' },
+      { title: '¿Entregan certificado?', content: '[COMPLETAR: ej. Sí, al terminar entregamos certificado de asistencia.]' },
+      { title: '¿Puedo tomar una clase de prueba?', content: '[COMPLETAR: ej. Sí, la primera clase es gratis. ¿Qué día te queda bien?]' },
+    ],
+  },
+  hotel: {
+    label: 'Hotel / Hospedaje / Turismo',
+    fields: {
+      category: 'Hotel / Turismo',
+      bot_personality: 'amigable',
+      main_goal: 'agendar_citas',
+      appointment_duration: 60,
+      description: '{negocio} es [COMPLETAR: hotel, hostal, finca, cabañas, agencia de viajes] en [COMPLETAR: ciudad o zona]. Ofrecemos [COMPLETAR: tipos de habitación, planes o tours].',
+      greeting_msg: '¡Hola! 👋 Bienvenid@ a {negocio} 🌴 ¿Para qué fechas y cuántas personas buscas? Te cuento disponibilidad y tarifas.',
+      away_msg: 'Gracias por escribir a {negocio} 🌴 Déjanos tus fechas y el número de personas, y te confirmamos disponibilidad lo antes posible.',
+      active_hours_start: '07:00:00',
+      active_hours_end: '21:00:00',
+      active_days: [0, 1, 2, 3, 4, 5, 6],
+      closing_instructions: 'Pregunta fechas de llegada y salida, número de adultos y niños, y el tipo de habitación o plan. Para reservar pide: nombre completo, documento, celular y correo. Explica cómo se paga el anticipo para confirmar la reserva.',
+      custom_instructions: 'Da solo tarifas y planes cargados. No confirmes disponibilidad de fechas: di que un asesor la confirma y toma los datos de la reserva. Menciona las políticas de cancelación registradas.',
+    },
+    faqs: [
+      { title: '¿A qué hora es el check-in y el check-out?', content: 'El check-in es desde las [COMPLETAR: hora] y el check-out hasta las [COMPLETAR: hora].' },
+      { title: '¿El desayuno está incluido?', content: '[COMPLETAR: ej. Sí, todas las tarifas incluyen desayuno.]' },
+      { title: '¿Aceptan mascotas?', content: '[COMPLETAR: ej. Sí, con un cargo de $X por noche / No aceptamos mascotas.]' },
+      { title: '¿Cómo reservo y cuánto es el anticipo?', content: 'Para confirmar la reserva pedimos un anticipo de [COMPLETAR: porcentaje o valor] por [COMPLETAR: medio de pago].' },
+      { title: '¿Cuál es la política de cancelación?', content: '[COMPLETAR: ej. Cancelando con 72 horas de anticipación te devolvemos el anticipo.]' },
+    ],
+  },
+  veterinaria: {
+    label: 'Veterinaria / Pet shop',
+    fields: {
+      category: 'Veterinaria / Mascotas',
+      bot_personality: 'amigable',
+      main_goal: 'agendar_citas',
+      appointment_duration: 30,
+      description: '{negocio} es [COMPLETAR: veterinaria, pet shop, peluquería canina] en [COMPLETAR: ciudad y barrio]. Ofrecemos [COMPLETAR: consulta, vacunación, baño y peluquería, alimentos y accesorios].',
+      greeting_msg: '¡Hola! 👋 Bienvenid@ a {negocio} 🐾 ¿Qué necesita tu mascota hoy?',
+      away_msg: 'Gracias por escribir a {negocio} 🐾 Estamos fuera de horario. Si es una urgencia, acude a [COMPLETAR: veterinaria 24 horas más cercana]. Si no, déjanos tu mensaje y te respondemos mañana.',
+      active_hours_start: '08:00:00',
+      active_hours_end: '19:00:00',
+      active_days: [1, 2, 3, 4, 5, 6],
+      closing_instructions: 'Para agendar pide: nombre del dueño, celular, nombre, especie, raza y edad de la mascota, el servicio que necesita y el día y la hora que prefiere. Confirma la cita antes de registrarla.',
+      custom_instructions: 'Nunca des diagnósticos ni recomiendes medicamentos o dosis: ofrece una consulta con el veterinario. Si describen una urgencia (le cuesta respirar, convulsiones, envenenamiento, sangrado), pide que lleven a la mascota de inmediato.',
+    },
+    faqs: [
+      { title: '¿Cuánto cuesta la consulta?', content: 'La consulta cuesta [COMPLETAR: precio].' },
+      { title: '¿Qué vacunas necesita mi cachorro?', content: 'El plan de vacunación lo define el veterinario en la consulta; con gusto te la agendamos. [COMPLETAR: precio del plan si lo tienes.]' },
+      { title: '¿Atienden urgencias?', content: '[COMPLETAR: ej. Sí, 24 horas / En horario de atención; fuera de horario acude a X.]' },
+      { title: '¿Hacen baño y peluquería?', content: '[COMPLETAR: precios según el tamaño de la mascota.]' },
+      { title: '¿Hacen domicilios de alimentos?', content: '[COMPLETAR: ej. Sí, en el barrio y alrededores, con un costo de $X.]' },
+    ],
+  },
   servicios: {
-    label: 'Otros servicios con cita (taller, asesorías, gimnasio)',
+    label: 'Otros servicios con cita (asesorías, gimnasio, fotografía)',
     fields: {
       category: 'Servicios con cita',
       bot_personality: 'profesional',
@@ -173,8 +292,9 @@ const NICHE_TEMPLATES = {
   },
 };
 
-// Campos que el admin no aplica solo al registrar un cliente: la descripción tiene datos por completar
-const ADMIN_SKIP_FIELDS = new Set(['description']);
+// Al registrar un cliente desde el admin no se copian campos con datos por completar
+// (como la descripción): el bot se los diría tal cual al cliente.
+const hasPlaceholder = (value) => typeof value === 'string' && /\[COMPLETAR[^\]]*\]/i.test(value);
 
 /** Lista corta para el selector del admin: [{ id, label, category }]. */
 const listNicheTemplates = () =>
@@ -196,7 +316,7 @@ const buildTemplateFields = (templateId, businessName, existing = null) => {
   const name = (businessName || existing?.name || '').trim() || 'nuestro negocio';
   const out = {};
   for (const [key, value] of Object.entries(template.fields)) {
-    if (ADMIN_SKIP_FIELDS.has(key)) continue;
+    if (hasPlaceholder(value)) continue;
     const current = existing?.[key];
     const isEmpty = current === undefined || current === null || current === '' ||
       (Array.isArray(current) && current.length === 0);
