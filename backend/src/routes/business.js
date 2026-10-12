@@ -4,6 +4,7 @@ const { supabase } = require('../db/supabase');
 const { ownsParam, requireAdmin } = require('../auth/access');
 const { seedDefaultProductsAndKB } = require('../db/seedHelper');
 const { resolveUserBusiness } = require('../services/businessResolver');
+const { listNicheTemplatesFull } = require('../services/nicheTemplates');
 
 const isUuid = (str) => typeof str === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
 
@@ -36,6 +37,11 @@ const DEFAULT_BOTWA_BUSINESS = {
   custom_instructions: 'Actúa como asesor comercial consultivo: sigue la cuerda al cliente, valida sus necesidades, pregunta antes de suponer y responde en menos de 4 líneas.',
   is_configured: true,
 };
+
+// Negocios predeterminados: sugerencias de configuración y FAQs por nicho (contenido público)
+router.get('/templates/niches', (req, res) => {
+  res.json({ success: true, templates: listNicheTemplatesFull() });
+});
 
 // Endpoint de diagnóstico rápido
 router.get('/info/test-db', requireAdmin, async (req, res) => {
