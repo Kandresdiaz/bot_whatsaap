@@ -1066,6 +1066,9 @@ const saveSessionTimeouts = new Map();
 // Hash del último JSON subido por usuario: si no cambió, no se vuelve a subir.
 // Cada subida pesa cientos de KB y cuenta contra el ancho de banda de Render.
 const lastSavedSessionHash = new Map();
+// Radiografía de la última subida de credenciales por usuario: sirve para saber si la
+// sesión se está guardando completa (ver /api/debug/sessions).
+const lastSavedSessionInfo = new Map();
 const debouncedSaveFullSessionToDb = (userId, sessionDir, delay = 2500) => {
   const validUserId = getValidUserId(userId);
   if (saveSessionTimeouts.has(validUserId)) {
@@ -1091,30 +1094,41 @@ const saveFullSessionToDb = async (userId, sessionDir) => {
     // 1. creds.json es obligatorio
     sessionObj['creds.json'] = fs.readFileSync(credsFile, 'utf8');
 
-    // 2. Priorizar archivos lid-mapping-*.json para garantizar persistencia y resolución de contactos
+    // 2. Orden de prioridad al llenar el cupo. Lo que no entra NO se guarda, y al
+    // restaurar la sesión queda incompleta: WhatsApp la invalida y el número pide QR
+    // otra vez. Por eso primero va lo que sin ello la sesión no sirve (claves de
+    // cifrado), después los mapeos LID y de último lo recuperable (sesiones por
+    // contacto, que se renegocian solas).
     let totalBytes = sessionObj['creds.json'].length;
     const MAX_BYTES = 3 * 1024 * 1024; // 3MB de margen seguro para Supabase PostgREST
 
-    for (const file of files) {
-      if (file.startsWith('lid-mapping-') && file.endsWith('.json')) {
-        const filePath = path.join(sessionDir, file);
-        const content = fs.readFileSync(filePath, 'utf8');
-        if (totalBytes + content.length < MAX_BYTES) {
-          sessionObj[file] = content;
-          totalBytes += content.length;
-        }
-      }
-    }
+    const esCritico = (f) => f.startsWith('app-state-sync-key-') || f.startsWith('pre-key-') || f.startsWith('sender-key-');
+    const esMapeo = (f) => f.startsWith('lid-mapping-');
 
-    // 3. Guardar el resto de archivos de sincronización
-    for (const file of files) {
-      if (file === 'creds.json' || file.startsWith('lid-mapping-') || !file.endsWith('.json')) continue;
+    const candidatos = files.filter(f => f !== 'creds.json' && f.endsWith('.json'));
+    const porPrioridad = [
+      ...candidatos.filter(esCritico),
+      ...candidatos.filter(esMapeo),
+      ...candidatos.filter(f => !esCritico(f) && !esMapeo(f)),
+    ];
+
+    const descartados = [];
+    for (const file of porPrioridad) {
       const filePath = path.join(sessionDir, file);
       const content = fs.readFileSync(filePath, 'utf8');
       if (totalBytes + content.length < MAX_BYTES) {
         sessionObj[file] = content;
         totalBytes += content.length;
+      } else {
+        descartados.push(file);
       }
+    }
+
+    // Avisar: antes se descartaban en silencio y la sesión se rompía semanas después
+    // sin ninguna pista en los logs.
+    if (descartados.length > 0) {
+      const criticos = descartados.filter(esCritico).length;
+      console.warn(`[Baileys Auth] ⚠ ${validUserId}: ${descartados.length} archivos de credenciales NO caben en los ${(MAX_BYTES / 1024 / 1024).toFixed(0)}MB guardados (${criticos} críticos). Si el número pide QR tras un reinicio, la causa es esta.`);
     }
 
     const jsonStr = JSON.stringify(sessionObj);
@@ -1126,6 +1140,12 @@ const saveFullSessionToDb = async (userId, sessionDir) => {
       session_data: jsonStr,
     });
     lastSavedSessionHash.set(validUserId, hash);
+    lastSavedSessionInfo.set(validUserId, {
+      archivosGuardados: Object.keys(sessionObj).length,
+      archivosDescartados: descartados.length,
+      kilobytes: Math.round(totalBytes / 1024),
+      cuando: new Date().toISOString(),
+    });
     console.log(`[Baileys Auth] 💾 Sesión guardada en Supabase para ${validUserId} (${Object.keys(sessionObj).length} archivos, ${(totalBytes / 1024).toFixed(1)} KB)`);
   } catch (e) {
     console.warn('[Baileys Auth] Error guardando sesión completa:', e.message);
@@ -1136,11 +1156,19 @@ const restoreFullSessionFromDb = async (userId, sessionDir) => {
   if (!supabase) return false;
   try {
     const validUserId = getValidUserId(userId);
-    const { data: dbSess } = await supabase
+    // Nada de maybeSingle: si la cuenta tiene más de una fila en whatsapp_sessions
+    // (pasa al reconectar o por filas viejas) devuelve error y la sesión NO se restaura,
+    // así que tras cada reinicio el número aparecía desconectado y tocaba reescanear.
+    // Se usa la más reciente, igual que getSessionUuid y safeUpsert.
+    const { data: dbRows, error: dbErr } = await supabase
       .from('whatsapp_sessions')
       .select('session_data')
       .eq('user_id', validUserId)
-      .maybeSingle();
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    if (dbErr) console.warn('[Baileys Auth] Error leyendo credenciales guardadas:', dbErr.message);
+    const dbSess = dbRows && dbRows[0];
 
     if (dbSess?.session_data) {
       if (!fs.existsSync(sessionDir)) fs.mkdirSync(sessionDir, { recursive: true });
@@ -1571,14 +1599,20 @@ const createSession = async (userId, businessId, io, forceClean = false, isManua
       try {
         if (supabase) {
           let prevRaw = null;
+          // limit(1) sobre la más reciente en vez de maybeSingle: con filas duplicadas
+          // maybeSingle devuelve error y el cambio de número pasaba desapercibido.
           const withLast = await supabase
-            .from('whatsapp_sessions').select('phone_number, last_phone').eq('user_id', validId).maybeSingle();
+            .from('whatsapp_sessions').select('phone_number, last_phone')
+            .eq('user_id', validId).order('created_at', { ascending: false }).limit(1);
           if (!withLast.error) {
-            prevRaw = withLast.data?.last_phone || withLast.data?.phone_number;
+            const fila = withLast.data && withLast.data[0];
+            prevRaw = fila?.last_phone || fila?.phone_number;
           } else {
+            // La columna last_phone la agrega la migración 007: si no está, se usa phone_number.
             const basic = await supabase
-              .from('whatsapp_sessions').select('phone_number').eq('user_id', validId).maybeSingle();
-            prevRaw = basic.data?.phone_number;
+              .from('whatsapp_sessions').select('phone_number')
+              .eq('user_id', validId).order('created_at', { ascending: false }).limit(1);
+            prevRaw = basic.data && basic.data[0]?.phone_number;
           }
           const prevPhone = (prevRaw || '').replace(/[^0-9]/g, '');
 
@@ -2168,6 +2202,28 @@ const disconnectSession = async (userId) => {
   clearUserConversationsFromDb(validId).catch(() => {});
 };
 
+// Estado de cada sesión viva, para el endpoint de diagnóstico. Una entrada por usuario
+// real (el mapa `sessions` guarda la misma sesión bajo varias claves).
+const getSessionsDiagnostics = () => {
+  const porUsuario = new Map();
+  for (const [key, s] of sessions.entries()) {
+    const validId = getValidUserId(key);
+    if (porUsuario.has(validId)) continue;
+    porUsuario.set(validId, {
+      userId: validId,
+      estado: s?.status || 'desconocido',
+      telefono: s?.phone || null,
+      tieneSocket: !!s?.sock,
+      intentosDeReconexion: reconnectAttempts.get(validId) || 0,
+      reconexionProgramada: reconnectTimers.has(validId),
+      desconectadoAMano: userDisconnectedMap.has(validId),
+      chatsEnMemoria: userStores.get(validId)?.chats?.size || 0,
+      ultimoGuardadoDeCredenciales: lastSavedSessionInfo.get(validId) || null,
+    });
+  }
+  return Array.from(porUsuario.values());
+};
+
 const getSession = (userId) => {
   if (!userId) return null;
 
@@ -2515,6 +2571,7 @@ module.exports = {
   setContactBotStatus,
   isContactBotDisabled,
   saveAllActiveSessions,
+  getSessionsDiagnostics,
 };
 
 
