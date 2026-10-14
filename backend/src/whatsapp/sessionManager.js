@@ -357,12 +357,21 @@ const clearUserConversationsFromDb = async (userId) => {
 // (como WhatsApp Web: lo que ves es solo lo del número conectado). Solo se llama
 // con un cambio de número confirmado; nunca en reconexiones del mismo número.
 // Citas, pedidos y productos no se tocan.
-const purgeConversationsForNumberChange = async (userId) => {
+const purgeConversationsForNumberChange = async (userId, prevPhone = '') => {
   if (!supabase) return;
   const sessionUuid = await getSessionUuid(userId);
   if (!sessionUuid) return;
-  const { data: convs, error } = await supabase
-    .from('conversations').select('id').eq('session_id', sessionUuid);
+
+  // Se borran solo los chats que atendió el número anterior (y los que vienen de antes de
+  // la migración 008, que no tienen dueño marcado). Sin esta condición, un falso positivo
+  // al detectar el cambio de número se llevaba por delante los chats del número actual.
+  let q = supabase.from('conversations').select('id').eq('session_id', sessionUuid);
+  const { soportaOwnerPhone, limpiarTelefono } = require('../services/chatOwnership');
+  const anterior = limpiarTelefono(prevPhone);
+  if (anterior && await soportaOwnerPhone()) {
+    q = q.or(`owner_phone.eq.${anterior},owner_phone.is.null`);
+  }
+  const { data: convs, error } = await q;
   if (error) { console.warn('[Baileys] No se pudieron leer chats a limpiar:', error.message); return; }
   const ids = (convs || []).map(c => c.id);
   for (let i = 0; i < ids.length; i += 200) {
@@ -695,6 +704,12 @@ const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts =
     const userSessionObj = sessions.get(userId) || sessions.get(getValidUserId(userId));
     const userOwnPhone = (userSessionObj?.phone || userSessionObj?.sock?.user?.id || '').split(':')[0].replace(/[^0-9]/g, '');
 
+    // Número que atiende estos chats, con el que se marcan (owner_phone) para que el panel
+    // solo muestre los del WhatsApp conectado. Si la sesión en RAM todavía no lo tiene se
+    // busca en la base: sin número los chats quedarían sin dueño y no se verían.
+    const { marcarDueno, acotarAlNumero, telefonoDeLaSesion } = require('../services/chatOwnership');
+    const telefonoDueno = userOwnPhone || await telefonoDeLaSesion(userId);
+
     // Mapa de último mensaje por número de teléfono
     const latestMsgByPhone = new Map();
     for (const msg of allMessagesList) {
@@ -821,6 +836,12 @@ const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts =
     // Guardar nuevas conversaciones en Supabase vía upsert con onConflict (session_id, contact_phone)
     if (newConvsToInsert.length > 0) {
       try {
+        // Cada chat queda marcado con el WhatsApp que lo atendió: al vincular otro número
+        // el panel ya no muestra los chats del anterior (ver migración 008).
+        for (let i = 0; i < newConvsToInsert.length; i++) {
+          newConvsToInsert[i] = await marcarDueno(newConvsToInsert[i], telefonoDueno);
+        }
+
         const { data: inserted, error: insErr } = await supabase
           .from('conversations')
           .upsert(newConvsToInsert, { onConflict: 'session_id,contact_phone' })
@@ -893,12 +914,13 @@ const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts =
         if (!conv?.id) {
           // Búsqueda directa por número de teléfono en Supabase aislado a este usuario
           try {
-            const { data: directConv } = await supabase
+            let qDirect = supabase
               .from('conversations')
               .select('id, contact_phone')
               .in('session_id', userSessionIds.length > 0 ? userSessionIds : [sessionUuid])
-              .eq('contact_phone', contactPhone)
-              .limit(1);
+              .eq('contact_phone', contactPhone);
+            qDirect = await acotarAlNumero(qDirect, telefonoDueno);
+            const { data: directConv } = await qDirect.limit(1);
 
             if (directConv && directConv[0]?.id) {
               conv = directConv[0];
@@ -913,7 +935,7 @@ const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts =
             const contactName = contactsMap.get(jid) || contactsMap.get(contactPhone) || msg.pushName || (resolved.isGroup ? 'Grupo WA' : contactPhone);
             const { data: newConvRows } = await supabase
               .from('conversations')
-              .upsert({
+              .upsert(await marcarDueno({
                 session_id: sessionUuid,
                 contact_phone: contactPhone,
                 contact_name: contactName,
@@ -921,7 +943,7 @@ const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts =
                 is_blacklisted: false,
                 last_message: text,
                 last_message_at: msgTime,
-              }, { onConflict: 'session_id,contact_phone' })
+              }, telefonoDueno), { onConflict: 'session_id,contact_phone' })
               .select('id, contact_phone, contact_name')
               .limit(1);
 
@@ -1566,7 +1588,7 @@ const createSession = async (userId, businessId, io, forceClean = false, isManua
             userStores.delete(validId);
             userContacts.delete(userId);
             userContacts.delete(validId);
-            await purgeConversationsForNumberChange(validId);
+            await purgeConversationsForNumberChange(validId, prevPhone);
           }
         }
       } catch (checkErr) {
@@ -1991,25 +2013,29 @@ const createSession = async (userId, businessId, io, forceClean = false, isManua
           const ownSessionIds = await getUserSessionIds(userId);
           if (!ownSessionIds.includes(sessionUuid)) ownSessionIds.push(sessionUuid);
 
-          const { data: convRows } = await supabase
+          // Mismo criterio que el resto: el chat es del WhatsApp conectado.
+          const ownership = require('../services/chatOwnership');
+          const telefonoDueno = await ownership.telefonoDeLaSesion(userId);
+
+          let qConv = supabase
             .from('conversations')
             .select('id')
             .in('session_id', ownSessionIds)
-            .eq('contact_phone', contactPhone)
-            .order('last_message_at', { ascending: false })
-            .limit(1);
+            .eq('contact_phone', contactPhone);
+          qConv = await ownership.acotarAlNumero(qConv, telefonoDueno);
+          const { data: convRows } = await qConv.order('last_message_at', { ascending: false }).limit(1);
 
           let conversationId = convRows && convRows[0]?.id;
           if (!conversationId) {
-            const { data: newConvRows } = await supabase.from('conversations').upsert({
-              session_id: sessionUuid || null,
+            const { data: newConvRows } = await supabase.from('conversations').upsert(await ownership.marcarDueno({
+              session_id: sessionUuid,
               contact_phone: contactPhone,
               contact_name: contactPhone,
               bot_active: true,
               is_blacklisted: false,
               last_message: text,
               last_message_at: msgTs,
-            }, { onConflict: 'session_id,contact_phone' }).select('id').limit(1);
+            }, telefonoDueno), { onConflict: 'session_id,contact_phone' }).select('id').limit(1);
             conversationId = newConvRows && newConvRows[0]?.id;
           }
 

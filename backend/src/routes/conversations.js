@@ -60,10 +60,17 @@ router.get('/:sessionId', ownsParam('sessionId'), async (req, res) => {
 
     const sessionList = Array.from(sessionIdsSet);
 
+    // Número de WhatsApp conectado ahora: el listado se acota a ÉL, no solo a la cuenta.
+    // Una cuenta acumula varias sesiones y al vincular otro WhatsApp seguían saliendo los
+    // chats del número anterior.
+    const { telefonoDeLaSesion, acotarAlNumero } = require('../services/chatOwnership');
+    const telefonoConectado = await telefonoDeLaSesion(validUserId);
+
     // Consulta principal por session_ids del usuario
     let data = [];
     if (sessionList.length > 0) {
       let q = supabase.from('conversations').select('*').in('session_id', sessionList).order('last_message_at', { ascending: false }).limit(200);
+      q = await acotarAlNumero(q, telefonoConectado);
       if (status) q = q.eq('status', status);
       if (search) q = q.or(`contact_name.ilike.%${search}%,contact_phone.ilike.%${search}%`);
       const { data: d } = await q;
@@ -77,7 +84,7 @@ router.get('/:sessionId', ownsParam('sessionId'), async (req, res) => {
     const merged = [];
 
     const activeSession = active || getSession(ownerUserId);
-    const selfPhone = (activeSession?.phone || '').split(':')[0].replace(/[^0-9]/g, '');
+    const selfPhone = (activeSession?.phone || '').split(':')[0].replace(/[^0-9]/g, '') || telefonoConectado;
 
     // 1. Primero: conversaciones de DB
     for (const c of data) {
@@ -221,11 +228,12 @@ router.get('/:sessionId', ownsParam('sessionId'), async (req, res) => {
       // tuviera el mismo número: por eso "activo el bot y no contesta".
       let disabledRows = [];
       if (sessionList.length > 0) {
-        const { data: dr } = await supabase
+        let qDisabled = supabase
           .from('conversations')
           .select('contact_phone, bot_active, is_blacklisted')
-          .in('session_id', sessionList)
-          .or('bot_active.eq.false,is_blacklisted.eq.true');
+          .in('session_id', sessionList);
+        qDisabled = await acotarAlNumero(qDisabled, telefonoConectado);
+        const { data: dr } = await qDisabled.or('bot_active.eq.false,is_blacklisted.eq.true');
         disabledRows = dr || [];
       }
 
@@ -294,18 +302,22 @@ router.get('/:conversationId/messages', ownsQuery(), ownsRow('conversations', 'c
     const ownSessionIds = await getUserSessionIds(validUserId);
     const sessionScope = ownSessionIds.length > 0 ? ownSessionIds : null;
 
+    // Igual que el listado: solo los chats del WhatsApp conectado ahora.
+    const { telefonoDeLaSesion, acotarAlNumero } = require('../services/chatOwnership');
+    const telefonoConectado = await telefonoDeLaSesion(validUserId);
+
     let realConvId = isUuid(conversationId) ? conversationId : null;
 
     // Buscar UUID real de la conversación si no lo tenemos
     if (!realConvId && cleanPhone && sessionScope) {
       try {
-        const { data: conv } = await supabase
+        let qConv = supabase
           .from('conversations')
           .select('id')
           .in('session_id', sessionScope)
-          .eq('contact_phone', cleanPhone)
-          .order('last_message_at', { ascending: false })
-          .limit(1);
+          .eq('contact_phone', cleanPhone);
+        qConv = await acotarAlNumero(qConv, telefonoConectado);
+        const { data: conv } = await qConv.order('last_message_at', { ascending: false }).limit(1);
 
         if (conv && conv[0]?.id) realConvId = conv[0].id;
       } catch (_) {}
@@ -317,20 +329,24 @@ router.get('/:conversationId/messages', ownsQuery(), ownsRow('conversations', 'c
 
     if (cleanPhone && sessionScope) {
       try {
-        const { data: relatedConvs } = await supabase
+        let qRelated = supabase
           .from('conversations')
           .select('id')
           .in('session_id', sessionScope)
           .eq('contact_phone', cleanPhone);
+        qRelated = await acotarAlNumero(qRelated, telefonoConectado);
+        const { data: relatedConvs } = await qRelated;
         if (relatedConvs && relatedConvs.length > 0) {
           relatedConvs.forEach(c => convIdsToQuery.add(c.id));
         }
         if (resolvedTarget?.lid && resolvedTarget.lid !== cleanPhone) {
-          const { data: lidConvs } = await supabase
+          let qLid = supabase
             .from('conversations')
             .select('id')
             .in('session_id', sessionScope)
             .eq('contact_phone', resolvedTarget.lid);
+          qLid = await acotarAlNumero(qLid, telefonoConectado);
+          const { data: lidConvs } = await qLid;
           if (lidConvs && lidConvs.length > 0) {
             lidConvs.forEach(c => convIdsToQuery.add(c.id));
           }
@@ -440,33 +456,41 @@ router.post('/create', ownsBody(), async (req, res) => {
     // Buscar si ya existe, solo dentro de las sesiones de este usuario. Sin ese filtro el
     // endpoint podía devolver la conversación de otro negocio que tuviera el mismo número.
     const { getUserSessionIds } = require('../whatsapp/sessionManager');
+    const { telefonoDeLaSesion, acotarAlNumero, marcarDueno } = require('../services/chatOwnership');
     const ownSessionIds = await getUserSessionIds(validUserId);
     if (sessionUuid && !ownSessionIds.includes(sessionUuid)) ownSessionIds.push(sessionUuid);
 
-    let { data: existing } = await supabase
+    // El chat pertenece al WhatsApp conectado ahora: así no se reutiliza (ni se ve)
+    // el chat que ese mismo número tuvo con un WhatsApp anterior de esta cuenta.
+    const telefonoConectado = await telefonoDeLaSesion(validUserId);
+
+    let qExisting = supabase
       .from('conversations')
       .select('*')
       .in('session_id', ownSessionIds.length > 0 ? ownSessionIds : [sessionUuid])
-      .eq('contact_phone', cleanPhone)
-      .limit(1);
+      .eq('contact_phone', cleanPhone);
+    qExisting = await acotarAlNumero(qExisting, telefonoConectado);
+    const { data: existing } = await qExisting.limit(1);
 
     if (existing && existing.length > 0) {
       return res.json({ success: true, conversation: existing[0] });
     }
 
     // Crear conversación nueva en Supabase
+    const filaNueva = await marcarDueno({
+      session_id: sessionUuid,
+      contact_phone: cleanPhone,
+      contact_name: contactName || cleanPhone,
+      bot_active: true,
+      is_blacklisted: false,
+      last_message_at: new Date().toISOString(),
+      unread_count: 0,
+      status: 'open',
+    }, telefonoConectado);
+
     const { data: newConv, error: insErr } = await supabase
       .from('conversations')
-      .insert({
-        session_id: sessionUuid,
-        contact_phone: cleanPhone,
-        contact_name: contactName || cleanPhone,
-        bot_active: true,
-        is_blacklisted: false,
-        last_message_at: new Date().toISOString(),
-        unread_count: 0,
-        status: 'open',
-      })
+      .insert(filaNueva)
       .select()
       .limit(1);
 
@@ -562,17 +586,18 @@ router.patch('/:conversationId/toggle-bot', ownsBody(), ownsRow('conversations',
       } else {
         const validUserId = getValidUserId(userId || 'admin');
         const sessionUuid = await getSessionUuid(validUserId);
+        const { telefonoDeLaSesion, marcarDueno } = require('../services/chatOwnership');
 
         await supabase
           .from('conversations')
-          .insert({
+          .insert(await marcarDueno({
             session_id: sessionUuid,
             contact_phone: cleanPhone,
             contact_name: cleanPhone,
             bot_active,
             is_blacklisted: false,
             last_message_at: new Date().toISOString(),
-          });
+          }, await telefonoDeLaSesion(validUserId)));
       }
     }
     res.json({ success: true, bot_active });
@@ -630,10 +655,11 @@ router.patch('/:conversationId/blacklist', ownsBody(), ownsRow('conversations', 
       } else {
         const validUserId = getValidUserId(userId || 'admin');
         const sessionUuid = await getSessionUuid(validUserId);
+        const { telefonoDeLaSesion, marcarDueno } = require('../services/chatOwnership');
 
         await supabase
           .from('conversations')
-          .insert({
+          .insert(await marcarDueno({
             session_id: sessionUuid,
             contact_phone: cleanPhone,
             contact_name: cleanPhone,
@@ -641,7 +667,7 @@ router.patch('/:conversationId/blacklist', ownsBody(), ownsRow('conversations', 
             is_blacklisted: blacklisted,
             blacklist_reason: reason || null,
             last_message_at: new Date().toISOString(),
-          });
+          }, await telefonoDeLaSesion(validUserId)));
       }
     }
     res.json({ success: true });

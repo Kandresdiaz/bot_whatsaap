@@ -413,12 +413,17 @@ router.post('/send', ownsBody(), async (req, res) => {
         const ownSessionIds = await getUserSessionIds(validUserId);
         if (sessionUuid && !ownSessionIds.includes(sessionUuid)) ownSessionIds.push(sessionUuid);
 
-        const { data: existing } = await supabase
+        // El chat es del WhatsApp conectado ahora (ver services/chatOwnership).
+        const ownership = require('../services/chatOwnership');
+        const telefonoDueno = await ownership.telefonoDeLaSesion(validUserId);
+
+        let qExisting = supabase
           .from('conversations')
           .select('id')
           .in('session_id', ownSessionIds.length > 0 ? ownSessionIds : [sessionUuid])
-          .eq('contact_phone', resolvedPhone)
-          .limit(1);
+          .eq('contact_phone', resolvedPhone);
+        qExisting = await ownership.acotarAlNumero(qExisting, telefonoDueno);
+        const { data: existing } = await qExisting.limit(1);
 
         const existingRow = existing && existing[0];
         if (existingRow?.id) {
@@ -426,7 +431,7 @@ router.post('/send', ownsBody(), async (req, res) => {
         } else {
           const { data: newConv } = await supabase
             .from('conversations')
-            .upsert({
+            .upsert(await ownership.marcarDueno({
               session_id: sessionUuid,
               contact_phone: resolvedPhone,
               contact_name: resolvedPhone,
@@ -436,7 +441,7 @@ router.post('/send', ownsBody(), async (req, res) => {
               last_message_at: new Date().toISOString(),
               unread_count: 0,
               status: 'open',
-            }, { onConflict: 'session_id,contact_phone' })
+            }, telefonoDueno), { onConflict: 'session_id,contact_phone' })
             .select('id')
             .limit(1);
           const newRow = newConv && newConv[0];

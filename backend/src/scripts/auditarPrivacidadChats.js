@@ -40,8 +40,17 @@ const main = async () => {
     process.exit(1);
   }
 
-  const sesiones = await traerTodo('whatsapp_sessions', 'id, user_id, phone_number');
-  const conversaciones = await traerTodo('conversations', 'id, session_id, contact_phone, contact_name, last_message, last_message_at');
+  const sesiones = await traerTodo('whatsapp_sessions', 'id, user_id, phone_number, last_phone');
+
+  // owner_phone solo existe si ya se ejecutó la migración 008.
+  let conversaciones;
+  let hayOwnerPhone = true;
+  try {
+    conversaciones = await traerTodo('conversations', 'id, session_id, contact_phone, contact_name, last_message, last_message_at, owner_phone');
+  } catch (_) {
+    hayOwnerPhone = false;
+    conversaciones = await traerTodo('conversations', 'id, session_id, contact_phone, contact_name, last_message, last_message_at');
+  }
 
   const sesionPorId = new Map(sesiones.map(s => [s.id, s]));
 
@@ -75,6 +84,37 @@ const main = async () => {
   }
   if (compartidos.length > 20) console.log(`   ... y ${compartidos.length - 20} más`);
   console.log('   (Revisa estos chats en el panel: son los únicos donde el bug pudo mezclar mensajes.)');
+
+  const digitos = (v) => (v || '').toString().replace(/[^0-9]/g, '');
+
+  if (!hayOwnerPhone) {
+    console.log('\n3) Chats de un WhatsApp anterior: no se puede saber (falta la migración 008).');
+  } else {
+    // Chats marcados con un número que ya no es el vinculado a esa cuenta: son los que
+    // antes seguían apareciendo en el panel al conectar otro WhatsApp. Con la migración
+    // 008 desplegada ya no se ven, pero siguen ocupando espacio en la base.
+    const deOtroNumero = conversaciones.filter(c => {
+      const s = sesionPorId.get(c.session_id);
+      if (!s) return false;
+      const actual = digitos(s.phone_number) || digitos(s.last_phone);
+      const dueno = digitos(c.owner_phone);
+      return actual && dueno && actual !== dueno;
+    });
+    console.log(`\n3) Chats de un WhatsApp anterior (ya no se muestran en el panel): ${deOtroNumero.length}`);
+    const porNumero = new Map();
+    for (const c of deOtroNumero) {
+      const d = digitos(c.owner_phone);
+      porNumero.set(d, (porNumero.get(d) || 0) + 1);
+    }
+    for (const [num, cuantos] of porNumero) console.log(`   - número ${num}: ${cuantos} chats`);
+
+    const sinDueno = conversaciones.filter(c => c.session_id && sesionPorId.has(c.session_id) && !digitos(c.owner_phone));
+    if (sinDueno.length > 0) {
+      console.log(`\n   Ojo: ${sinDueno.length} chats con sesión válida pero SIN número dueño.`);
+      console.log('   No se muestran en el panel. Vuelve a ejecutar el UPDATE de la migración 008');
+      console.log('   con el WhatsApp de esas cuentas conectado para rellenarlos.');
+    }
+  }
 
   if (!CONFIRMAR) {
     console.log('\nSimulación: no se borró nada. Añade --confirmar para borrar las huérfanas del punto 1.');

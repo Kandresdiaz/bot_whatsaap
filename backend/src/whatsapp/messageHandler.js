@@ -371,12 +371,18 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
       throw new Error('session_id no resuelto');
     }
 
+    // El chat pertenece al WhatsApp que lo está atendiendo: se marca con su número para
+    // que al vincular otro WhatsApp este chat no aparezca en el panel.
+    const { telefonoDeLaSesion, acotarAlNumero, marcarDueno } = require('../services/chatOwnership');
+    const telefonoDueno = await telefonoDeLaSesion(userId);
+
     // 1) Buscar conversación existente por número de teléfono (aislada a esta sesión)
-    const convQuery = supabase
+    let convQuery = supabase
       .from('conversations')
       .select('*')
       .eq('session_id', sessionUuid)
       .eq('contact_phone', contactPhone);
+    convQuery = await acotarAlNumero(convQuery, telefonoDueno);
     const { data: existingConvs } = await convQuery.order('last_message_at', { ascending: false }).limit(1);
 
     if (existingConvs && existingConvs.length > 0) {
@@ -389,17 +395,19 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
       }).eq('id', conversation.id);
     } else {
       // 2) Si no existe conversación previa para este teléfono, insertarla
+      const filaNueva = await marcarDueno({
+        session_id: sessionUuid,
+        contact_phone: contactPhone,
+        contact_name: contactName,
+        bot_active: true,
+        is_blacklisted: false,
+        last_message: text,
+        last_message_at: new Date().toISOString(),
+      }, telefonoDueno);
+
       const { data: newConv, error: insErr } = await supabase
         .from('conversations')
-        .upsert({
-          session_id: sessionUuid,
-          contact_phone: contactPhone,
-          contact_name: contactName,
-          bot_active: true,
-          is_blacklisted: false,
-          last_message: text,
-          last_message_at: new Date().toISOString(),
-        }, { onConflict: 'session_id,contact_phone' })
+        .upsert(filaNueva, { onConflict: 'session_id,contact_phone' })
         .select()
         .limit(1);
 
