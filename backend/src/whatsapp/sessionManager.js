@@ -914,7 +914,7 @@ const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts =
             const { data: newConvRows } = await supabase
               .from('conversations')
               .upsert({
-                session_id: sessionUuid || null,
+                session_id: sessionUuid,
                 contact_phone: contactPhone,
                 contact_name: contactName,
                 bot_active: !resolved.isGroup,
@@ -1385,9 +1385,15 @@ const createSession = async (userId, businessId, io, forceClean = false, isManua
       try {
         if (supabase) {
           const sessionUuid = await getSessionUuid(userId);
-          let q = supabase.from('conversations').delete().eq('contact_phone', contactPhone);
-          if (sessionUuid) q = q.eq('session_id', sessionUuid);
-          await q;
+          // Sin session_id el DELETE borraba el chat de ese número en TODOS los negocios
+          // del SaaS. Si no se resuelve la sesión, no se borra nada.
+          if (sessionUuid) {
+            await supabase.from('conversations').delete()
+              .eq('session_id', sessionUuid)
+              .eq('contact_phone', contactPhone);
+          } else {
+            console.warn(`[Baileys] Sin session_id para ${userId}: no se borra el chat de ${contactPhone}.`);
+          }
         }
       } catch (_) {}
 
@@ -1412,11 +1418,14 @@ const createSession = async (userId, businessId, io, forceClean = false, isManua
 
         if (oldMsg) store.messages.delete(key.id);
 
-        if (supabase && contactPhone) {
-          const sessionUuid = await getSessionUuid(userId);
+        // Acotado a la sesión de este usuario: sin el filtro se editaba el mensaje dentro de
+        // la conversación de otro negocio que tuviera el mismo número.
+        const sessionUuid = supabase && contactPhone ? await getSessionUuid(userId) : null;
+        if (sessionUuid) {
           const { data: convRows } = await supabase
             .from('conversations')
             .select('id, last_message')
+            .eq('session_id', sessionUuid)
             .eq('contact_phone', contactPhone)
             .order('last_message_at', { ascending: false })
             .limit(1);
@@ -1972,14 +1981,20 @@ const createSession = async (userId, businessId, io, forceClean = false, isManua
 
         try {
           const sessionUuid = await getSessionUuid(userId);
+          // Sin session_id no se puede saber a qué negocio pertenece el chat: guardarlo con
+          // session_id nulo deja filas huérfanas que después se cruzan con otras cuentas.
+          if (!sessionUuid) {
+            console.warn(`[Baileys] Sin session_id para ${userId}: mensaje de ${contactPhone} no persistido.`);
+            continue;
+          }
 
           const ownSessionIds = await getUserSessionIds(userId);
-          if (sessionUuid && !ownSessionIds.includes(sessionUuid)) ownSessionIds.push(sessionUuid);
+          if (!ownSessionIds.includes(sessionUuid)) ownSessionIds.push(sessionUuid);
 
           const { data: convRows } = await supabase
             .from('conversations')
             .select('id')
-            .in('session_id', ownSessionIds.length > 0 ? ownSessionIds : [sessionUuid])
+            .in('session_id', ownSessionIds)
             .eq('contact_phone', contactPhone)
             .order('last_message_at', { ascending: false })
             .limit(1);

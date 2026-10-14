@@ -3,6 +3,7 @@ const router = express.Router();
 const { supabase } = require('../db/supabase');
 const { ownsBody, ownsParam, ownsRow } = require('../auth/access');
 const { resolveUserBusiness } = require('../services/businessResolver');
+const { emitToBusinessOwner } = require('../services/ownerEvents');
 
 // Helper para resolver el business_id real a partir del user_id o business_id
 const resolveBusinessId = async (idOrUserId) => {
@@ -146,14 +147,9 @@ router.post('/', ownsBody(), async (req, res) => {
 
     const createdOrder = data && data[0];
 
-    // Emitir evento Socket.io en tiempo real al usuario
-    if (global.io && createdOrder) {
-      try {
-        const { emitToUserRooms } = require('../whatsapp/sessionManager');
-        emitToUserRooms(global.io, targetId, 'new_order', createdOrder);
-      } catch (_) {
-        global.io.emit('new_order', createdOrder);
-      }
+    // Emitir evento Socket.io en tiempo real SOLO al dueño de este negocio.
+    if (createdOrder) {
+      await emitToBusinessOwner('new_order', createdOrder.business_id, createdOrder);
     }
 
     return res.json({ success: true, order: createdOrder });
@@ -212,8 +208,8 @@ router.put('/:id', ownsRow('orders'), async (req, res) => {
     }
 
     const updatedOrder = data && data[0];
-    if (global.io && updatedOrder) {
-      global.io.emit('order_updated', updatedOrder);
+    if (updatedOrder) {
+      await emitToBusinessOwner('order_updated', updatedOrder.business_id, updatedOrder);
     }
 
     return res.json({ success: true, order: updatedOrder });
@@ -249,8 +245,8 @@ router.patch('/:id', ownsRow('orders'), async (req, res) => {
     }
 
     const updatedOrder = data && data[0];
-    if (global.io && updatedOrder) {
-      global.io.emit('order_updated', updatedOrder);
+    if (updatedOrder) {
+      await emitToBusinessOwner('order_updated', updatedOrder.business_id, updatedOrder);
     }
 
     return res.json({ success: true, order: updatedOrder });
@@ -263,15 +259,18 @@ router.patch('/:id', ownsRow('orders'), async (req, res) => {
 router.delete('/:id', ownsRow('orders'), async (req, res) => {
   try {
     const { id } = req.params;
+    // Se lee el negocio ANTES de borrar: después ya no hay fila de la que sacar el dueño
+    // y el evento acabaría yendo a todos los paneles del SaaS.
+    const { data: beforeDelete } = await supabase.from('orders').select('business_id').eq('id', id).limit(1);
+    const ownerBusinessId = beforeDelete && beforeDelete[0]?.business_id;
+
     const { error } = await supabase.from('orders').delete().eq('id', id);
 
     if (error) {
       return res.status(500).json({ success: false, error: error.message });
     }
 
-    if (global.io) {
-      global.io.emit('order_deleted', { id });
-    }
+    await emitToBusinessOwner('order_deleted', ownerBusinessId, { id });
 
     return res.json({ success: true, message: 'Pedido eliminado correctamente' });
   } catch (err) {

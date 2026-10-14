@@ -89,4 +89,16 @@ const ownsRow = (table, param = 'id') => guard(async (req) => {
   return canAccess(req.auth, row[ownerColumn]);
 });
 
-module.exports = { requireAuth, requireAdmin, ownsParam, ownsBody, ownsQuery, ownsRow };
+// ¿Este token puede entrar a la sala de Socket.io de ese identificador?
+// Mismo criterio que las rutas HTTP: el admin entra a cualquiera, el cliente solo a lo suyo.
+const canJoinRoom = async (auth, id) => {
+  if (!auth || !id) return false;
+  try {
+    return await canAccess(auth, id);
+  } catch (e) {
+    console.error('[ACCESS] Error verificando sala:', e.message);
+    return false;
+  }
+};
+
+module.exports = { requireAuth, requireAdmin, ownsParam, ownsBody, ownsQuery, ownsRow, canJoinRoom };

@@ -27,10 +27,30 @@ const io = new Server(server, {
 });
 global.io = io;
 
+// Las salas de Socket.io llevan los mensajes de WhatsApp en vivo. Antes 'join_session'
+// aceptaba cualquier id sin comprobar nada: bastaba con conocer (o adivinar) el id de otro
+// negocio para recibir sus chats en tiempo real. Ahora se exige el mismo token del panel y
+// solo se entra a salas que pertenecen a ese token.
+const { verifyToken } = require('./auth/token');
+const { canJoinRoom } = require('./auth/access');
+
+io.use((socket, next) => {
+  const raw = socket.handshake.auth?.token || socket.handshake.query?.token || '';
+  const session = verifyToken(String(raw).replace(/^Bearer\s+/i, '').trim());
+  if (!session) return next(new Error('unauthorized'));
+  socket.data.auth = session;
+  next();
+});
+
 io.on('connection', (socket) => {
   console.log('[IO] Cliente conectado:', socket.id);
 
-  socket.on('join_session', (id) => {
+  socket.on('join_session', async (id) => {
+    if (!id) return;
+    if (!(await canJoinRoom(socket.data.auth, String(id)))) {
+      console.warn(`[IO] Rechazado join_session a ${id} (token de ${socket.data.auth.uid})`);
+      return;
+    }
     socket.join(`session_${id}`);
     socket.join(`user_${id}`);
     console.log(`[IO] Socket unido a: session_${id} y user_${id}`);

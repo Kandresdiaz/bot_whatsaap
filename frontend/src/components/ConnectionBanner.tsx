@@ -6,7 +6,7 @@
 // el estado al cargar por si la caída ocurrió antes de abrir el panel.
 import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
-import { io } from 'socket.io-client';
+import { connectSocket } from '@/lib/socket';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import { BACKEND_URL } from '@/lib/config';
@@ -18,7 +18,7 @@ const CONNECTED_FLAG = 'botwa_connected_once';
 type ConnState = 'connected' | 'reconnecting' | 'disconnected' | 'unknown';
 
 export default function ConnectionBanner() {
-  const { user, effectiveUserId } = useAuth();
+  const { user, effectiveUserId, selectedClientId } = useAuth();
   const pathname = usePathname();
   const [state, setState] = useState<ConnState>('unknown');
 
@@ -33,16 +33,17 @@ export default function ConnectionBanner() {
       try { return localStorage.getItem(CONNECTED_FLAG) === '1'; } catch (_) { return false; }
     };
 
-    const socket = io(BACKEND, {
-      transports: BACKEND ? ['websocket', 'polling'] : ['polling'],
+    const socket = connectSocket(BACKEND, {
       reconnectionAttempts: 10,
       reconnectionDelay: 2000,
     });
 
     const joinRooms = () => {
       socket.emit('join_session', effectiveUserId);
-      if (user?.id) socket.emit('join_session', user.id);
-      if (user?.is_admin) {
+      // Si el admin está viendo la cuenta de un cliente NO debe entrar también a su propia
+      // sala: los mensajes de su WhatsApp se colaban en la lista del cliente que está mirando.
+      if (user?.id && !selectedClientId) socket.emit('join_session', user.id);
+      if (user?.is_admin && !selectedClientId) {
         socket.emit('join_session', '00000000-0000-0000-0000-000000000001');
         socket.emit('join_session', 'admin');
       }

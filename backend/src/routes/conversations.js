@@ -30,24 +30,20 @@ router.get('/:sessionId', ownsParam('sessionId'), async (req, res) => {
 
     if (supabase) {
       try {
-        const orFilter = isUuid(sessionId)
-          ? `user_id.eq.${validUserId},id.eq.${sessionId},id.eq.${validUserId}`
-          : `user_id.eq.${validUserId}`;
-
+        // Solo sesiones de ESTE usuario. Antes el filtro incluía `id.eq.${sessionId}`, que
+        // traía la fila aunque fuera de otro dueño, y además metía user_id dentro de la lista
+        // de session_id: el listado terminaba mezclando chats de otra cuenta.
         const { data: userSessions } = await supabase
           .from('whatsapp_sessions')
           .select('id, user_id, status')
-          .or(orFilter)
+          .eq('user_id', validUserId)
           .order('created_at', { ascending: false });
 
         if (Array.isArray(userSessions) && userSessions.length > 0) {
           isConnInDb = userSessions.some(s => s.status === 'connected');
+          ownerUserId = userSessions[0].user_id || validUserId;
           for (const s of userSessions) {
             if (isUuid(s.id)) sessionIdsSet.add(s.id);
-            if (isUuid(s.user_id)) {
-              sessionIdsSet.add(s.user_id);
-              ownerUserId = s.user_id;
-            }
           }
         }
       } catch (errDbSess) {

@@ -1,7 +1,8 @@
 'use client';
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { io, Socket } from 'socket.io-client';
+import { Socket } from 'socket.io-client';
+import { connectSocket } from '@/lib/socket';
 import { BACKEND_URL } from '@/lib/config';
 import { apiFetch } from '@/lib/api';
 
@@ -34,7 +35,7 @@ const COMMON_EMOJIS = [
 ];
 
 export default function ConversationsPage() {
-  const { user, effectiveUserId } = useAuth();
+  const { user, effectiveUserId, selectedClientId } = useAuth();
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [active, setActive] = useState<Conversation | null>(null);
@@ -161,7 +162,10 @@ export default function ConversationsPage() {
   const handleCreateNewChat = async () => {
     const clean = newPhoneInput.replace(/[^0-9]/g, '');
     if (!clean) return;
-    const targetId = user?.id || sessionId || 'admin';
+    // effectiveUserId primero: con user?.id el admin que está viendo la cuenta de un cliente
+    // creaba/leía/escribía el chat dentro de SU PROPIA cuenta, no la del cliente.
+    const targetId = effectiveUserId || user?.id || sessionId;
+    if (!targetId) return;
 
     const tempConv: Conversation = {
       id: `conv_${clean}`,
@@ -230,7 +234,10 @@ export default function ConversationsPage() {
 
   const fetchActiveMessages = async (conv: Conversation | null, isInitial = false) => {
     if (!conv) return;
-    const targetId = user?.id || sessionId || 'admin';
+    // Mismo id que usó la lista: si aquí mandáramos user?.id, el panel abriría el chat de
+    // ese número en la cuenta del admin en vez de la cuenta que se está mirando.
+    const targetId = effectiveUserId || user?.id;
+    if (!targetId) return;
     const cleanP = conv.contact_phone ? conv.contact_phone.replace(/[^0-9]/g, '') : '';
     try {
       const res = await apiFetch(`${BACKEND}/api/conversations/${conv.id}/messages?phone=${cleanP}&userId=${targetId}`);
@@ -318,9 +325,7 @@ export default function ConversationsPage() {
         .catch(() => {});
     }, 15000); // Respaldo lento: el tiempo real llega por Socket.io
 
-    const socket = io(BACKEND, {
-      // El proxy de Vercel no soporta WebSockets: con BACKEND relativo solo polling.
-      transports: BACKEND ? ['websocket', 'polling'] : ['polling'],
+    const socket = connectSocket(BACKEND, {
       reconnectionAttempts: 10,
       reconnectionDelay: 2000,
     });
@@ -328,9 +333,11 @@ export default function ConversationsPage() {
 
     const joinRooms = () => {
       socket.emit('join_session', userIdToUse);
-      if (user?.id) socket.emit('join_session', user.id);
+      // Si el admin está viendo la cuenta de un cliente NO debe entrar también a su propia
+      // sala: los mensajes de su WhatsApp se colaban en la lista del cliente que está mirando.
+      if (user?.id && !selectedClientId) socket.emit('join_session', user.id);
       if (sessionId) socket.emit('join_session', sessionId);
-      if (user?.is_admin) {
+      if (user?.is_admin && !selectedClientId) {
         socket.emit('join_session', '00000000-0000-0000-0000-000000000001');
         socket.emit('join_session', 'admin');
       }
@@ -554,7 +561,8 @@ export default function ConversationsPage() {
   }, [user?.id, effectiveUserId, BACKEND]);
 
   const handleManualSync = async () => {
-    const targetId = sessionId || user?.id || 'admin';
+    const targetId = effectiveUserId || user?.id || sessionId;
+    if (!targetId) return;
     setSyncing(true);
     try {
       await apiFetch(`${BACKEND}/api/conversations/sync/${targetId}`, { method: 'POST' });
@@ -567,12 +575,13 @@ export default function ConversationsPage() {
   };
 
   const toggleGlobalBot = async () => {
-    if (!user?.id || togglingGlobal) return;
+    const globalTargetId = effectiveUserId || user?.id;
+    if (!globalTargetId || togglingGlobal) return;
     const nextVal = !globalBotEnabled;
     setTogglingGlobal(true);
     setGlobalBotEnabled(nextVal);
     try {
-      const res = await apiFetch(`${BACKEND}/api/sessions/global-bot/${user.id}`, {
+      const res = await apiFetch(`${BACKEND}/api/sessions/global-bot/${globalTargetId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ bot_enabled: nextVal }),
@@ -616,7 +625,7 @@ export default function ConversationsPage() {
     await apiFetch(`${BACKEND}/api/conversations/${conv.id}/toggle-bot`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ bot_active: newVal, phone: conv.contact_phone, userId: user?.id }),
+      body: JSON.stringify({ bot_active: newVal, phone: conv.contact_phone, userId: effectiveUserId || user?.id }),
     });
     setConversations(prev => prev.map(c => c.id === conv.id ? { ...c, bot_active: newVal } : c));
     if (active?.id === conv.id) setActive({ ...conv, bot_active: newVal });
@@ -627,7 +636,7 @@ export default function ConversationsPage() {
     await apiFetch(`${BACKEND}/api/conversations/${conv.id}/blacklist`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ blacklisted: newVal, reason, phone: conv.contact_phone, userId: user?.id }),
+      body: JSON.stringify({ blacklisted: newVal, reason, phone: conv.contact_phone, userId: effectiveUserId || user?.id }),
     });
     setConversations(prev => prev.map(c => c.id === conv.id ? { ...c, is_blacklisted: newVal } : c));
     if (active?.id === conv.id) setActive({ ...conv, is_blacklisted: newVal });
@@ -635,7 +644,9 @@ export default function ConversationsPage() {
 
   const sendMessage = async () => {
     if (!reply.trim() || !active || sending) return;
-    const targetId = sessionId || user?.id || 'admin';
+    // El mensaje se envía por la sesión de WhatsApp de la cuenta que se está viendo.
+    const targetId = effectiveUserId || user?.id;
+    if (!targetId) return;
     const messageText = reply.trim();
     setSending(true);
     setSendErrorToast(null);

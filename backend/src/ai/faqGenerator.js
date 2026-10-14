@@ -39,19 +39,24 @@ const generateFaqsFromChats = async (userId) => {
       convIds = (convs || []).map(c => c.id);
     }
 
-    // Si no hay conversaciones específicas por session_id, buscar mensajes inbound recientes globales
-    let messagesQuery = supabase
-      .from('messages')
-      .select('content, timestamp, direction')
-      .eq('direction', 'inbound')
-      .order('timestamp', { ascending: false })
-      .limit(60);
+    // Si este negocio todavía no tiene chats propios NO se consultan mensajes: antes se leían
+    // los 60 mensajes entrantes más recientes de TODO el SaaS y se mandaban a la IA, así que
+    // las FAQs de un negocio se generaban con lo que los clientes le escribían a otro.
+    // Sin chats propios se responde con las FAQs estándar de su categoría.
+    let recentMessages = [];
+    let msgErr = null;
 
     if (convIds.length > 0) {
-      messagesQuery = messagesQuery.in('conversation_id', convIds);
+      const { data: msgs, error: qErr } = await supabase
+        .from('messages')
+        .select('content, timestamp, direction')
+        .eq('direction', 'inbound')
+        .in('conversation_id', convIds)
+        .order('timestamp', { ascending: false })
+        .limit(60);
+      recentMessages = msgs || [];
+      msgErr = qErr;
     }
-
-    const { data: recentMessages, error: msgErr } = await messagesQuery;
 
     if (msgErr || !recentMessages || recentMessages.length === 0) {
       // Si aún no hay chats registrados, responder con FAQs sugeridas estándar para su categoría

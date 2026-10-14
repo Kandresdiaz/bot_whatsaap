@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { io as socketIO } from 'socket.io-client';
+import { connectSocket } from '@/lib/socket';
 import { BACKEND_URL } from '@/lib/config';
 import { apiFetch } from '@/lib/api';
 
@@ -128,12 +128,22 @@ export default function AppointmentsPage() {
 
   // 3. Conectar WebSockets para Tiempo Real (Socket.io)
   useEffect(() => {
-    const socket = socketIO(BACKEND, {
-      // El proxy de Vercel no soporta WebSockets: con BACKEND relativo solo polling.
-      transports: BACKEND ? ['websocket', 'polling'] : ['polling'],
+    // El backend ya no difunde pedidos ni citas a todos los paneles: hay que entrar
+    // explícitamente a la sala de esta cuenta (y el token decide a cuál se puede entrar).
+    const roomId = effectiveUserId || user?.id;
+    if (!roomId) return;
+
+    const socket = connectSocket(BACKEND, {
       reconnectionAttempts: 10,
       reconnectionDelay: 2000,
     });
+
+    const joinRooms = () => {
+      socket.emit('join_session', roomId);
+      if (user?.id && user.id !== roomId) socket.emit('join_session', user.id);
+    };
+    socket.on('connect', joinRooms);
+    joinRooms();
 
     socket.on('new_appointment', (newAppt: Appointment) => {
       if (!newAppt || !newAppt.id) return;
@@ -158,7 +168,7 @@ export default function AppointmentsPage() {
     return () => {
       socket.disconnect();
     };
-  }, [BACKEND]);
+  }, [BACKEND, effectiveUserId, user]);
 
   // Funciones de navegación de meses
   const prevMonth = () => {

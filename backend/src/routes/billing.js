@@ -452,18 +452,9 @@ router.get('/status/:userId', async (req, res) => {
         }
       }
 
-      // Si no encontró por session_id específico y es admin, obtener conversaciones generales
-      if (convIds.length === 0 && user.is_admin) {
-        const { data: allConvs } = await supabase
-          .from('conversations')
-          .select('id, is_lead')
-          .limit(200);
-        if (Array.isArray(allConvs)) {
-          convIds = allConvs.map(c => c.id).filter(Boolean);
-          hotLeadsCount = allConvs.filter(c => c.is_lead).length;
-          totalClientsServed = allConvs.length;
-        }
-      }
+      // Antes, si no se encontraban conversaciones propias y la cuenta era admin, se leían
+      // las conversaciones de TODO el SaaS: las métricas (clientes atendidos, leads, mensajes)
+      // mezclaban los chats de todos los negocios. Si no hay chats propios, las métricas van en 0.
 
       // 3. Contar mensajes generados por el bot este mes e históricos
       if (convIds.length > 0) {
@@ -497,35 +488,33 @@ router.get('/status/:userId', async (req, res) => {
         .eq('user_id', user.id);
       const busIds = Array.isArray(userBuses) ? userBuses.map(b => b.id).filter(Boolean) : [];
 
-      // 5. Consultar pedidos cerrados y facturación generada
-      let ordersQuery = supabase.from('orders').select('id, total_amount, status');
-      if (busIds.length > 0) {
-        ordersQuery = ordersQuery.in('business_id', busIds);
-      } else if (convIds.length > 0) {
-        ordersQuery = ordersQuery.in('conversation_id', convIds);
-      } else if (user.is_admin) {
-        ordersQuery = ordersQuery.limit(200);
+      // 5. Consultar pedidos cerrados y facturación generada.
+      // Solo si hay a qué acotar: sin negocio ni conversaciones propias la consulta salía SIN
+      // filtro y sumaba los pedidos (y la facturación) de todos los negocios del SaaS.
+      if (busIds.length > 0 || convIds.length > 0) {
+        let ordersQuery = supabase.from('orders').select('id, total_amount, status');
+        ordersQuery = busIds.length > 0
+          ? ordersQuery.in('business_id', busIds)
+          : ordersQuery.in('conversation_id', convIds);
+
+        const { data: ordersData } = await ordersQuery;
+        if (Array.isArray(ordersData)) {
+          ordersCount = ordersData.length;
+          ordersRevenue = ordersData.reduce((sum, o) => sum + (parseFloat(o.total_amount) || 0), 0);
+        }
       }
 
-      const { data: ordersData } = await ordersQuery;
-      if (Array.isArray(ordersData)) {
-        ordersCount = ordersData.length;
-        ordersRevenue = ordersData.reduce((sum, o) => sum + (parseFloat(o.total_amount) || 0), 0);
-      }
+      // 6. Consultar citas agendadas por el bot (mismo criterio que los pedidos)
+      if (busIds.length > 0 || convIds.length > 0) {
+        let apptsQuery = supabase.from('appointments').select('id, status');
+        apptsQuery = busIds.length > 0
+          ? apptsQuery.in('business_id', busIds)
+          : apptsQuery.in('conversation_id', convIds);
 
-      // 6. Consultar citas agendadas por el bot
-      let apptsQuery = supabase.from('appointments').select('id, status');
-      if (busIds.length > 0) {
-        apptsQuery = apptsQuery.in('business_id', busIds);
-      } else if (convIds.length > 0) {
-        apptsQuery = apptsQuery.in('conversation_id', convIds);
-      } else if (user.is_admin) {
-        apptsQuery = apptsQuery.limit(200);
-      }
-
-      const { data: apptsData } = await apptsQuery;
-      if (Array.isArray(apptsData)) {
-        appointmentsCount = apptsData.length;
+        const { data: apptsData } = await apptsQuery;
+        if (Array.isArray(apptsData)) {
+          appointmentsCount = apptsData.length;
+        }
       }
 
     } catch (msgErr) {
