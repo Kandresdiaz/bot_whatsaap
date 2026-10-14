@@ -27,10 +27,30 @@ const io = new Server(server, {
 });
 global.io = io;
 
+// Las salas de Socket.io llevan los mensajes de WhatsApp en vivo. Antes 'join_session'
+// aceptaba cualquier id sin comprobar nada: bastaba con conocer (o adivinar) el id de otro
+// negocio para recibir sus chats en tiempo real. Ahora se exige el mismo token del panel y
+// solo se entra a salas que pertenecen a ese token.
+const { verifyToken } = require('./auth/token');
+const { canJoinRoom, requireAdmin } = require('./auth/access');
+
+io.use((socket, next) => {
+  const raw = socket.handshake.auth?.token || socket.handshake.query?.token || '';
+  const session = verifyToken(String(raw).replace(/^Bearer\s+/i, '').trim());
+  if (!session) return next(new Error('unauthorized'));
+  socket.data.auth = session;
+  next();
+});
+
 io.on('connection', (socket) => {
   console.log('[IO] Cliente conectado:', socket.id);
 
-  socket.on('join_session', (id) => {
+  socket.on('join_session', async (id) => {
+    if (!id) return;
+    if (!(await canJoinRoom(socket.data.auth, String(id)))) {
+      console.warn(`[IO] Rechazado join_session a ${id} (token de ${socket.data.auth.uid})`);
+      return;
+    }
     socket.join(`session_${id}`);
     socket.join(`user_${id}`);
     console.log(`[IO] Socket unido a: session_${id} y user_${id}`);
@@ -76,6 +96,55 @@ app.get('/api/debug/version', (req, res) => {
     queue: require('./queues/messageQueue').getQueueStatus(),
     timestamp: new Date().toISOString(),
   });
+});
+
+// Radiografía de las sesiones de WhatsApp: para saber POR QUÉ se cae un número en vez
+// de adivinar. Solo admin: enseña teléfonos y estado de todas las cuentas.
+app.get('/api/debug/sessions', requireAdmin, async (req, res) => {
+  try {
+    const { getSessionsDiagnostics } = require('./whatsapp/sessionManager');
+    const enMemoria = getSessionsDiagnostics();
+
+    // Filas de la base SIN traer session_data (pesa megas y se cobra como ancho de banda).
+    let enBase = [];
+    const duplicadas = [];
+    try {
+      const { supabase } = require('./db/supabase');
+      const { data } = await supabase
+        .from('whatsapp_sessions')
+        .select('id, user_id, status, phone_number, connected_at, created_at')
+        .order('created_at', { ascending: false });
+
+      enBase = data || [];
+      const porUsuario = new Map();
+      for (const fila of enBase) {
+        porUsuario.set(fila.user_id, (porUsuario.get(fila.user_id) || 0) + 1);
+      }
+      // Más de una fila por cuenta rompe la restauración de credenciales tras un reinicio.
+      for (const [userId, cuantas] of porUsuario) {
+        if (cuantas > 1) duplicadas.push({ userId, filas: cuantas });
+      }
+    } catch (e) {
+      console.warn('[Debug Sessions] Error leyendo whatsapp_sessions:', e.message);
+    }
+
+    res.json({
+      success: true,
+      uptimeSegundos: Math.round(process.uptime()),
+      memoriaMB: Math.round(process.memoryUsage().rss / 1024 / 1024),
+      sesionesEnMemoria: enMemoria,
+      sesionesEnBase: enBase.map(f => ({
+        userId: f.user_id,
+        estado: f.status,
+        telefono: f.phone_number,
+        conectadaDesde: f.connected_at,
+      })),
+      cuentasConFilasDuplicadas: duplicadas,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 app.get('/api/debug/test-groq', async (req, res) => {
@@ -133,6 +202,19 @@ try {
 }
 
 // ── Restaurar sesiones activas (sin bloquear el arranque) ───────────────────
+//
+// En Render se espera bastante más que en local A PROPÓSITO. Al desplegar, Render levanta
+// la instancia nueva y solo cuando responde le manda SIGTERM a la vieja: durante esos
+// segundos hay DOS procesos. Si el nuevo abre WhatsApp con las mismas credenciales
+// mientras el viejo sigue conectado, WhatsApp lo ve como dos dispositivos iguales, expulsa
+// uno (error 440 'conflict') y a la larga invalida la sesión → QR otra vez. Esperar deja
+// que el proceso viejo se apague y suelte la conexión antes de reconectar.
+const RESTORE_DELAY_MS = parseInt(
+  process.env.STARTUP_RESTORE_DELAY_MS || (process.env.RENDER_EXTERNAL_URL ? '25000' : '3000'),
+  10,
+);
+console.log(`[STARTUP] Las sesiones de WhatsApp se restauran en ${Math.round(RESTORE_DELAY_MS / 1000)}s`);
+
 setTimeout(async () => {
   try {
     const { restoreSessions } = require('./whatsapp/sessionManager');
@@ -144,7 +226,7 @@ setTimeout(async () => {
   } catch (e) {
     console.error('[STARTUP] Error restaurando sesiones (no crítico):', e.message);
   }
-}, 3000); // Esperar 3s para que el servidor esté completamente listo
+}, RESTORE_DELAY_MS);
 
 // ── Start ─────────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3001;
@@ -189,9 +271,22 @@ server.listen(PORT, () => {
 const handleGracefulShutdown = async (signal) => {
   console.log(`[SHUTDOWN] Señal ${signal} recibida. Guardando credenciales activas en Supabase...`);
   try {
-    const { saveAllActiveSessions } = require('./whatsapp/sessionManager');
+    const { saveAllActiveSessions, sessions } = require('./whatsapp/sessionManager');
     if (typeof saveAllActiveSessions === 'function') {
       await saveAllActiveSessions();
+    }
+
+    // Cerrar los sockets de WhatsApp ANTES de salir: si no, la conexión queda colgando
+    // unos segundos y choca con la instancia nueva que Render ya está levantando.
+    if (sessions && typeof sessions.entries === 'function') {
+      const cerrados = new Set();
+      for (const [, s] of sessions.entries()) {
+        if (s?.sock && !cerrados.has(s.sock)) {
+          cerrados.add(s.sock);
+          try { s.sock.end(new Error('Apagando el servidor')); } catch (_) {}
+        }
+      }
+      if (cerrados.size > 0) console.log(`[SHUTDOWN] ${cerrados.size} conexiones de WhatsApp cerradas.`);
     }
   } catch (e) {
     console.error('[SHUTDOWN] Error guardando sesiones:', e.message);

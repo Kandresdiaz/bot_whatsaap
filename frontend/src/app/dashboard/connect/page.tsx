@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { io } from 'socket.io-client';
+import { connectSocket } from '@/lib/socket';
 import { useAuth } from '@/context/AuthContext';
 import OnboardingWizardModal from '@/components/OnboardingWizardModal';
 import TrialActivationModal from '@/components/TrialActivationModal';
@@ -14,7 +14,7 @@ const BACKEND = BACKEND_URL;
 type Status = 'disconnected' | 'connecting' | 'qr_ready' | 'connected' | 'error';
 
 export default function ConnectPage() {
-  const { user, effectiveUserId } = useAuth();
+  const { user, effectiveUserId, selectedClientId } = useAuth();
   const router = useRouter();
   const [status, setStatus] = useState<Status>('disconnected');
   const [qr, setQr] = useState<string | null>(null);
@@ -143,17 +143,17 @@ export default function ConnectPage() {
     if (!effectiveUserId) return;
     let cancelled = false;
 
-    const socket = io(BACKEND, {
-      // El proxy de Vercel no soporta WebSockets: con BACKEND relativo solo polling.
-      transports: BACKEND ? ['websocket', 'polling'] : ['polling'],
+    const socket = connectSocket(BACKEND, {
       reconnectionAttempts: 10,
       reconnectionDelay: 2000,
     });
 
     const joinRooms = () => {
       socket.emit('join_session', effectiveUserId);
-      if (user?.id) socket.emit('join_session', user.id);
-      if (user?.is_admin) {
+      // Si el admin está viendo la cuenta de un cliente NO debe entrar también a su propia
+      // sala: los mensajes de su WhatsApp se colaban en la lista del cliente que está mirando.
+      if (user?.id && !selectedClientId) socket.emit('join_session', user.id);
+      if (user?.is_admin && !selectedClientId) {
         socket.emit('join_session', '00000000-0000-0000-0000-000000000001');
         socket.emit('join_session', 'admin');
       }

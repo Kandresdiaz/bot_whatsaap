@@ -362,12 +362,27 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
     const { getSessionUuid } = require('./sessionManager');
     const sessionUuid = await getSessionUuid(userId);
 
+    // Sin session_id no se sabe de qué negocio es este chat. Antes se buscaba y se insertaba
+    // solo por contact_phone: el mensaje terminaba dentro de la conversación de OTRO negocio
+    // que tuviera guardado el mismo número, y ese negocio veía el chat ajeno en su panel.
+    // Si falla la resolución de la sesión preferimos no tocar la DB.
+    if (!sessionUuid) {
+      console.warn(`[MSG] Sin session_id para ${userId}: no se guarda el chat de ${contactPhone} (evita mezclar negocios).`);
+      throw new Error('session_id no resuelto');
+    }
+
+    // El chat pertenece al WhatsApp que lo está atendiendo: se marca con su número para
+    // que al vincular otro WhatsApp este chat no aparezca en el panel.
+    const { telefonoDeLaSesion, acotarAlNumero, marcarDueno } = require('../services/chatOwnership');
+    const telefonoDueno = await telefonoDeLaSesion(userId);
+
     // 1) Buscar conversación existente por número de teléfono (aislada a esta sesión)
     let convQuery = supabase
       .from('conversations')
       .select('*')
+      .eq('session_id', sessionUuid)
       .eq('contact_phone', contactPhone);
-    if (sessionUuid) convQuery = convQuery.eq('session_id', sessionUuid);
+    convQuery = await acotarAlNumero(convQuery, telefonoDueno);
     const { data: existingConvs } = await convQuery.order('last_message_at', { ascending: false }).limit(1);
 
     if (existingConvs && existingConvs.length > 0) {
@@ -380,17 +395,19 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
       }).eq('id', conversation.id);
     } else {
       // 2) Si no existe conversación previa para este teléfono, insertarla
+      const filaNueva = await marcarDueno({
+        session_id: sessionUuid,
+        contact_phone: contactPhone,
+        contact_name: contactName,
+        bot_active: true,
+        is_blacklisted: false,
+        last_message: text,
+        last_message_at: new Date().toISOString(),
+      }, telefonoDueno);
+
       const { data: newConv, error: insErr } = await supabase
         .from('conversations')
-        .upsert({
-          session_id: sessionUuid || null,
-          contact_phone: contactPhone,
-          contact_name: contactName,
-          bot_active: true,
-          is_blacklisted: false,
-          last_message: text,
-          last_message_at: new Date().toISOString(),
-        }, { onConflict: 'session_id,contact_phone' })
+        .upsert(filaNueva, { onConflict: 'session_id,contact_phone' })
         .select()
         .limit(1);
 
@@ -734,7 +751,10 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
         const ramMsgs = [];
         for (const [mId, mObj] of store.messages.entries()) {
           const mPhone = (mObj.remoteJid || '').replace(/[^0-9]/g, '');
-          if (mPhone && (mPhone.includes(jidDigits) || jidDigits.includes(mPhone))) {
+          // Antes se comparaba con includes() en ambos sentidos: un número que fuera
+          // subcadena de otro metía los mensajes de OTRO contacto en el historial que
+          // se le manda a la IA. Ahora solo coincidencia exacta.
+          if (mPhone && mPhone === jidDigits) {
             const mText = mObj.content || mObj.text || '';
             if (mText) {
               ramMsgs.push({

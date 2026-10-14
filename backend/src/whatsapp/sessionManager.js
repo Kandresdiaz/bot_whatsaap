@@ -357,12 +357,21 @@ const clearUserConversationsFromDb = async (userId) => {
 // (como WhatsApp Web: lo que ves es solo lo del número conectado). Solo se llama
 // con un cambio de número confirmado; nunca en reconexiones del mismo número.
 // Citas, pedidos y productos no se tocan.
-const purgeConversationsForNumberChange = async (userId) => {
+const purgeConversationsForNumberChange = async (userId, prevPhone = '') => {
   if (!supabase) return;
   const sessionUuid = await getSessionUuid(userId);
   if (!sessionUuid) return;
-  const { data: convs, error } = await supabase
-    .from('conversations').select('id').eq('session_id', sessionUuid);
+
+  // Se borran solo los chats que atendió el número anterior (y los que vienen de antes de
+  // la migración 008, que no tienen dueño marcado). Sin esta condición, un falso positivo
+  // al detectar el cambio de número se llevaba por delante los chats del número actual.
+  let q = supabase.from('conversations').select('id').eq('session_id', sessionUuid);
+  const { soportaOwnerPhone, limpiarTelefono } = require('../services/chatOwnership');
+  const anterior = limpiarTelefono(prevPhone);
+  if (anterior && await soportaOwnerPhone()) {
+    q = q.or(`owner_phone.eq.${anterior},owner_phone.is.null`);
+  }
+  const { data: convs, error } = await q;
   if (error) { console.warn('[Baileys] No se pudieron leer chats a limpiar:', error.message); return; }
   const ids = (convs || []).map(c => c.id);
   for (let i = 0; i < ids.length; i += 200) {
@@ -695,6 +704,12 @@ const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts =
     const userSessionObj = sessions.get(userId) || sessions.get(getValidUserId(userId));
     const userOwnPhone = (userSessionObj?.phone || userSessionObj?.sock?.user?.id || '').split(':')[0].replace(/[^0-9]/g, '');
 
+    // Número que atiende estos chats, con el que se marcan (owner_phone) para que el panel
+    // solo muestre los del WhatsApp conectado. Si la sesión en RAM todavía no lo tiene se
+    // busca en la base: sin número los chats quedarían sin dueño y no se verían.
+    const { marcarDueno, acotarAlNumero, telefonoDeLaSesion } = require('../services/chatOwnership');
+    const telefonoDueno = userOwnPhone || await telefonoDeLaSesion(userId);
+
     // Mapa de último mensaje por número de teléfono
     const latestMsgByPhone = new Map();
     for (const msg of allMessagesList) {
@@ -821,6 +836,12 @@ const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts =
     // Guardar nuevas conversaciones en Supabase vía upsert con onConflict (session_id, contact_phone)
     if (newConvsToInsert.length > 0) {
       try {
+        // Cada chat queda marcado con el WhatsApp que lo atendió: al vincular otro número
+        // el panel ya no muestra los chats del anterior (ver migración 008).
+        for (let i = 0; i < newConvsToInsert.length; i++) {
+          newConvsToInsert[i] = await marcarDueno(newConvsToInsert[i], telefonoDueno);
+        }
+
         const { data: inserted, error: insErr } = await supabase
           .from('conversations')
           .upsert(newConvsToInsert, { onConflict: 'session_id,contact_phone' })
@@ -893,12 +914,13 @@ const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts =
         if (!conv?.id) {
           // Búsqueda directa por número de teléfono en Supabase aislado a este usuario
           try {
-            const { data: directConv } = await supabase
+            let qDirect = supabase
               .from('conversations')
               .select('id, contact_phone')
               .in('session_id', userSessionIds.length > 0 ? userSessionIds : [sessionUuid])
-              .eq('contact_phone', contactPhone)
-              .limit(1);
+              .eq('contact_phone', contactPhone);
+            qDirect = await acotarAlNumero(qDirect, telefonoDueno);
+            const { data: directConv } = await qDirect.limit(1);
 
             if (directConv && directConv[0]?.id) {
               conv = directConv[0];
@@ -913,15 +935,15 @@ const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts =
             const contactName = contactsMap.get(jid) || contactsMap.get(contactPhone) || msg.pushName || (resolved.isGroup ? 'Grupo WA' : contactPhone);
             const { data: newConvRows } = await supabase
               .from('conversations')
-              .upsert({
-                session_id: sessionUuid || null,
+              .upsert(await marcarDueno({
+                session_id: sessionUuid,
                 contact_phone: contactPhone,
                 contact_name: contactName,
                 bot_active: !resolved.isGroup,
                 is_blacklisted: false,
                 last_message: text,
                 last_message_at: msgTime,
-              }, { onConflict: 'session_id,contact_phone' })
+              }, telefonoDueno), { onConflict: 'session_id,contact_phone' })
               .select('id, contact_phone, contact_name')
               .limit(1);
 
@@ -1044,6 +1066,9 @@ const saveSessionTimeouts = new Map();
 // Hash del último JSON subido por usuario: si no cambió, no se vuelve a subir.
 // Cada subida pesa cientos de KB y cuenta contra el ancho de banda de Render.
 const lastSavedSessionHash = new Map();
+// Radiografía de la última subida de credenciales por usuario: sirve para saber si la
+// sesión se está guardando completa (ver /api/debug/sessions).
+const lastSavedSessionInfo = new Map();
 const debouncedSaveFullSessionToDb = (userId, sessionDir, delay = 2500) => {
   const validUserId = getValidUserId(userId);
   if (saveSessionTimeouts.has(validUserId)) {
@@ -1069,30 +1094,41 @@ const saveFullSessionToDb = async (userId, sessionDir) => {
     // 1. creds.json es obligatorio
     sessionObj['creds.json'] = fs.readFileSync(credsFile, 'utf8');
 
-    // 2. Priorizar archivos lid-mapping-*.json para garantizar persistencia y resolución de contactos
+    // 2. Orden de prioridad al llenar el cupo. Lo que no entra NO se guarda, y al
+    // restaurar la sesión queda incompleta: WhatsApp la invalida y el número pide QR
+    // otra vez. Por eso primero va lo que sin ello la sesión no sirve (claves de
+    // cifrado), después los mapeos LID y de último lo recuperable (sesiones por
+    // contacto, que se renegocian solas).
     let totalBytes = sessionObj['creds.json'].length;
     const MAX_BYTES = 3 * 1024 * 1024; // 3MB de margen seguro para Supabase PostgREST
 
-    for (const file of files) {
-      if (file.startsWith('lid-mapping-') && file.endsWith('.json')) {
-        const filePath = path.join(sessionDir, file);
-        const content = fs.readFileSync(filePath, 'utf8');
-        if (totalBytes + content.length < MAX_BYTES) {
-          sessionObj[file] = content;
-          totalBytes += content.length;
-        }
-      }
-    }
+    const esCritico = (f) => f.startsWith('app-state-sync-key-') || f.startsWith('pre-key-') || f.startsWith('sender-key-');
+    const esMapeo = (f) => f.startsWith('lid-mapping-');
 
-    // 3. Guardar el resto de archivos de sincronización
-    for (const file of files) {
-      if (file === 'creds.json' || file.startsWith('lid-mapping-') || !file.endsWith('.json')) continue;
+    const candidatos = files.filter(f => f !== 'creds.json' && f.endsWith('.json'));
+    const porPrioridad = [
+      ...candidatos.filter(esCritico),
+      ...candidatos.filter(esMapeo),
+      ...candidatos.filter(f => !esCritico(f) && !esMapeo(f)),
+    ];
+
+    const descartados = [];
+    for (const file of porPrioridad) {
       const filePath = path.join(sessionDir, file);
       const content = fs.readFileSync(filePath, 'utf8');
       if (totalBytes + content.length < MAX_BYTES) {
         sessionObj[file] = content;
         totalBytes += content.length;
+      } else {
+        descartados.push(file);
       }
+    }
+
+    // Avisar: antes se descartaban en silencio y la sesión se rompía semanas después
+    // sin ninguna pista en los logs.
+    if (descartados.length > 0) {
+      const criticos = descartados.filter(esCritico).length;
+      console.warn(`[Baileys Auth] ⚠ ${validUserId}: ${descartados.length} archivos de credenciales NO caben en los ${(MAX_BYTES / 1024 / 1024).toFixed(0)}MB guardados (${criticos} críticos). Si el número pide QR tras un reinicio, la causa es esta.`);
     }
 
     const jsonStr = JSON.stringify(sessionObj);
@@ -1104,6 +1140,12 @@ const saveFullSessionToDb = async (userId, sessionDir) => {
       session_data: jsonStr,
     });
     lastSavedSessionHash.set(validUserId, hash);
+    lastSavedSessionInfo.set(validUserId, {
+      archivosGuardados: Object.keys(sessionObj).length,
+      archivosDescartados: descartados.length,
+      kilobytes: Math.round(totalBytes / 1024),
+      cuando: new Date().toISOString(),
+    });
     console.log(`[Baileys Auth] 💾 Sesión guardada en Supabase para ${validUserId} (${Object.keys(sessionObj).length} archivos, ${(totalBytes / 1024).toFixed(1)} KB)`);
   } catch (e) {
     console.warn('[Baileys Auth] Error guardando sesión completa:', e.message);
@@ -1114,11 +1156,19 @@ const restoreFullSessionFromDb = async (userId, sessionDir) => {
   if (!supabase) return false;
   try {
     const validUserId = getValidUserId(userId);
-    const { data: dbSess } = await supabase
+    // Nada de maybeSingle: si la cuenta tiene más de una fila en whatsapp_sessions
+    // (pasa al reconectar o por filas viejas) devuelve error y la sesión NO se restaura,
+    // así que tras cada reinicio el número aparecía desconectado y tocaba reescanear.
+    // Se usa la más reciente, igual que getSessionUuid y safeUpsert.
+    const { data: dbRows, error: dbErr } = await supabase
       .from('whatsapp_sessions')
       .select('session_data')
       .eq('user_id', validUserId)
-      .maybeSingle();
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    if (dbErr) console.warn('[Baileys Auth] Error leyendo credenciales guardadas:', dbErr.message);
+    const dbSess = dbRows && dbRows[0];
 
     if (dbSess?.session_data) {
       if (!fs.existsSync(sessionDir)) fs.mkdirSync(sessionDir, { recursive: true });
@@ -1385,9 +1435,15 @@ const createSession = async (userId, businessId, io, forceClean = false, isManua
       try {
         if (supabase) {
           const sessionUuid = await getSessionUuid(userId);
-          let q = supabase.from('conversations').delete().eq('contact_phone', contactPhone);
-          if (sessionUuid) q = q.eq('session_id', sessionUuid);
-          await q;
+          // Sin session_id el DELETE borraba el chat de ese número en TODOS los negocios
+          // del SaaS. Si no se resuelve la sesión, no se borra nada.
+          if (sessionUuid) {
+            await supabase.from('conversations').delete()
+              .eq('session_id', sessionUuid)
+              .eq('contact_phone', contactPhone);
+          } else {
+            console.warn(`[Baileys] Sin session_id para ${userId}: no se borra el chat de ${contactPhone}.`);
+          }
         }
       } catch (_) {}
 
@@ -1412,11 +1468,14 @@ const createSession = async (userId, businessId, io, forceClean = false, isManua
 
         if (oldMsg) store.messages.delete(key.id);
 
-        if (supabase && contactPhone) {
-          const sessionUuid = await getSessionUuid(userId);
+        // Acotado a la sesión de este usuario: sin el filtro se editaba el mensaje dentro de
+        // la conversación de otro negocio que tuviera el mismo número.
+        const sessionUuid = supabase && contactPhone ? await getSessionUuid(userId) : null;
+        if (sessionUuid) {
           const { data: convRows } = await supabase
             .from('conversations')
             .select('id, last_message')
+            .eq('session_id', sessionUuid)
             .eq('contact_phone', contactPhone)
             .order('last_message_at', { ascending: false })
             .limit(1);
@@ -1540,14 +1599,20 @@ const createSession = async (userId, businessId, io, forceClean = false, isManua
       try {
         if (supabase) {
           let prevRaw = null;
+          // limit(1) sobre la más reciente en vez de maybeSingle: con filas duplicadas
+          // maybeSingle devuelve error y el cambio de número pasaba desapercibido.
           const withLast = await supabase
-            .from('whatsapp_sessions').select('phone_number, last_phone').eq('user_id', validId).maybeSingle();
+            .from('whatsapp_sessions').select('phone_number, last_phone')
+            .eq('user_id', validId).order('created_at', { ascending: false }).limit(1);
           if (!withLast.error) {
-            prevRaw = withLast.data?.last_phone || withLast.data?.phone_number;
+            const fila = withLast.data && withLast.data[0];
+            prevRaw = fila?.last_phone || fila?.phone_number;
           } else {
+            // La columna last_phone la agrega la migración 007: si no está, se usa phone_number.
             const basic = await supabase
-              .from('whatsapp_sessions').select('phone_number').eq('user_id', validId).maybeSingle();
-            prevRaw = basic.data?.phone_number;
+              .from('whatsapp_sessions').select('phone_number')
+              .eq('user_id', validId).order('created_at', { ascending: false }).limit(1);
+            prevRaw = basic.data && basic.data[0]?.phone_number;
           }
           const prevPhone = (prevRaw || '').replace(/[^0-9]/g, '');
 
@@ -1557,7 +1622,7 @@ const createSession = async (userId, businessId, io, forceClean = false, isManua
             userStores.delete(validId);
             userContacts.delete(userId);
             userContacts.delete(validId);
-            await purgeConversationsForNumberChange(validId);
+            await purgeConversationsForNumberChange(validId, prevPhone);
           }
         }
       } catch (checkErr) {
@@ -1972,29 +2037,39 @@ const createSession = async (userId, businessId, io, forceClean = false, isManua
 
         try {
           const sessionUuid = await getSessionUuid(userId);
+          // Sin session_id no se puede saber a qué negocio pertenece el chat: guardarlo con
+          // session_id nulo deja filas huérfanas que después se cruzan con otras cuentas.
+          if (!sessionUuid) {
+            console.warn(`[Baileys] Sin session_id para ${userId}: mensaje de ${contactPhone} no persistido.`);
+            continue;
+          }
 
           const ownSessionIds = await getUserSessionIds(userId);
-          if (sessionUuid && !ownSessionIds.includes(sessionUuid)) ownSessionIds.push(sessionUuid);
+          if (!ownSessionIds.includes(sessionUuid)) ownSessionIds.push(sessionUuid);
 
-          const { data: convRows } = await supabase
+          // Mismo criterio que el resto: el chat es del WhatsApp conectado.
+          const ownership = require('../services/chatOwnership');
+          const telefonoDueno = await ownership.telefonoDeLaSesion(userId);
+
+          let qConv = supabase
             .from('conversations')
             .select('id')
-            .in('session_id', ownSessionIds.length > 0 ? ownSessionIds : [sessionUuid])
-            .eq('contact_phone', contactPhone)
-            .order('last_message_at', { ascending: false })
-            .limit(1);
+            .in('session_id', ownSessionIds)
+            .eq('contact_phone', contactPhone);
+          qConv = await ownership.acotarAlNumero(qConv, telefonoDueno);
+          const { data: convRows } = await qConv.order('last_message_at', { ascending: false }).limit(1);
 
           let conversationId = convRows && convRows[0]?.id;
           if (!conversationId) {
-            const { data: newConvRows } = await supabase.from('conversations').upsert({
-              session_id: sessionUuid || null,
+            const { data: newConvRows } = await supabase.from('conversations').upsert(await ownership.marcarDueno({
+              session_id: sessionUuid,
               contact_phone: contactPhone,
               contact_name: contactPhone,
               bot_active: true,
               is_blacklisted: false,
               last_message: text,
               last_message_at: msgTs,
-            }, { onConflict: 'session_id,contact_phone' }).select('id').limit(1);
+            }, telefonoDueno), { onConflict: 'session_id,contact_phone' }).select('id').limit(1);
             conversationId = newConvRows && newConvRows[0]?.id;
           }
 
@@ -2127,6 +2202,28 @@ const disconnectSession = async (userId) => {
   clearUserConversationsFromDb(validId).catch(() => {});
 };
 
+// Estado de cada sesión viva, para el endpoint de diagnóstico. Una entrada por usuario
+// real (el mapa `sessions` guarda la misma sesión bajo varias claves).
+const getSessionsDiagnostics = () => {
+  const porUsuario = new Map();
+  for (const [key, s] of sessions.entries()) {
+    const validId = getValidUserId(key);
+    if (porUsuario.has(validId)) continue;
+    porUsuario.set(validId, {
+      userId: validId,
+      estado: s?.status || 'desconocido',
+      telefono: s?.phone || null,
+      tieneSocket: !!s?.sock,
+      intentosDeReconexion: reconnectAttempts.get(validId) || 0,
+      reconexionProgramada: reconnectTimers.has(validId),
+      desconectadoAMano: userDisconnectedMap.has(validId),
+      chatsEnMemoria: userStores.get(validId)?.chats?.size || 0,
+      ultimoGuardadoDeCredenciales: lastSavedSessionInfo.get(validId) || null,
+    });
+  }
+  return Array.from(porUsuario.values());
+};
+
 const getSession = (userId) => {
   if (!userId) return null;
 
@@ -2194,17 +2291,30 @@ const restoreSessions = async (io) => {
 };
 
 // Respaldo periódico en segundo plano de credenciales completas para todas las sesiones activas
+// Guarda las credenciales de todas las sesiones vivas. Se llama al recibir SIGTERM
+// (Render reiniciando o desplegando): si no se guardan, al arrancar de nuevo la sesión
+// se restaura desde una copia vieja y WhatsApp puede invalidarla → QR otra vez.
 const saveAllActiveSessions = async () => {
   if (!supabase) return;
   try {
+    const yaGuardados = new Set();
     for (const [userId, s] of sessions.entries()) {
-      if (s?.sock && s?.status === 'connected') {
-        const validId = getValidUserId(userId);
-        const sessionDir = path.join(SESSIONS_DIR, validId);
-        if (fs.existsSync(sessionDir)) {
-          await saveFullSessionToDb(validId, sessionDir);
-        }
+      if (!s?.sock || s?.status !== 'connected') continue;
+      const validId = getValidUserId(userId);
+      if (yaGuardados.has(validId)) continue;
+
+      // createSession crea la carpeta con la clave cruda (puede ser 'admin' o un uuid de
+      // sesión), no con el validId. Buscando solo en la del validId, las credenciales de
+      // esas sesiones NO se guardaban al apagar: se probaban las dos.
+      const posibles = [path.join(SESSIONS_DIR, String(userId)), path.join(SESSIONS_DIR, validId)];
+      const sessionDir = posibles.find(d => fs.existsSync(path.join(d, 'creds.json')));
+
+      if (!sessionDir) {
+        console.warn(`[Baileys Auth] No se encontró la carpeta de credenciales de ${userId}: no se guardó al apagar.`);
+        continue;
       }
+      yaGuardados.add(validId);
+      await saveFullSessionToDb(validId, sessionDir);
     }
   } catch (errSaveAll) {
     console.warn('[Baileys Auth] Error en saveAllActiveSessions:', errSaveAll.message);
@@ -2474,6 +2584,7 @@ module.exports = {
   setContactBotStatus,
   isContactBotDisabled,
   saveAllActiveSessions,
+  getSessionsDiagnostics,
 };
 
 

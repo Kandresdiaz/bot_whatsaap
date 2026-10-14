@@ -53,9 +53,9 @@ Fuente de verdad: `frontend/src/app/pricing/page.tsx` (precios y característica
 
 En **Admin → Clientes → Registrar cliente** se elige una *plantilla de nicho* (Distribuidora / Mayorista, Tienda, Restaurante, Servicios con cita). La plantilla llena personalidad, objetivo, saludo, mensaje fuera de horario, horario típico e instrucciones de cierre; si hay nombre del negocio, queda marcado como configurado. Faltan solo la descripción, el link de pago y el catálogo (Conocimiento → PDF).
 
-Las plantillas están en `backend/src/services/nicheTemplates.js`. En un negocio ya configurado, la plantilla solo llena los campos vacíos.
+Las plantillas están en `backend/src/services/nicheTemplates.js`. En un negocio ya configurado, la plantilla solo llena los campos vacíos. El alta desde el admin no copia los campos que traen `[COMPLETAR: ...]`.
 
-Las mismas plantillas (clínica, inmobiliaria, belleza, distribuidora, tienda, restaurante y otros servicios) aparecen para cada usuario como sugerencias:
+Las mismas plantillas (clínica, inmobiliaria, belleza, distribuidora, tienda, restaurante, concesionario, taller, academia, hotel, veterinaria y otros servicios) aparecen para cada usuario como sugerencias:
 - **Configurar Bot → "¿Qué tipo de negocio es?"**: llena el prompt, el cierre, los saludos, el horario y una descripción de ejemplo. El usuario la revisa, la pule y guarda. El panel no deja guardar mientras quede algún `[COMPLETAR: ...]`.
 - **Knowledge Base → "📋 FAQs recomendadas"**: carga las preguntas típicas del nicho en tarjetas editables. Solo se aprueban cuando ya no tienen `[COMPLETAR: ...]`.
 

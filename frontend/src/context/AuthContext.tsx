@@ -58,6 +58,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (u.is_admin && storedSelId) {
         setSelectedClientId(storedSelId);
         setSelectedClientName(storedSelName || null);
+      } else if (storedSelId) {
+        // Una cuenta que no es admin nunca debe quedar apuntando a otro cliente.
+        localStorage.removeItem('wbot_selected_client_id');
+        localStorage.removeItem('wbot_selected_client_name');
       }
     }
     setLoading(false);
@@ -91,6 +95,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
     const data = await res.json();
     if (data.success) {
+      // Arrancar siempre sin cliente seleccionado: si quedaba uno guardado de una sesión
+      // anterior, el panel abría la cuenta equivocada y mostraba chats de otro negocio.
+      localStorage.removeItem('wbot_selected_client_id');
+      localStorage.removeItem('wbot_selected_client_name');
+      setSelectedClientId(null);
+      setSelectedClientName(null);
+
       localStorage.setItem('wbot_user', JSON.stringify(data.user));
       localStorage.setItem('wbot_token', data.token);
       setUser(data.user);

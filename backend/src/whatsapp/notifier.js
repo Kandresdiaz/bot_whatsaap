@@ -38,13 +38,13 @@ const notifySystemAlert = async (type, details = {}) => {
   try {
     console.warn(`[SYSTEM ALERT] (${type}):`, details);
 
-    // 1. Emitir Socket.io silencioso al dashboard
+    // 1. Emitir Socket.io silencioso SOLO al panel de administración. Antes iba por
+    //    global.io.emit y cada cliente del SaaS recibía el nombre del negocio afectado.
     if (global.io) {
-      global.io.emit('system_alert', {
-        type,
-        details,
-        timestamp: new Date().toISOString()
-      });
+      const payload = { type, details, timestamp: new Date().toISOString() };
+      for (const room of ['user_admin', 'session_admin', 'user_0b8c0710-b97a-4e2d-acf8-b7f33dcd5b3d']) {
+        try { global.io.to(room).emit('system_alert', payload); } catch (_) {}
+      }
     }
 
     // 2. Notificar por WhatsApp al Admin si es alerta crítica (limitado a 1 alerta/hora para evitar spam)

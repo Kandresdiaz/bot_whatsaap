@@ -54,13 +54,17 @@ const normalizeText = (text) => {
 const getCacheKey = (businessId, text) => {
   const norm = normalizeText(text);
   const hash = crypto.createHash('md5').update(norm).digest('hex');
-  return `ai_cache:${businessId || 'default'}:${hash}`;
+  return `ai_cache:${businessId}:${hash}`;
 };
 
 /**
  * Obtener respuesta guardada en caché (Consumo: 0 Tokens)
  */
 const getCachedAiResponse = async (businessId, userMessage) => {
+  // Sin businessId la clave caía en 'default' y era COMPARTIDA: la respuesta generada con el
+  // catálogo de un negocio se servía a los clientes de otro. Sin negocio, no hay caché.
+  if (!businessId) return null;
+
   const norm = normalizeText(userMessage);
   if (norm.length < 3) return null;
 
@@ -93,6 +97,7 @@ const MAX_RAM_CACHE_ENTRIES = 1000;
  * Guardar respuesta de IA en caché (TTL por defecto: 2 horas = 7200 seg)
  */
 const setCachedAiResponse = async (businessId, userMessage, responseObj, ttlSeconds = 7200) => {
+  if (!businessId) return; // ver getCachedAiResponse: nunca cachear fuera de un negocio concreto
   const norm = normalizeText(userMessage);
   if (norm.length < 3) return;
 
