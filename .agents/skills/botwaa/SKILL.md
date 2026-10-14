@@ -870,6 +870,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-10-12** | Merge pull request #32 from Kandresdiaz/feat/negocios-predeterminados (`5af32a0`) | Auto-deploy |
 
+| **2026-10-14** | Merge pull request #33 from Kandresdiaz/feat/mas-nichos (`4fb12ca`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
