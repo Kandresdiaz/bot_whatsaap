@@ -25,6 +25,16 @@
 -- que ahora mismo está desconectada. Sin la 007 esos chats quedan sin dueño y
 -- dejan de verse en el panel hasta que esa cuenta vuelva a conectar su WhatsApp.
 --
+-- LO QUE ESTA MIGRACIÓN *NO* ARREGLA
+-- El relleno marca cada chat con el número que su sesión tiene vinculado HOY, porque
+-- es el único dato que hay. Si en esa sesión antes estuvo vinculado OTRO WhatsApp, sus
+-- chats quedan marcados con el número actual y se siguen viendo: nunca se guardó de qué
+-- número venían. Esos hay que borrarlos a mano:
+--
+--   node src/scripts/limpiarChatsDeOtroWhatsapp.js --usuario correo@ejemplo.com
+--
+-- De aquí en adelante no vuelve a pasar: cada chat nuevo nace marcado con su número.
+--
 -- OJO CON EL RELLENO
 -- Un chat cuya sesión no tiene phone_number ni last_phone se queda en NULL y
 -- deja de verse en el panel: no hay forma de saber qué WhatsApp lo atendió.

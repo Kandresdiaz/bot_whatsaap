@@ -2291,17 +2291,30 @@ const restoreSessions = async (io) => {
 };
 
 // Respaldo periódico en segundo plano de credenciales completas para todas las sesiones activas
+// Guarda las credenciales de todas las sesiones vivas. Se llama al recibir SIGTERM
+// (Render reiniciando o desplegando): si no se guardan, al arrancar de nuevo la sesión
+// se restaura desde una copia vieja y WhatsApp puede invalidarla → QR otra vez.
 const saveAllActiveSessions = async () => {
   if (!supabase) return;
   try {
+    const yaGuardados = new Set();
     for (const [userId, s] of sessions.entries()) {
-      if (s?.sock && s?.status === 'connected') {
-        const validId = getValidUserId(userId);
-        const sessionDir = path.join(SESSIONS_DIR, validId);
-        if (fs.existsSync(sessionDir)) {
-          await saveFullSessionToDb(validId, sessionDir);
-        }
+      if (!s?.sock || s?.status !== 'connected') continue;
+      const validId = getValidUserId(userId);
+      if (yaGuardados.has(validId)) continue;
+
+      // createSession crea la carpeta con la clave cruda (puede ser 'admin' o un uuid de
+      // sesión), no con el validId. Buscando solo en la del validId, las credenciales de
+      // esas sesiones NO se guardaban al apagar: se probaban las dos.
+      const posibles = [path.join(SESSIONS_DIR, String(userId)), path.join(SESSIONS_DIR, validId)];
+      const sessionDir = posibles.find(d => fs.existsSync(path.join(d, 'creds.json')));
+
+      if (!sessionDir) {
+        console.warn(`[Baileys Auth] No se encontró la carpeta de credenciales de ${userId}: no se guardó al apagar.`);
+        continue;
       }
+      yaGuardados.add(validId);
+      await saveFullSessionToDb(validId, sessionDir);
     }
   } catch (errSaveAll) {
     console.warn('[Baileys Auth] Error en saveAllActiveSessions:', errSaveAll.message);

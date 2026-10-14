@@ -202,6 +202,19 @@ try {
 }
 
 // ── Restaurar sesiones activas (sin bloquear el arranque) ───────────────────
+//
+// En Render se espera bastante más que en local A PROPÓSITO. Al desplegar, Render levanta
+// la instancia nueva y solo cuando responde le manda SIGTERM a la vieja: durante esos
+// segundos hay DOS procesos. Si el nuevo abre WhatsApp con las mismas credenciales
+// mientras el viejo sigue conectado, WhatsApp lo ve como dos dispositivos iguales, expulsa
+// uno (error 440 'conflict') y a la larga invalida la sesión → QR otra vez. Esperar deja
+// que el proceso viejo se apague y suelte la conexión antes de reconectar.
+const RESTORE_DELAY_MS = parseInt(
+  process.env.STARTUP_RESTORE_DELAY_MS || (process.env.RENDER_EXTERNAL_URL ? '25000' : '3000'),
+  10,
+);
+console.log(`[STARTUP] Las sesiones de WhatsApp se restauran en ${Math.round(RESTORE_DELAY_MS / 1000)}s`);
+
 setTimeout(async () => {
   try {
     const { restoreSessions } = require('./whatsapp/sessionManager');
@@ -213,7 +226,7 @@ setTimeout(async () => {
   } catch (e) {
     console.error('[STARTUP] Error restaurando sesiones (no crítico):', e.message);
   }
-}, 3000); // Esperar 3s para que el servidor esté completamente listo
+}, RESTORE_DELAY_MS);
 
 // ── Start ─────────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3001;
@@ -258,9 +271,22 @@ server.listen(PORT, () => {
 const handleGracefulShutdown = async (signal) => {
   console.log(`[SHUTDOWN] Señal ${signal} recibida. Guardando credenciales activas en Supabase...`);
   try {
-    const { saveAllActiveSessions } = require('./whatsapp/sessionManager');
+    const { saveAllActiveSessions, sessions } = require('./whatsapp/sessionManager');
     if (typeof saveAllActiveSessions === 'function') {
       await saveAllActiveSessions();
+    }
+
+    // Cerrar los sockets de WhatsApp ANTES de salir: si no, la conexión queda colgando
+    // unos segundos y choca con la instancia nueva que Render ya está levantando.
+    if (sessions && typeof sessions.entries === 'function') {
+      const cerrados = new Set();
+      for (const [, s] of sessions.entries()) {
+        if (s?.sock && !cerrados.has(s.sock)) {
+          cerrados.add(s.sock);
+          try { s.sock.end(new Error('Apagando el servidor')); } catch (_) {}
+        }
+      }
+      if (cerrados.size > 0) console.log(`[SHUTDOWN] ${cerrados.size} conexiones de WhatsApp cerradas.`);
     }
   } catch (e) {
     console.error('[SHUTDOWN] Error guardando sesiones:', e.message);
