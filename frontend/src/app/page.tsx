@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import SessionRedirect from '@/components/SessionRedirect';
+import { SetupVideoCard } from '@/components/SetupVideo';
 import { PLANS, FAQS, TRIAL_DAYS, TRIAL_MESSAGES, formatCOP, formatThousands, salesWhatsAppLink } from '@/lib/plans';
 import { SITE_NAME, absoluteUrl } from '@/lib/site';
 import { LANDING_CSS } from '@/components/landing/landingCss';
@@ -187,6 +188,9 @@ export default function HomePage() {
                 <p className="lp-text">{s.text}</p>
               </div>
             ))}
+          </div>
+          <div style={{ marginTop: 24 }}>
+            <SetupVideoCard />
           </div>
         </section>
 
