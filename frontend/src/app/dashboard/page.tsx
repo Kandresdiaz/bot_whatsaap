@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { BACKEND_URL } from '@/lib/config';
 import { apiFetch } from '@/lib/api';
+import SetupVideoButton from '@/components/SetupVideo';
 
 export default function DashboardHome() {
   const { user, effectiveUserId, selectedClientName } = useAuth();
@@ -80,6 +81,9 @@ export default function DashboardHome() {
             ? `Panel de control para ${selectedClientName}`
             : 'Panel de control de tu bot de WhatsApp y métricas de ventas'}
         </p>
+        <div style={{ marginTop: 12 }}>
+          <SetupVideoButton />
+        </div>
       </div>
 
       {/* Status del bot */}
