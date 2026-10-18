@@ -872,6 +872,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-10-14** | Merge pull request #33 from Kandresdiaz/feat/mas-nichos (`4fb12ca`) | Auto-deploy |
 
+| **2026-10-18** | Merge pull request #35 from Kandresdiaz/feat/video-configuracion (`530c168`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
