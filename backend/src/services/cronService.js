@@ -1,6 +1,7 @@
 const cron = require('node-cron');
 const { supabase } = require('../db/supabase');
 const { sendTrialReminderEmail } = require('./emailService');
+const { runAppointmentReminders } = require('./appointmentReminders');
 
 const PLAN_NAMES = {
   starter: 'Plan Vendedor Automático',
@@ -67,7 +68,23 @@ const initCronJobs = () => {
     }
   });
 
-  console.log('[CRON] 🚀 Sistema de recordatorios de cobro y retención inicializado.');
+  // ── Recordatorios de citas a los clientes del negocio ───────────────────────
+  // Cada 10 minutos, para que la hora de aviso que eligió el dueño (2, 4, 24 o 48 h antes)
+  // se cumpla con poca deriva. Solo envía a los negocios que lo activaron en su panel.
+  let recordatoriosEnCurso = false;
+  cron.schedule('*/10 * * * *', async () => {
+    if (recordatoriosEnCurso) return; // un ciclo lento no se pisa con el siguiente
+    recordatoriosEnCurso = true;
+    try {
+      await runAppointmentReminders();
+    } catch (err) {
+      console.error('[CRON ERROR] Fallo en recordatorios de citas:', err.message);
+    } finally {
+      recordatoriosEnCurso = false;
+    }
+  });
+
+  console.log('[CRON] 🚀 Sistema de recordatorios de cobro, retención y citas inicializado.');
 };
 
 module.exports = { initCronJobs };
