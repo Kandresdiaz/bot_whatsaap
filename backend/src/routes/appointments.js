@@ -4,6 +4,41 @@ const { supabase } = require('../db/supabase');
 const { ownsBody, ownsParam, ownsRow } = require('../auth/access');
 const { resolveUserBusiness } = require('../services/businessResolver');
 const { emitToBusinessOwner } = require('../services/ownerEvents');
+const { esColumnaFaltante } = require('../services/appointmentReminders');
+
+// Si la cita se mueve de fecha o de hora, el recordatorio que ya salió dejó de servir: se borra
+// la marca para que el cron vuelva a avisar con los datos nuevos. Solo se consulta la cita
+// cuando de verdad llega una fecha u hora en el cuerpo.
+const limpiarRecordatorioSiSeReprograma = async (id, updates) => {
+  if (updates.appointment_date === undefined && updates.appointment_time === undefined) return;
+  try {
+    const { data } = await supabase
+      .from('appointments')
+      .select('appointment_date, appointment_time')
+      .eq('id', id)
+      .limit(1);
+    const actual = data && data[0];
+    if (!actual) return;
+
+    const hhmm = (t) => String(t || '').slice(0, 5);
+    const cambiaFecha = updates.appointment_date !== undefined && updates.appointment_date !== actual.appointment_date;
+    const cambiaHora = updates.appointment_time !== undefined && hhmm(updates.appointment_time) !== hhmm(actual.appointment_time);
+    if (cambiaFecha || cambiaHora) updates.reminder_sent_at = null;
+  } catch (e) {
+    console.warn('[Appointments] No se pudo revisar el recordatorio de la cita:', e.message);
+  }
+};
+
+// Guardar tolerando que la migración 009 no esté ejecutada: si la columna del recordatorio no
+// existe, se guarda el resto de los cambios igual en vez de fallar la edición completa.
+const guardarCita = async (id, updates) => {
+  let result = await supabase.from('appointments').update(updates).eq('id', id).select().limit(1);
+  if (result.error && updates.reminder_sent_at !== undefined && esColumnaFaltante(result.error)) {
+    const { reminder_sent_at, ...sinRecordatorio } = updates;
+    result = await supabase.from('appointments').update(sinRecordatorio).eq('id', id).select().limit(1);
+  }
+  return result;
+};
 
 // Helper para resolver el business_id real a partir del user_id o business_id
 const resolveBusinessId = async (idOrUserId) => {
@@ -269,12 +304,9 @@ router.put('/:id', ownsRow('appointments'), async (req, res) => {
     if (status !== undefined) updates.status = status;
     if (notes !== undefined) updates.notes = notes.trim();
 
-    const { data, error } = await supabase
-      .from('appointments')
-      .update(updates)
-      .eq('id', id)
-      .select()
-      .limit(1);
+    await limpiarRecordatorioSiSeReprograma(id, updates);
+
+    const { data, error } = await guardarCita(id, updates);
 
     if (error) {
       console.error('[PUT Appointment Error]:', error.message);
@@ -309,12 +341,9 @@ router.patch('/:id', ownsRow('appointments'), async (req, res) => {
       updates.appointment_time = t;
     }
 
-    const { data, error } = await supabase
-      .from('appointments')
-      .update(updates)
-      .eq('id', id)
-      .select()
-      .limit(1);
+    await limpiarRecordatorioSiSeReprograma(id, updates);
+
+    const { data, error } = await guardarCita(id, updates);
 
     if (error) {
       return res.status(500).json({ success: false, error: error.message });

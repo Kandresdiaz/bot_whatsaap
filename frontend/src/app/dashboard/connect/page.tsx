@@ -5,6 +5,7 @@ import { connectSocket } from '@/lib/socket';
 import { useAuth } from '@/context/AuthContext';
 import OnboardingWizardModal from '@/components/OnboardingWizardModal';
 import TrialActivationModal from '@/components/TrialActivationModal';
+import SetupVideoButton from '@/components/SetupVideo';
 
 import { BACKEND_URL } from '@/lib/config';
 import { apiFetch } from '@/lib/api';
@@ -746,6 +747,9 @@ export default function ConnectPage() {
             </li>
           ))}
         </ol>
+        <div style={{ marginTop: 14 }}>
+          <SetupVideoButton label="🎬 Ver el video del paso a paso" className="btn btn-ghost" />
+        </div>
       </div>
     </div>
   );

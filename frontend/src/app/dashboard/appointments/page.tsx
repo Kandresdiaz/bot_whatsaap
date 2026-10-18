@@ -18,7 +18,16 @@ type Appointment = {
   status: 'pending' | 'confirmed' | 'cancelled' | 'completed';
   notes?: string;
   created_at?: string;
+  reminder_sent_at?: string | null;
 };
+
+// Las que acepta el backend (business.appointment_reminder_hours).
+const REMINDER_HOUR_OPTIONS = [
+  { value: 2, label: '2 horas antes' },
+  { value: 4, label: '4 horas antes' },
+  { value: 24, label: '1 día antes' },
+  { value: 48, label: '2 días antes' },
+];
 
 const STATUS_CONFIG: Record<Appointment['status'], { label: string; bg: string; color: string; dot: string; icon: string }> = {
   pending: { label: 'Pendiente', bg: 'rgba(234, 179, 8, 0.15)', color: '#facc15', dot: '#facc15', icon: '⏳' },
@@ -47,6 +56,12 @@ export default function AppointmentsPage() {
   const [businessId, setBusinessId] = useState<string | null>(null);
   const [servicesList, setServicesList] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Recordatorios automáticos de citas (el bot le escribe al cliente antes de su cita)
+  const [remindersEnabled, setRemindersEnabled] = useState(false);
+  const [reminderHours, setReminderHours] = useState(24);
+  const [remindersSupported, setRemindersSupported] = useState(true);
+  const [savingReminders, setSavingReminders] = useState(false);
 
   // Vistas y Navegación del Calendario
   const [viewMode, setViewMode] = useState<'calendar' | 'table'>('calendar');
@@ -91,6 +106,14 @@ export default function AppointmentsPage() {
         if (d.business?.id) {
           setBusiness(d.business);
           setBusinessId(d.business.id);
+          setRemindersEnabled(d.business.appointment_reminders_enabled === true);
+          setReminderHours(
+            REMINDER_HOUR_OPTIONS.some(o => o.value === d.business.appointment_reminder_hours)
+              ? d.business.appointment_reminder_hours
+              : 24
+          );
+          // El backend avisa si falta la migración 009: sin ella el interruptor no se puede guardar.
+          setRemindersSupported(d.appointment_reminders_supported !== false);
           loadAppointments(d.business.id);
         } else {
           setLoading(false);
@@ -332,6 +355,57 @@ export default function AppointmentsPage() {
     } catch (_) {}
   };
 
+  // Recordatorios automáticos: guardar el interruptor y las horas de aviso
+  const saveReminderSettings = async (next: { enabled?: boolean; hours?: number }) => {
+    const targetId = effectiveUserId || user?.id;
+    if (!targetId || savingReminders) return;
+
+    const prevEnabled = remindersEnabled;
+    const prevHours = reminderHours;
+    const nextEnabled = next.enabled !== undefined ? next.enabled : remindersEnabled;
+    const nextHours = next.hours !== undefined ? next.hours : reminderHours;
+
+    setRemindersEnabled(nextEnabled);
+    setReminderHours(nextHours);
+    setSavingReminders(true);
+
+    try {
+      const res = await apiFetch(`${BACKEND}/api/business/${targetId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          appointment_reminders_enabled: nextEnabled,
+          appointment_reminder_hours: nextHours,
+        }),
+      });
+      const data = await res.json();
+
+      if (!data.success) throw new Error(data.error || 'No se pudo guardar');
+
+      // Puede guardar el resto del negocio pero no estos campos si falta la migración 009.
+      if (data.appointment_reminders_supported === false) {
+        setRemindersSupported(false);
+        setRemindersEnabled(prevEnabled);
+        setReminderHours(prevHours);
+        showToastMsg('⚠️ Falta ejecutar la migración 009 en la base de datos para usar los recordatorios automáticos');
+        return;
+      }
+
+      if (data.business) setBusiness(data.business);
+      showToastMsg(
+        nextEnabled
+          ? `🔔 Recordatorios automáticos activados (${REMINDER_HOUR_OPTIONS.find(o => o.value === nextHours)?.label || ''})`
+          : '🔕 Recordatorios automáticos desactivados: el bot no les escribirá a tus clientes'
+      );
+    } catch (e: any) {
+      setRemindersEnabled(prevEnabled);
+      setReminderHours(prevHours);
+      showToastMsg('❌ No se pudo guardar el ajuste: ' + (e.message || 'error de conexión'));
+    } finally {
+      setSavingReminders(false);
+    }
+  };
+
   // Enviar Mensaje de WhatsApp Directo
   const handleSendWhatsAppReminder = (appt: Appointment) => {
     const cleanPhone = (appt.client_phone || '').replace(/[^\d]/g, '');
@@ -492,6 +566,88 @@ export default function AppointmentsPage() {
           <div style={{ fontSize: 12, color: '#4ade80', marginBottom: 4 }}>✅ Confirmadas</div>
           <div style={{ fontSize: 26, fontWeight: 800, color: '#4ade80' }}>{confirmedCount}</div>
         </div>
+      </div>
+
+      {/* Recordatorios Automáticos: el dueño decide si el bot le escribe a sus clientes */}
+      <div className="card" style={{
+        background: '#0C1527',
+        borderColor: remindersEnabled ? 'rgba(34,197,94,0.35)' : '#1E293B',
+        padding: 16,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 12,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
+          <div style={{ minWidth: 220, flex: 1 }}>
+            <div style={{ fontSize: 15, fontWeight: 800, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span>{remindersEnabled ? '🔔' : '🔕'}</span> Recordatorios automáticos de citas
+            </div>
+            <p style={{ fontSize: 12.5, color: '#94a3b8', margin: '6px 0 0 0', lineHeight: 1.5 }}>
+              {remindersEnabled ? (
+                <>
+                  <strong style={{ color: '#4ade80' }}>Activados:</strong> el bot le escribe por WhatsApp a cada
+                  cliente antes de su cita, le recuerda el servicio, el día y la hora, y le pide confirmar.
+                  Cada cita recibe un solo aviso.
+                </>
+              ) : (
+                <>
+                  <strong style={{ color: '#f87171' }}>Desactivados:</strong> el bot no les escribe nada a tus
+                  clientes. Los recordatorios los envías tú cuando quieras con el botón{' '}
+                  <strong style={{ color: '#4ade80' }}>📲 WhatsApp</strong> de cada cita.
+                </>
+              )}
+            </p>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: remindersEnabled ? '#4ade80' : '#94a3b8' }}>
+              {savingReminders ? 'Guardando...' : remindersEnabled ? 'ACTIVADO' : 'DESACTIVADO'}
+            </span>
+            <label className="toggle" title={remindersSupported ? 'Activar o desactivar los recordatorios automáticos' : 'Falta ejecutar la migración 009'}>
+              <input
+                type="checkbox"
+                checked={remindersEnabled}
+                disabled={savingReminders || !remindersSupported || !businessId}
+                onChange={e => saveReminderSettings({ enabled: e.target.checked })}
+              />
+              <span className="toggle-slider" />
+            </label>
+          </div>
+        </div>
+
+        {remindersEnabled && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+            borderTop: '1px solid #1E293B', paddingTop: 12,
+          }}>
+            <span style={{ fontSize: 12.5, color: '#cbd5e1' }}>⏱️ Avisar con esta antelación:</span>
+            <select
+              className="input"
+              value={reminderHours}
+              disabled={savingReminders}
+              onChange={e => saveReminderSettings({ hours: parseInt(e.target.value, 10) })}
+              style={{ fontSize: 12, width: 'auto' }}
+            >
+              {REMINDER_HOUR_OPTIONS.map(o => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+            <span style={{ fontSize: 11.5, color: '#64748b' }}>
+              Solo se avisan las citas pendientes y confirmadas, y necesita tu WhatsApp conectado.
+            </span>
+          </div>
+        )}
+
+        {!remindersSupported && (
+          <div style={{
+            fontSize: 12, color: '#facc15', background: 'rgba(234,179,8,0.08)',
+            border: '1px solid rgba(234,179,8,0.25)', borderRadius: 8, padding: '8px 12px',
+          }}>
+            ⚠️ Para usar los recordatorios automáticos falta ejecutar la migración{' '}
+            <strong>009_recordatorios_citas.sql</strong> en la base de datos. Mientras tanto puedes seguir
+            enviándolos a mano con el botón 📲 WhatsApp de cada cita.
+          </div>
+        )}
       </div>
 
       {/* Barra de Controles y Selector de Vistas */}
@@ -750,14 +906,24 @@ export default function AppointmentsPage() {
 
                     {/* Acciones Rápidas */}
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid #1E293B', paddingTop: 8 }}>
-                      <button
-                        onClick={() => handleSendWhatsAppReminder(a)}
-                        className="btn btn-ghost"
-                        style={{ fontSize: 11, color: '#4ade80', padding: '4px 8px', display: 'flex', alignItems: 'center', gap: 4 }}
-                        title="Enviar recordatorio por WhatsApp"
-                      >
-                        <span>📲</span> WhatsApp
-                      </button>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                        <button
+                          onClick={() => handleSendWhatsAppReminder(a)}
+                          className="btn btn-ghost"
+                          style={{ fontSize: 11, color: '#4ade80', padding: '4px 8px', display: 'flex', alignItems: 'center', gap: 4 }}
+                          title="Enviar recordatorio por WhatsApp"
+                        >
+                          <span>📲</span> WhatsApp
+                        </button>
+                        {a.reminder_sent_at && (
+                          <span
+                            style={{ fontSize: 10.5, fontWeight: 700, color: '#4ade80', background: 'rgba(34,197,94,0.12)', padding: '3px 7px', borderRadius: 7 }}
+                            title={`El bot envió el recordatorio automático el ${new Date(a.reminder_sent_at).toLocaleString('es-CO')}`}
+                          >
+                            🔔 Recordatorio enviado
+                          </span>
+                        )}
+                      </div>
 
                       <div style={{ display: 'flex', gap: 6 }}>
                         {a.status === 'pending' && (
@@ -835,6 +1001,14 @@ export default function AppointmentsPage() {
                         }}>
                           {STATUS_CONFIG[a.status]?.icon} {STATUS_CONFIG[a.status]?.label}
                         </span>
+                        {a.reminder_sent_at && (
+                          <span
+                            style={{ marginLeft: 6, fontSize: 11, color: '#4ade80' }}
+                            title={`Recordatorio automático enviado el ${new Date(a.reminder_sent_at).toLocaleString('es-CO')}`}
+                          >
+                            🔔
+                          </span>
+                        )}
                       </td>
                       <td style={{ padding: '12px 16px', textAlign: 'right' }}>
                         <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>

@@ -5,6 +5,21 @@ const { ownsParam, requireAdmin } = require('../auth/access');
 const { seedDefaultProductsAndKB } = require('../db/seedHelper');
 const { resolveUserBusiness } = require('../services/businessResolver');
 const { listNicheTemplatesFull } = require('../services/nicheTemplates');
+const {
+  esColumnaFaltante,
+  HORAS_PERMITIDAS: HORAS_RECORDATORIO,
+  HORAS_POR_DEFECTO: HORAS_RECORDATORIO_DEFECTO,
+} = require('../services/appointmentReminders');
+
+// Columnas que agrega la migración 009. Si todavía no se ejecutó, guardar el negocio no puede
+// fallar por eso: se guarda el resto y el panel avisa que falta la migración.
+const COLUMNAS_RECORDATORIO = ['appointment_reminders_enabled', 'appointment_reminder_hours'];
+
+const sinColumnasDeRecordatorio = (data) => {
+  const copia = { ...data };
+  for (const col of COLUMNAS_RECORDATORIO) delete copia[col];
+  return copia;
+};
 
 const isUuid = (str) => typeof str === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
 
@@ -93,6 +108,10 @@ router.get('/:userId', ownsParam('userId'), async (req, res) => {
       }
     }
 
+    // ¿Lo de abajo es una fila real de la base o el negocio de relleno? Importa para saber si
+    // faltan las columnas de la migración 009: en un objeto de relleno nunca están.
+    const filaRealDeLaBase = Boolean(business);
+
     if (!business) {
       if (targetUserId === PRIMARY_ADMIN_ID) {
         business = { ...DEFAULT_BOTWA_BUSINESS, user_id: targetUserId, is_configured: true, bot_enabled: true };
@@ -120,6 +139,10 @@ router.get('/:userId', ownsParam('userId'), async (req, res) => {
 
     return res.json({
       success: true,
+      // Falso mientras no se ejecute la migración 009: el panel lo usa para mostrar el aviso
+      // en vez de un interruptor que no se puede guardar.
+      appointment_reminders_supported: !filaRealDeLaBase
+        || Object.prototype.hasOwnProperty.call(business, 'appointment_reminders_enabled'),
       business: {
         ...business,
         name: business.name || '',
@@ -147,7 +170,8 @@ router.post('/:userId', ownsParam('userId'), async (req, res) => {
       'greeting_msg', 'away_msg', 'active_hours_start', 'active_hours_end',
       'active_days', 'timezone', 'bot_personality', 'bot_enabled',
       'main_goal', 'appointment_duration', 'payment_or_booking_link',
-      'closing_instructions', 'closing_objective', 'custom_instructions', 'is_configured'
+      'closing_instructions', 'closing_objective', 'custom_instructions', 'is_configured',
+      'appointment_reminders_enabled', 'appointment_reminder_hours'
     ];
 
     const cleanData = {};
@@ -183,6 +207,16 @@ router.post('/:userId', ownsParam('userId'), async (req, res) => {
       cleanData.appointment_duration = isNaN(parsed) ? 30 : parsed;
     }
 
+    // Recordatorios automáticos de citas: el interruptor es del dueño, así que solo se guarda
+    // true/false explícito, y las horas se limitan a las que ofrece el panel.
+    if (cleanData.appointment_reminders_enabled !== undefined) {
+      cleanData.appointment_reminders_enabled = Boolean(cleanData.appointment_reminders_enabled);
+    }
+    if (cleanData.appointment_reminder_hours !== undefined) {
+      const horas = parseInt(cleanData.appointment_reminder_hours, 10);
+      cleanData.appointment_reminder_hours = HORAS_RECORDATORIO.includes(horas) ? horas : HORAS_RECORDATORIO_DEFECTO;
+    }
+
     // Si tiene un nombre ingresado, marcar como configurado
     if (cleanData.name && cleanData.name.trim().length > 0) {
       cleanData.is_configured = true;
@@ -198,20 +232,23 @@ router.post('/:userId', ownsParam('userId'), async (req, res) => {
       .order('created_at', { ascending: false })
       .limit(1);
 
-    let result;
-    if (existing && existing.length > 0) {
-      result = await supabase
-        .from('businesses')
-        .update(cleanData)
-        .eq('id', existing[0].id)
-        .select()
-        .single();
-    } else {
-      result = await supabase
-        .from('businesses')
-        .insert({ ...cleanData, user_id: targetUserId })
-        .select()
-        .single();
+    const guardar = async (datos) => {
+      if (existing && existing.length > 0) {
+        return supabase.from('businesses').update(datos).eq('id', existing[0].id).select().single();
+      }
+      return supabase.from('businesses').insert({ ...datos, user_id: targetUserId }).select().single();
+    };
+
+    let result = await guardar(cleanData);
+
+    // Falta la migración 009: se guarda todo lo demás y se le dice al panel que el interruptor
+    // de recordatorios todavía no se puede usar.
+    let faltaMigracionRecordatorios = false;
+    const tocaRecordatorios = COLUMNAS_RECORDATORIO.some(col => cleanData[col] !== undefined);
+    if (result.error && tocaRecordatorios && esColumnaFaltante(result.error)) {
+      faltaMigracionRecordatorios = true;
+      console.warn('[BUSINESS POST] Falta la migración 009: no se guardaron los ajustes de recordatorios de citas.');
+      result = await guardar(sinColumnasDeRecordatorio(cleanData));
     }
 
     if (result.error) {
@@ -227,6 +264,8 @@ router.post('/:userId', ownsParam('userId'), async (req, res) => {
 
     return res.json({
       success: true,
+      appointment_reminders_supported: !faltaMigracionRecordatorios
+        && Object.prototype.hasOwnProperty.call(resBus, 'appointment_reminders_enabled'),
       business: {
         ...resBus,
         closing_objective: resBus.closing_objective || resBus.closing_instructions || '',
