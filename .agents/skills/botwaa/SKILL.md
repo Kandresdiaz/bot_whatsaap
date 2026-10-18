@@ -874,6 +874,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-10-18** | Merge pull request #35 from Kandresdiaz/feat/video-configuracion (`530c168`) | Auto-deploy |
 
+| **2026-10-18** | Merge pull request #36 from Kandresdiaz/feat/recordatorio-una-hora (`4234f7f`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
