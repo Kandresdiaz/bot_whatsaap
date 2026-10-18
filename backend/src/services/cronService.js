@@ -69,10 +69,11 @@ const initCronJobs = () => {
   });
 
   // ── Recordatorios de citas a los clientes del negocio ───────────────────────
-  // Cada 10 minutos, para que la hora de aviso que eligió el dueño (2, 4, 24 o 48 h antes)
-  // se cumpla con poca deriva. Solo envía a los negocios que lo activaron en su panel.
+  // Cada 5 minutos: el aviso más corto que ofrece el panel es 1 hora antes, así que el
+  // recordatorio sale entre 55 y 60 minutos antes de la cita. Es una consulta pequeña a la
+  // base, y solo envía a los negocios que lo activaron en su panel.
   let recordatoriosEnCurso = false;
-  cron.schedule('*/10 * * * *', async () => {
+  cron.schedule('*/5 * * * *', async () => {
     if (recordatoriosEnCurso) return; // un ciclo lento no se pisa con el siguiente
     recordatoriosEnCurso = true;
     try {
