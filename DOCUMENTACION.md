@@ -13,7 +13,7 @@ El dueño del negocio conecta su número de WhatsApp escaneando un código QR y 
 1. **Atención al cliente 24/7:** responde al instante preguntas frecuentes, horarios, ubicación, medios de pago y políticas.
 2. **Responde solo con la información del negocio (RAG):** la IA usa únicamente lo que el negocio cargó (menús, PDFs, FAQs, servicios, precios). Si no tiene el dato, lo dice y deriva a un asesor en lugar de inventar.
 3. **Agendamiento de citas:** guía al cliente paso a paso por WhatsApp para reservar turnos y los registra en el panel.
-   - **Recordatorios automáticos (opcionales):** si el dueño activa el interruptor en Panel → Citas, el bot le escribe a cada cliente 2, 4, 24 o 48 horas antes de su cita y le pide confirmar (un solo aviso por cita; si se reprograma, vuelve a avisar). Viene **apagado**: mientras lo esté, el bot no le escribe a ningún cliente y los recordatorios los manda el dueño con el botón 📲 WhatsApp de cada cita. Requiere la migración `009_recordatorios_citas.sql`.
+   - **Recordatorios automáticos (opcionales):** si el dueño activa el interruptor en Panel → Citas, el bot le escribe a cada cliente 1, 2, 4, 24 o 48 horas antes de su cita (1 hora por defecto) y le pide confirmar (un solo aviso por cita; si se reprograma, vuelve a avisar). Viene **apagado**: mientras lo esté, el bot no le escribe a ningún cliente y los recordatorios los manda el dueño con el botón 📲 WhatsApp de cada cita. Requiere la migración `009_recordatorios_citas.sql`.
 4. **Catálogo y pedidos:** muestra productos, precios y disponibilidad, y registra pedidos.
 5. **Avisos al dueño:** notifica por WhatsApp y correo cuando un cliente quiere comprar o agenda una cita.
 6. **Panel web:** mensajes, pedidos pendientes, citas, conversaciones en vivo y botón para pausar/activar el bot.
@@ -27,7 +27,7 @@ El dueño del negocio conecta su número de WhatsApp escaneando un código QR y 
   - Socket.io (por polling a través del proxy) para QR en vivo, chat en tiempo real y contadores de pedidos/citas.
 - **Backend (Node.js 20 + Express)** — corre en **Wispbyte** (plan gratis, 512 MB RAM).
   - WhatsApp mediante **Baileys v7** (multi-device, sin Puppeteer).
-  - Correos con **Nodemailer** y tareas programadas con `node-cron` (renovaciones, avisos, recordatorios de citas cada 10 min).
+  - Correos con **Nodemailer** y tareas programadas con `node-cron` (renovaciones, avisos, recordatorios de citas cada 5 min).
 - **IA (Groq):** elige automáticamente entre los modelos disponibles (`qwen`, `gpt-oss`, `llama-3.3-70b-versatile`, `llama-3.1-8b-instant`, …) con respaldo si uno falla. Temperatura 0.2.
 - **Base de datos (Supabase PostgreSQL):** tablas `users`, `businesses`, `whatsapp_sessions`, `conversations`, `messages`, `knowledge_base`, `products_services`, `appointments`, `payments`.
 - **Pagos:** Mercado Pago (suscripciones PreApproval).

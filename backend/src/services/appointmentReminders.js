@@ -7,6 +7,8 @@
 // dueño lo haya pedido.
 //
 // Reglas:
+//  · El cron corre cada 5 minutos: con el aviso de 1 hora (el valor por defecto), el cliente lo
+//    recibe entre 55 y 60 minutos antes de su cita.
 //  · Se avisa una sola vez por cita (appointments.reminder_sent_at). Si la cita se reprograma,
 //    el endpoint de citas borra esa marca y el cliente recibe el aviso de la fecha nueva.
 //  · Solo citas pendientes o confirmadas: las canceladas y completadas no se recuerdan.
@@ -20,8 +22,8 @@ const { supabase } = require('../db/supabase');
 const { nowInZone } = require('./bookingActions');
 const { emitToBusinessOwner } = require('./ownerEvents');
 
-const HORAS_PERMITIDAS = [2, 4, 24, 48];
-const HORAS_POR_DEFECTO = 24;
+const HORAS_PERMITIDAS = [1, 2, 4, 24, 48];
+const HORAS_POR_DEFECTO = 1;
 const PAUSA_ENTRE_ENVIOS_MS = 1500;
 
 // Se enciende si la BD no tiene las columnas de la 009: así no se repite la consulta fallida

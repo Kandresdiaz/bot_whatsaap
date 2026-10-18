@@ -16,13 +16,13 @@
 --                                             Arranca en FALSE: nadie empieza a
 --                                             escribirle a sus clientes sin
 --                                             haberlo pedido desde el panel.
---   businesses.appointment_reminder_hours     cuántas horas antes avisa (24 por
---                                             defecto; el panel ofrece 2, 4, 24
---                                             y 48).
+--   businesses.appointment_reminder_hours     cuántas horas antes avisa (1 por
+--                                             defecto; el panel ofrece 1, 2, 4,
+--                                             24 y 48).
 --   appointments.reminder_sent_at             cuándo se envió el recordatorio de
 --                                             ESA cita. Es lo que evita que el
 --                                             cron mande el mismo aviso cada
---                                             diez minutos. Al reprogramar una
+--                                             cinco minutos. Al reprogramar una
 --                                             cita el backend lo vuelve a NULL,
 --                                             así el cliente recibe el aviso de
 --                                             la fecha nueva.
@@ -51,12 +51,12 @@ ALTER TABLE public.businesses
   ADD COLUMN IF NOT EXISTS appointment_reminders_enabled boolean NOT NULL DEFAULT false;
 
 ALTER TABLE public.businesses
-  ADD COLUMN IF NOT EXISTS appointment_reminder_hours integer NOT NULL DEFAULT 24;
+  ADD COLUMN IF NOT EXISTS appointment_reminder_hours integer NOT NULL DEFAULT 1;
 
 ALTER TABLE public.appointments
   ADD COLUMN IF NOT EXISTS reminder_sent_at timestamptz;
 
--- El cron busca cada diez minutos las citas próximas que aún no tienen aviso.
+-- El cron busca cada cinco minutos las citas próximas que aún no tienen aviso.
 CREATE INDEX IF NOT EXISTS idx_appointments_recordatorio_pendiente
   ON public.appointments (appointment_date, appointment_time)
   WHERE reminder_sent_at IS NULL;

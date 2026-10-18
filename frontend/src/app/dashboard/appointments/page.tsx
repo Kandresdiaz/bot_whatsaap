@@ -23,6 +23,7 @@ type Appointment = {
 
 // Las que acepta el backend (business.appointment_reminder_hours).
 const REMINDER_HOUR_OPTIONS = [
+  { value: 1, label: '1 hora antes' },
   { value: 2, label: '2 horas antes' },
   { value: 4, label: '4 horas antes' },
   { value: 24, label: '1 día antes' },
@@ -59,7 +60,7 @@ export default function AppointmentsPage() {
 
   // Recordatorios automáticos de citas (el bot le escribe al cliente antes de su cita)
   const [remindersEnabled, setRemindersEnabled] = useState(false);
-  const [reminderHours, setReminderHours] = useState(24);
+  const [reminderHours, setReminderHours] = useState(1);
   const [remindersSupported, setRemindersSupported] = useState(true);
   const [savingReminders, setSavingReminders] = useState(false);
 
@@ -110,7 +111,7 @@ export default function AppointmentsPage() {
           setReminderHours(
             REMINDER_HOUR_OPTIONS.some(o => o.value === d.business.appointment_reminder_hours)
               ? d.business.appointment_reminder_hours
-              : 24
+              : 1
           );
           // El backend avisa si falta la migración 009: sin ella el interruptor no se puede guardar.
           setRemindersSupported(d.appointment_reminders_supported !== false);
