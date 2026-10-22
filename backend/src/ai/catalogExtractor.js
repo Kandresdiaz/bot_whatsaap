@@ -80,7 +80,7 @@ const distributePdfKnowledge = async (businessId, text, sourceName = 'PDF') => {
     if (!key) continue;
     if (existing.products.has(key)) { skipped++; continue; }
     existing.products.add(key);
-    productRows.push(buildProductRow(businessId, p));
+    productRows.push(buildProductRow(businessId, p, null, existing.categories));
     if (productRows.length >= MAX_PRODUCTS) break;
   }
 

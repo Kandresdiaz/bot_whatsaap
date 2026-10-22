@@ -21,6 +21,11 @@ const DECLINE_RE = /\b(no (me )?(lo |la )?(mand|envi|pas|necesit|quier)\w*|ya (l
 // Lista de lo que hay (de todo o de una categoría), con o sin la palabra "catálogo"
 const LIST_RE = /\b(lista\w*|listado|inventario|portafolio|todo lo que (hay|tienen|tienes|venden|manejan)|(ver|mostrar|muestrame|ensename) todo|(ver|mostrar|muestrame|ensename|cuales son|que) tod[oa]s (los|las) \w{3,}|tod[oa]s (los|las) (referencias|modelos|productos|opciones|tipos|precios)|que (mas|otras cosas) (hay|tienen|tienes|manejan|venden|ofrecen)|(el|la|su) (menu|carta))\b/;
 
+// Preguntar por lo que hay, sin la palabra "lista": "¿qué referencias tienen?", "¿cuáles modelos
+// manejan?", "¿qué marcas hay?". Es la forma más común de pedir el catálogo y antes se buscaba
+// como si "referencias" fuera el nombre de un producto.
+const MODELS_RE = /\b((que|cuales|cuantos|cuantas)\s+(\w+\s+){0,2}(referencias|modelos|marcas|lineas|versiones)|(referencias|modelos|marcas)\s+(tiene\w*|maneja\w*|hay|vende\w*|ofrece\w*|disponibles))\b/;
+
 /** Pide el catálogo en sí ("mándame el catálogo", "tienen catálogo?", "manden e catlog comple"). */
 const isCatalogRequest = (text) => {
   const norm = normalize(text);
@@ -34,7 +39,7 @@ const isCatalogRequest = (text) => {
 const isBrowseRequest = (text) => {
   const norm = normalize(text);
   if (!norm || DECLINE_RE.test(norm)) return false;
-  return isCatalogRequest(text) || LIST_RE.test(norm);
+  return isCatalogRequest(text) || LIST_RE.test(norm) || MODELS_RE.test(norm);
 };
 
 // Pide TODO, no una categoría ni "más opciones": "la lista de precios", "muéstrame todo"
