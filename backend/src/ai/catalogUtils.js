@@ -1,5 +1,6 @@
 // Piezas compartidas por los dos lectores de catálogo: el de texto (catalogExtractor)
 // y el de imágenes (catalogVision).
+const { categoryKey } = require('../services/categories');
 const { supabase } = require('../db/supabase');
 
 const norm = (s) => String(s || '')
@@ -27,7 +28,7 @@ const toPrice = (v) => {
 /** Nombres de producto y títulos de conocimiento que el negocio ya tiene, normalizados. */
 const loadExistingKeys = async (businessId) => {
   const [{ data: products }, { data: kb }] = await Promise.all([
-    supabase.from('products_services').select('id, name, image_url').eq('business_id', businessId),
+    supabase.from('products_services').select('id, name, image_url, category').eq('business_id', businessId),
     supabase.from('knowledge_base').select('title, type').eq('business_id', businessId),
   ]);
   return {
@@ -40,16 +41,34 @@ const loadExistingKeys = async (businessId) => {
       .map(p => (String(p.image_url || '').match(/\/([0-9a-f]{16})\.jpg(?:\?|$)/) || [])[1])
       .filter(Boolean)),
     kb: new Set((kb || []).filter(k => k.type === 'faq' || k.type === 'text').map(k => norm(k.title))),
+    // Categorías que ya existen: el modelo escribe "MOTO ELÉCTRICA" en una página y "Motos
+    // eléctricas" en la siguiente. Se reutiliza el nombre que ya está guardado.
+    categories: new Map((products || [])
+      .map(p => [categoryKey(p.category), String(p.category || '').trim()])
+      .filter(([k, name]) => k && name)),
   };
 };
 
-const buildProductRow = (businessId, p, imageUrl = null) => ({
+// `knownCategories` (clave normalizada → nombre ya guardado) evita que el mismo tipo de producto
+// quede repartido en tres categorías distintas según cómo lo escribió el modelo en cada página.
+const resolveCategory = (raw, knownCategories) => {
+  const name = String(raw || '').trim().slice(0, 60) || 'General';
+  if (!(knownCategories instanceof Map)) return name;
+  const key = categoryKey(name);
+  if (!key) return name;
+  const known = knownCategories.get(key);
+  if (known) return known;
+  knownCategories.set(key, name);
+  return name;
+};
+
+const buildProductRow = (businessId, p, imageUrl = null, knownCategories = null) => ({
   business_id: businessId,
   name: String(p?.nombre || '').trim().slice(0, 120),
   description: String(p?.descripcion || '').trim().slice(0, 600),
   price: toPrice(p?.precio),
   currency: 'COP',
-  category: String(p?.categoria || '').trim().slice(0, 60) || 'General',
+  category: resolveCategory(p?.categoria, knownCategories),
   image_url: imageUrl || null,
   is_active: true,
   updated_at: new Date().toISOString(),

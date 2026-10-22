@@ -394,7 +394,7 @@ const buildCatalogFromPdfImages = async (businessId, pdfBuffer, sourceName = 'Ca
     }
 
     if (nuevos.length) {
-      const rows = nuevos.map(p => buildProductRow(businessId, p, imageUrl));
+      const rows = nuevos.map(p => buildProductRow(businessId, p, imageUrl, existing.categories));
       const { error } = await supabase.from('products_services').insert(rows);
       if (error) {
         console.error(`[CATALOGO] Página ${page}: error guardando productos:`, error.message);

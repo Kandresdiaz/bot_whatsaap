@@ -6,6 +6,7 @@ const { verifyReplyAmounts, verifyReplyCodes, reconcileOrderTotal } = require('.
 const { parseJsonTag, stripInternalTags } = require('./replyTags');
 const { isBrowseRequest } = require('./catalogIntent');
 const { validateSlot } = require('../services/bookingActions');
+const { categoryKey, groupProductsByCategory } = require('../services/categories');
 
 // Lo que el cliente va a leer (sin etiquetas internas) debe ser una respuesta de verdad: una de
 // dos letras ("EM") es una respuesta cortada, no una respuesta.
@@ -390,11 +391,14 @@ const detectCategory = (texts, categories) => {
     if (!tokens.length) continue;
     let best = null;
     let bestScore = 0;
+    let tied = false;
     for (const x of cats) {
       const score = x.words.filter(w => freq.get(w) <= maxFreq && tokens.some(t => isFuzzyWordMatch(t, w))).length;
-      if (score > bestScore) { best = x.c; bestScore = score; }
+      if (score > bestScore) { best = x.c; bestScore = score; tied = false; }
+      else if (score > 0 && score === bestScore && x.c !== best) tied = true;
     }
-    if (best) return best;
+    // El texto nombra varias por igual ("¿patineta, bici o bicimoto?"): no se adivina cuál quiso
+    if (best && !tied) return best;
   }
   return null;
 };
@@ -420,12 +424,14 @@ const buildBrowse = async ({ userMessage, history, products, options }) => {
 
   const all = Array.isArray(products) ? products : [];
   if (!all.length) return null;
-  const counts = {};
-  all.forEach(p => { const c = (p.category || '').trim(); if (c) counts[c] = (counts[c] || 0) + 1; });
+  // Las variantes del mismo nombre ("Motos", "MOTO ELECTRICA") cuentan como una sola categoria
+  const grouped = groupProductsByCategory(all);
+  const counts = grouped.counts;
   const byPrice = (a, b) => (Number(a.price) || 0) - (Number(b.price) || 0);
-  const category = detectCategory(texts, Object.keys(counts));
+  const category = detectCategory(texts, grouped.labels);
   if (category) {
-    const inCategory = all.filter(p => (p.category || '').trim() === category).sort(byPrice);
+    const keys = new Set((grouped.variants[category] || [category]).map(categoryKey));
+    const inCategory = all.filter(p => keys.has(categoryKey(p.category))).sort(byPrice);
     return { mode: 'category', list: inCategory.slice(0, BROWSE_MAX), category, total: inCategory.length, categoryCounts: counts };
   }
   if (all.length <= BROWSE_MAX) return { mode: 'all', list: all, category: null, total: all.length, categoryCounts: counts };
@@ -559,6 +565,22 @@ const dropWeakMatches = (items) => {
 // - specific: la lista son productos que SÍ coinciden con la consulta puntual del cliente.
 // - noMatch: hay catálogo pero NINGÚN producto coincide con la consulta puntual → no entregamos
 //   productos al azar, para que el modelo no los presente como si fueran lo que el cliente pidió.
+// "lo mas economico", "la mas barata": no es el nombre de ningun producto, es un orden.
+const priceIntentOf = (text) => {
+  const norm = normalizeSearchText(text || '');
+  return PRICE_ASC_RE.test(norm) ? 'precio_asc' : PRICE_DESC_RE.test(norm) ? 'precio_desc' : null;
+};
+
+// Lo mas barato (o lo mas caro) del catalogo, o de lo que ya coincidia con la busqueda.
+const PRICE_SORTED_MAX = 8;
+const sortByPriceIntent = (items, intent) => {
+  const withPrice = items.filter(p => Number(p.price) > 0);
+  const base = withPrice.length ? withPrice : items;
+  return [...base].sort((a, b) => intent === 'precio_desc'
+    ? (Number(b.price) || 0) - (Number(a.price) || 0)
+    : (Number(a.price) || 0) - (Number(b.price) || 0));
+};
+
 const rankAndFilterProducts = (query, products, subQueries = []) => {
   const all = Array.isArray(products) ? products : [];
   if (all.length === 0) return { list: [], specific: false, catalogHasProducts: false, noMatch: false };
@@ -576,17 +598,34 @@ const rankAndFilterProducts = (query, products, subQueries = []) => {
   for (const term of allSearchTerms) {
     const norm = normalizeSearchText(term);
     const tokens = norm.split(/\s+/).filter(w => w.length >= 2);
-    const meaningful = tokens.filter(w => !SPANISH_STOPWORDS.has(w));
+    const meaningful = tokens.filter(w => !SPANISH_STOPWORDS.has(w) && !INTENT_WORDS.has(w));
     meaningful.forEach(w => allWords.add(w));
   }
 
+  // "algo economico", "la mas barata": ningun producto se llama asi, pero si sabemos que pide.
+  // Se le entregan los mas baratos (o los mas caros) de verdad, en vez de dejarlo sin catalogo.
+  const priceIntent = priceIntentOf(query);
+
   // Consulta genérica (sin palabras de contenido): mostramos una muestra para que explore.
-  if (allWords.size === 0) return { list: all.slice(0, 12), specific: false, catalogHasProducts: true, noMatch: false };
+  if (allWords.size === 0) {
+    return priceIntent
+      ? { list: sortByPriceIntent(all, priceIntent).slice(0, PRICE_SORTED_MAX), specific: true, catalogHasProducts: true, noMatch: false, priceIntent, totalMatched: all.length }
+      : { list: all.slice(0, 12), specific: false, catalogHasProducts: true, noMatch: false };
+  }
 
   const scored = scoreProductsByWords(allWords, all);
 
   const found = scored.filter(i => i.score > 0).sort((a, b) => b.rank - a.rank || b.score - a.score);
   const matched = dropWeakMatches(found);
+  if (priceIntent) {
+    // Con coincidencias ("la bicimoto más barata") se ordenan esas; sin ellas, todo el catálogo
+    const base = matched.length > 0 ? matched : all;
+    return {
+      list: sortByPriceIntent(base, priceIntent).slice(0, PRICE_SORTED_MAX),
+      specific: true, catalogHasProducts: true, noMatch: false,
+      priceIntent, totalMatched: base.length,
+    };
+  }
   if (matched.length > 0) {
     return {
       list: diversifyByCategory(matched, 15),
@@ -660,11 +699,11 @@ const buildSystemPrompt = (business, relevantKnowledge, allKnowledge, products =
     ? catalogInfo.categories
     : browseInfo?.categoryCounts && Object.keys(browseInfo.categoryCounts).length
     ? Object.keys(browseInfo.categoryCounts)
-    : Array.from(new Set((products || []).map(p => p.category?.trim()).filter(Boolean)));
+    : groupProductsByCategory(products || []).labels;
   // En modo lista se muestran cuántos productos tiene cada categoría, para que el cliente elija
   const browseCounts = browseInfo?.categoryCounts || {};
   const categoriesOverview = distinctCategories.length > 0
-    ? `=== COLECCIONES Y CATEGORÍAS REGISTRADAS EN EL CATÁLOGO ===\n${distinctCategories.map(c => `• ${c}${browseInfo && browseCounts[c] ? ` (${browseCounts[c]})` : ''}`).join('\n')}\n=== FIN DE COLECCIONES ===`
+    ? `=== COLECCIONES Y CATEGORÍAS REGISTRADAS EN EL CATÁLOGO ===\n${distinctCategories.map(c => `• ${c}${browseInfo && browseCounts[c] ? ` (${browseCounts[c]})` : ''}`).join('\n')}\n=== FIN DE COLECCIONES ===\n(Son los nombres exactos y ya vienen sin repetidos: cópialos tal cual, sin agregar las mismas categorías en plural, en singular ni en mayúsculas.)`
     : '';
   const browseCategories = browseInfo?.mode === 'categories';
 
@@ -689,8 +728,12 @@ const buildSystemPrompt = (business, relevantKnowledge, allKnowledge, products =
   const noProductMatch = prodResult.noMatch === true || (!hasProducts && catalogInfo?.noMatch === true);
   const isPartialSample = hasProducts && !catalogInfo && !prodResult.specific && Array.isArray(products) && products.length > filteredProducts.length;
   // Hay más coincidencias de las que caben: el modelo no debe creer que lo mostrado es todo lo que hay
-  const moreMatchesNote = hasProducts && !catalogInfo && !browseInfo && prodResult.specific && prodResult.totalMatched > filteredProducts.length
+  const moreMatchesNote = hasProducts && !catalogInfo && !browseInfo && prodResult.specific && !prodResult.priceIntent && prodResult.totalMatched > filteredProducts.length
     ? `\n(Se muestran ${filteredProducts.length} de ${prodResult.totalMatched} productos que coinciden, repartidos entre las categorías. Hay más: si el cliente quiere ver otros o afinar, pregúntale por modelo, uso o presupuesto.)`
+    : '';
+  // Pidió por precio, no por nombre: la lista ya viene ordenada y hay que mostrarla, no preguntar
+  const priceNote = hasProducts && prodResult.priceIntent
+    ? `\n(El cliente pidió lo más ${prodResult.priceIntent === 'precio_desc' ? 'costoso o premium' : 'económico'}: estos son los ${filteredProducts.length} más ${prodResult.priceIntent === 'precio_desc' ? 'caros' : 'baratos'} del catálogo${prodResult.totalMatched > filteredProducts.length ? ` (de ${prodResult.totalMatched} en total)` : ''}, ordenados por precio. MUÉSTRALE 2 o 3 con su precio en este mismo mensaje —no le preguntes primero qué tipo quiere— y cierra con UNA pregunta para afinar.)`
     : '';
   const ordenLabel = { precio_asc: 'de menor a mayor precio', precio_desc: 'de mayor a menor precio', similares: 'por parecido al producto de referencia (el primero)' }[catalogInfo?.orden] || 'por relevancia';
   const contextBlock = contextProducts.length
@@ -824,6 +867,7 @@ ${playbook}
 - Nunca hagas dos preguntas en el mismo mensaje. Prefiere preguntas fáciles de opción ("¿mañana o tarde?", "¿domicilio o recoges?").
 - Evita cierres genéricos que no avanzan ("¿te gustaría ver alguna en detalle?", "¿te llama la atención alguna?"): pregunta algo que filtre (uso, presupuesto, preferencia) o que cierre (cuál se lleva, cómo paga, cuándo viene).
 - No sueltes el catálogo completo ni precios de golpe si el cliente aún no dice qué busca (salvo que él lo pida).
+- Si el cliente ya dijo qué necesita (aunque sea amplio: "algo económico", "una moto para trabajar", "qué referencias tienen") y abajo hay CATÁLOGO OFICIAL, muéstrale 2 o 3 productos reales con su precio EN ESE MISMO MENSAJE y solo después pregunta. Nunca contestes una necesidad con otra pregunta sin enseñar nada: dos mensajes seguidos preguntando sin mostrar un solo producto es una venta perdida.
 ${hasProducts
   ? (browseInfo ? '- El cliente pidió la lista: entrégala completa (ver CATÁLOGO OFICIAL).' : '- Con catálogo: presenta 2 o 3 opciones relevantes con precio y un beneficio concreto de cada una.')
   : browseCategories
@@ -832,6 +876,7 @@ ${hasProducts
   ? '- No encontraste ese producto en el catálogo: no inventes modelos, precios ni características. Pregunta el nombre o modelo, ofrece las categorías o confirma con un asesor.'
   : '- No hay productos cargados: no inventes modelos ni precios. Usa las FAQs si responden la duda; si no, pregunta qué necesita y ofrece confirmarlo con un asesor.'}
 - Si el cliente responde corto ("el segundo", "el pro", "qué incluye"), deduce del historial a qué opción se refiere.
+- TODA lista (categorías, productos, horarios) va en renglones aparte: UN ítem por línea, empezando con "• " y con un salto de línea real entre uno y otro. Nunca los pegues seguidos en el mismo párrafo. Deja una línea en blanco antes de la pregunta final.
 
 ## ESTADO DE LA CONVERSACIÓN
 ${greetingInstruction}
@@ -840,7 +885,7 @@ ${greetingInstruction}
 ${businessInfo}
 
 ${categoriesOverview ? `${categoriesOverview}\n\n` : ''}${hasProducts
-  ? `## CATÁLOGO OFICIAL\n${productsContext}${catalogNote}${moreMatchesNote}${contextBlock}${isPartialSample ? '\n(Es solo una MUESTRA del catálogo, no está completo. Si el cliente busca algo puntual que no aparezca aquí, pídele el nombre/modelo para ubicarlo; no asumas que no existe.)' : ''}`
+  ? `## CATÁLOGO OFICIAL\n${productsContext}${catalogNote}${priceNote}${moreMatchesNote}${contextBlock}${isPartialSample ? '\n(Es solo una MUESTRA del catálogo, no está completo. Si el cliente busca algo puntual que no aparezca aquí, pídele el nombre/modelo para ubicarlo; no asumas que no existe.)' : ''}`
   : browseCategories
   ? `## CATÁLOGO\nEl cliente pidió ver el catálogo completo, pero tiene ${browseInfo.total} productos y no caben en un mensaje. Muéstrale las categorías de arriba (con su número de productos) y pregúntale cuál quiere ver. No inventes productos.`
   : noProductMatch

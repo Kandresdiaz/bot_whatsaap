@@ -7,6 +7,8 @@
 // - Si la migración 005 aún no está aplicada (o la búsqueda falla), se usa el modo anterior:
 //   hasta 150 productos en memoria. Nunca se queda sin catálogo.
 
+const { groupCategories } = require('./categories');
+
 const LARGE_CATALOG_MIN = parseInt(process.env.LARGE_CATALOG_MIN, 10) || 60;
 const LEGACY_LIMIT = 150;
 const SAMPLE_SIZE = 12;
@@ -52,10 +54,12 @@ const getCatalogSummary = async (supabase, businessId) => {
     const c = (row.category || '').trim();
     if (c) counts.set(c, (counts.get(c) || 0) + 1);
   }
-  const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 60);
-  const categories = sorted.map(([c]) => c);
-  const categoryCounts = Object.fromEntries(sorted);
-  const summary = { total: (data || []).length, categories, categoryCounts, expiresAt: Date.now() + SUMMARY_TTL_MS };
+  // "BICIMOTO ELÉCTRICA" y "Bicimotos eléctricas" son la misma categoría: se muestran una sola vez
+  const grouped = groupCategories([...counts.entries()]);
+  const categories = grouped.labels.slice(0, 60);
+  const categoryCounts = Object.fromEntries(categories.map(c => [c, grouped.counts[c]]));
+  const categoryVariants = Object.fromEntries(categories.map(c => [c, grouped.variants[c]]));
+  const summary = { total: (data || []).length, categories, categoryCounts, categoryVariants, expiresAt: Date.now() + SUMMARY_TTL_MS };
   summaryCache.set(businessId, summary);
   return summary;
 };
@@ -93,10 +97,13 @@ const callSearch = async (supabase, businessId, terms, { limit = 12, orden = 're
 };
 
 // Lista de una categoría ("muéstrame todas las motos"): una consulta directa, sin ranking ni IA.
-const listCategory = async (supabase, businessId, category, limit = 20) => {
+// `categories` son todas las variantes del mismo nombre, para no dejar afuera medio catálogo.
+const listCategory = async (supabase, businessId, categories, limit = 20) => {
+  const values = (Array.isArray(categories) ? categories : [categories]).filter(Boolean);
+  if (!values.length) return [];
   const { data, error } = await supabase
     .from('products_services').select(PRODUCT_COLUMNS)
-    .eq('business_id', businessId).eq('is_active', true).eq('category', category)
+    .eq('business_id', businessId).eq('is_active', true).in('category', values)
     .order('price', { ascending: true }).limit(limit);
   if (error) {
     console.error('[CATALOGO] Error listando la categoría:', error.message);
@@ -144,10 +151,11 @@ const loadCatalogContext = async ({ supabase, business, text }) => {
         catalogTotal: summary.total,
         categories: summary.categories,
         categoryCounts: summary.categoryCounts,
+        categoryVariants: summary.categoryVariants,
         sample,
         searchProducts: (terms, opts = {}) => callSearch(supabase, businessId, terms, { maxPrice, ...opts }),
         similarProducts: (productId, limit) => callSimilar(supabase, businessId, productId, limit),
-        listCategory: (category, limit) => listCategory(supabase, businessId, category, limit),
+        listCategory: (category, limit) => listCategory(supabase, businessId, summary.categoryVariants[category] || [category], limit),
         // La foto que manda el cliente se compara contra el catálogo cargado en modo anterior
         visionProducts: async () => (await loadLegacyProducts(supabase, businessId, '')).products,
       },

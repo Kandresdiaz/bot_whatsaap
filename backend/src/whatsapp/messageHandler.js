@@ -2,6 +2,7 @@ const { supabase } = require('../db/supabase');
 const { askGroq, detectCategory } = require('../ai/groq');
 const { loadListableProducts, buildCatalogMessages } = require('../services/catalogText');
 const { loadCatalogContext } = require('../services/catalogContext');
+const { groupProductsByCategory } = require('../services/categories');
 const { applyBookingActions, loadBusySlots } = require('../services/bookingActions');
 const { resolveUserBusiness } = require('../services/businessResolver');
 const { notifyLead } = require('./notifier');
@@ -981,11 +982,11 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
     // Si nombra una categoría ("el catálogo de motos") va solo esa. Si son demasiados productos
     // para leer en el celular, sigue la IA, que le muestra las categorías para elegir.
     try {
-      const categories = catalogOptions.categories?.length
-        ? catalogOptions.categories
-        : [...new Set(products.map(p => (p.category || '').trim()).filter(Boolean))];
+      const groupedCats = groupProductsByCategory(products);
+      const categories = catalogOptions.categories?.length ? catalogOptions.categories : groupedCats.labels;
+      const variants = catalogOptions.categoryVariants || groupedCats.variants;
       const category = detectCategory([aiText], categories);
-      const list = await loadListableProducts(supabase, business.id, category);
+      const list = await loadListableProducts(supabase, business.id, category ? (variants[category] || [category]) : null);
       if (list?.length) {
         const parts = buildCatalogMessages(list);
         parts[0] = `${greeting} ${category

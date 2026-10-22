@@ -1,3 +1,5 @@
+const { categoryKey, groupProductsByCategory } = require('./categories');
+
 // Catálogo completo como texto de WhatsApp, armado directo de la base de datos: sin IA (0 tokens)
 // y con los precios exactos. Se usa cuando el cliente pide "todo el catálogo" y el negocio no
 // tiene un PDF que enviarle.
@@ -21,7 +23,9 @@ const formatPrice = (p) => {
 const loadListableProducts = async (supabase, businessId, category = null) => {
   let q = supabase.from('products_services').select('name, price, currency, category')
     .eq('business_id', businessId).eq('is_active', true);
-  if (category) q = q.eq('category', category);
+  // `category` puede traer varias variantes del mismo nombre ("Motos", "MOTOS ELÉCTRICAS")
+  const values = (Array.isArray(category) ? category : category ? [category] : []).filter(Boolean);
+  if (values.length) q = q.in('category', values);
   const { data, error } = await q.order('price', { ascending: true }).limit(MAX_LIST_PRODUCTS + 1);
   if (error) throw error;
   return (data || []).length > MAX_LIST_PRODUCTS ? null : (data || []);
@@ -29,9 +33,15 @@ const loadListableProducts = async (supabase, businessId, category = null) => {
 
 /** Agrupa por categoría (la más grande primero) y parte en mensajes de WhatsApp. */
 const buildCatalogMessages = (products) => {
+  // Se agrupa por categoría normalizada: "MOTO ELÉCTRICA" y "Motos eléctricas" son un solo bloque
+  const labels = new Map(); // clave normalizada → nombre que se muestra
+  for (const [label, variants] of Object.entries(groupProductsByCategory(products).variants)) {
+    for (const v of variants) labels.set(categoryKey(v), label);
+  }
   const groups = new Map();
   for (const p of products) {
-    const c = (p.category || '').trim() || 'Otros';
+    const raw = (p.category || '').trim();
+    const c = (raw && labels.get(categoryKey(raw))) || 'Otros';
     if (!groups.has(c)) groups.set(c, []);
     groups.get(c).push(p);
   }
