@@ -876,6 +876,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-10-18** | Merge pull request #36 from Kandresdiaz/feat/recordatorio-una-hora (`4234f7f`) | Auto-deploy |
 
+| **2026-10-22** | Merge pull request #37 from Kandresdiaz/fix/catalogo-categorias-y-economico (`3609489`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
