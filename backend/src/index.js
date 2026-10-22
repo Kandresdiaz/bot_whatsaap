@@ -147,7 +147,11 @@ app.get('/api/debug/sessions', requireAdmin, async (req, res) => {
   }
 });
 
-app.get('/api/debug/test-groq', async (req, res) => {
+// Solo admin: esta ruta hace UNA llamada a la IA por cada modelo disponible. Abierta,
+// cualquiera que supiera la URL podía dispararla en bucle y quemar la cuota de Groq,
+// dejando al bot sin poder responder a nadie. Además enseñaba la lista de modelos y el
+// largo de la API key.
+app.get('/api/debug/test-groq', requireAdmin, async (req, res) => {
   try {
     const Groq = require('groq-sdk');
     const apiKey = (process.env.GROQ_API_KEY || '').trim().replace(/^['"]|['"]$/g, '');
@@ -186,7 +190,9 @@ app.get('/api/debug/test-groq', async (req, res) => {
     }
     res.json({ success: results.length > 0, apiKeyLength: apiKey.length, availableModels, results, errors });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message, stack: err.stack });
+    // Sin stack en la respuesta: delata rutas del servidor y versiones de dependencias.
+    console.error('[Debug test-groq]', err.stack || err.message);
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
