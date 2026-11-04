@@ -880,6 +880,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-11-04** | Merge pull request #38 from Kandresdiaz/feat/seo-contenido (`b74fdf1`) | Auto-deploy |
 
+| **2026-11-04** | Merge pull request #34 from Kandresdiaz/fix/endpoint-debug-publico (`9bc4df1`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
