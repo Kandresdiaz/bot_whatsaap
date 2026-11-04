@@ -63,7 +63,7 @@ export const NICHES: Record<Niche['key'], Niche> = {
     ],
     featuresTitle: 'Lo que hace BotWA por tu restaurante',
     features: [
-      { icon: '📸', title: 'Menú con fotos', text: 'Envía la foto del plato o del menú cuando el cliente pregunta. Puedes cargar el menú desde un PDF.' },
+      { icon: '📸', title: 'Menú con fotos y PDF', text: 'Envía la foto del plato cuando el cliente pregunta y tu menú completo en PDF cuando lo pide.' },
       { icon: '🛵', title: 'Pedidos completos', text: 'Pregunta productos, cantidades, dirección y forma de pago (efectivo, Nequi, transferencia) y registra el pedido.' },
       { icon: '📋', title: 'Panel de pedidos', text: 'Ves los pedidos que toma el bot en tu dashboard y las conversaciones en vivo para intervenir cuando quieras.' },
       { icon: '🎙️', title: 'Entiende notas de voz', text: 'Muchos clientes piden por audio. El bot lo entiende y responde por escrito.' },
@@ -118,13 +118,13 @@ export const NICHES: Record<Niche['key'], Niche> = {
     pains: [
       { icon: '📵', title: 'Mensajes sin responder en consulta', text: 'Mientras atiendes a un paciente, otros escriben preguntando precios y se van con quien responda primero.' },
       { icon: '🌙', title: 'Pacientes que escriben de noche', text: 'Mucha gente pide la cita después del trabajo. Si respondes al otro día, ya agendó en otro lado.' },
-      { icon: '🗂️', title: 'Recepción saturada', text: 'Tu asistente pasa horas repitiendo valores, horarios y dirección en lugar de atender a quien está en sala.' },
+      { icon: '🪑', title: 'Pacientes que no llegan', text: 'La cita se agendó hace dos semanas, nadie la recordó y el espacio quedó vacío. Ese tiempo no se recupera.' },
     ],
     featuresTitle: 'Lo que hace BotWA por tu consultorio',
     features: [
       { icon: '📅', title: 'Agenda citas', text: 'Pregunta el tratamiento, el día y la hora, toma nombre y datos del paciente y registra la cita en tu panel.' },
-      { icon: '💬', title: 'Responde valores y tratamientos', text: 'Limpieza, blanqueamiento, ortodoncia, botox, valoración: responde con tu lista de precios real.' },
-      { icon: '📍', title: 'Ubicación y preparación', text: 'Dirección, parqueadero, cómo llegar y qué debe traer o hacer el paciente antes de la cita.' },
+      { icon: '🔔', title: 'Recuerda la cita', text: 'Envía un recordatorio automático por WhatsApp 1, 2, 4, 24 o 48 horas antes. Lo activas tú desde el panel.' },
+      { icon: '💬', title: 'Valores, ubicación y preparación', text: 'Limpieza, blanqueamiento, ortodoncia, valoración; dirección, parqueadero y qué traer. Con tu información real.' },
       { icon: '📋', title: 'Panel de citas', text: 'Ves todas las citas que agenda el bot y las conversaciones en vivo para intervenir cuando quieras.' },
       { icon: '🎙️', title: 'Entiende notas de voz', text: 'Si el paciente pregunta por audio, el bot lo entiende y responde por escrito.' },
       { icon: '🧠', title: 'No inventa', text: 'Responde solo con la información que tú cargaste. Lo que no sabe, lo deja para que lo atiendas tú.' },
@@ -140,6 +140,7 @@ export const NICHES: Record<Niche['key'], Niche> = {
       { q: '¿El bot da diagnósticos o recomendaciones médicas?', a: 'No, y no debe hacerlo. Responde información administrativa (precios, horarios, ubicación, preparación) y agenda. Las preguntas clínicas las deja para el profesional.' },
       { q: '¿Funciona con el WhatsApp que ya usa mi consultorio?', a: 'Sí. Conectas el número escaneando un QR, como WhatsApp Web, y los pacientes siguen escribiendo al mismo número.' },
       { q: '¿Sirve para clínicas estéticas y spas, no solo odontología?', a: 'Sí. Funciona igual para estética, dermatología, fisioterapia, psicología y cualquier consultorio que agende por WhatsApp.' },
+      { q: '¿Envía recordatorios de la cita?', a: 'Sí. Si lo activas en Panel → Citas, el bot le escribe al paciente antes de su cita (eliges 1, 2, 4, 24 o 48 horas antes) y la cita queda marcada como avisada.' },
       { q: '¿Qué plan necesito?', a: 'Para agendar citas, el plan Máquina de Ventas Pro. Si tienes varias sedes o varias líneas de WhatsApp, el plan Dominio Agencia / VIP.' },
       { q: '¿Puedo responder yo cuando quiera?', a: 'Sí. Desde el panel ves cada conversación en vivo y puedes tomar el control en cualquier momento.' },
     ],

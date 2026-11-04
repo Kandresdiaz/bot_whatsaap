@@ -14,6 +14,7 @@ export function PublicNav() {
         <Link href="/bot-whatsapp-restaurantes">Restaurantes</Link>
         <Link href="/bot-whatsapp-clinicas">Clínicas</Link>
         <Link href="/guias">Guías</Link>
+        <Link href="/calculadora-whatsapp">Calculadora</Link>
         <Link href="/pricing">Planes</Link>
       </nav>
       <div className="lp-nav-actions">
@@ -38,6 +39,7 @@ export function PublicFooter() {
           <Link key={n.slug} href={`/${n.slug}`}>{NICHE_LABELS[n.key]}</Link>
         ))}
         <Link href="/guias">Guías</Link>
+        <Link href="/calculadora-whatsapp">Calculadora de ventas perdidas</Link>
         <Link href="/pricing">Planes</Link>
         <Link href="/login">Iniciar sesión</Link>
         <a href={waLink} target="_blank" rel="noopener noreferrer">Contacto por WhatsApp</a>

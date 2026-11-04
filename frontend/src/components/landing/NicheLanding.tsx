@@ -80,6 +80,11 @@ export default function NicheLanding({ niche }: { niche: Niche }) {
         {/* ── Problemas ──────────────────────────────────────────────── */}
         <section className="lp-section lp-wrap">
           <h2 className="lp-h2">{niche.painsTitle}</h2>
+          <p className="lp-sub">
+            <Link href={`/calculadora-whatsapp?negocio=${niche.key}`} style={{ color: '#00CFFF', fontWeight: 600 }}>
+              Calcula cuánto te cuesta en ventas al mes →
+            </Link>
+          </p>
           <div className="lp-grid-3" style={{ marginTop: 30 }}>
             {niche.pains.map(p => (
               <div key={p.title} className="card">
