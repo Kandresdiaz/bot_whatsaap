@@ -878,6 +878,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-10-22** | Merge pull request #37 from Kandresdiaz/fix/catalogo-categorias-y-economico (`3609489`) | Auto-deploy |
 
+| **2026-11-04** | Merge pull request #38 from Kandresdiaz/feat/seo-contenido (`b74fdf1`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
