@@ -14,6 +14,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: 'weekly' as const,
       priority: 0.9,
     })),
+    { url: absoluteUrl('/calculadora-whatsapp'), lastModified: now, changeFrequency: 'monthly', priority: 0.8 },
     { url: absoluteUrl('/guias'), lastModified: now, changeFrequency: 'weekly', priority: 0.7 },
     ...GUIDES.map(g => ({
       url: absoluteUrl(`/guias/${g.slug}`),

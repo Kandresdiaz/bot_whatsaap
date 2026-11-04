@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { GUIDES, getGuide } from '@/lib/guides';
+import { GUIDES, getGuide, relatedGuides } from '@/lib/guides';
 import { NICHES } from '@/lib/niches';
 import { TRIAL_DAYS, salesWhatsAppLink } from '@/lib/plans';
 import { absoluteUrl, SITE_NAME, OG_DEFAULTS } from '@/lib/site';
@@ -39,9 +39,9 @@ export default async function GuidePage({ params }: Props) {
   const guide = getGuide((await params).slug);
   if (!guide) notFound();
   const niche = NICHES[guide.niche];
+  const related = relatedGuides(guide);
 
-  const jsonLd = {
-    '@context': 'https://schema.org',
+  const article = {
     '@type': 'Article',
     headline: guide.title,
     description: guide.description,
@@ -50,6 +50,22 @@ export default async function GuidePage({ params }: Props) {
     mainEntityOfPage: absoluteUrl(`/guias/${guide.slug}`),
     author: { '@type': 'Organization', name: SITE_NAME, url: absoluteUrl('/') },
     publisher: { '@type': 'Organization', name: SITE_NAME, url: absoluteUrl('/') },
+  };
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@graph': guide.faqs?.length
+      ? [
+          article,
+          {
+            '@type': 'FAQPage',
+            mainEntity: guide.faqs.map(f => ({
+              '@type': 'Question',
+              name: f.q,
+              acceptedAnswer: { '@type': 'Answer', text: f.a },
+            })),
+          },
+        ]
+      : [article],
   };
 
   return (
@@ -64,8 +80,16 @@ export default async function GuidePage({ params }: Props) {
         <h1 className="lp-h1">{guide.title}</h1>
         <p className="lp-lead">{guide.intro}</p>
 
-        {guide.sections.map(s => (
+        {guide.sections.map((s, i) => (
           <section key={s.h2}>
+            {/* A mitad del artículo, quien ya se identificó con el problema tiene a la mano el siguiente paso */}
+            {i === 2 && (
+              <aside className="lp-inline-cta">
+                <strong>¿Cuánto te cuesta no responder a tiempo?</strong>
+                <span>Calcula en 1 minuto las ventas que se pierden en tu WhatsApp.</span>
+                <Link href={`/calculadora-whatsapp?negocio=${niche.key}`} className="btn btn-primary lp-btn-sm">Usar la calculadora →</Link>
+              </aside>
+            )}
             <h2>{s.h2}</h2>
             {s.paragraphs?.map(p => <p key={p}>{p}</p>)}
             {s.list && (
@@ -73,8 +97,23 @@ export default async function GuidePage({ params }: Props) {
                 {s.list.map(item => <li key={item}>{item}</li>)}
               </ul>
             )}
+            {s.outro?.map(p => <p key={p}>{p}</p>)}
           </section>
         ))}
+
+        {guide.faqs && guide.faqs.length > 0 && (
+          <section>
+            <h2>Preguntas frecuentes</h2>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {guide.faqs.map(f => (
+                <details key={f.q} className="card lp-faq">
+                  <summary>{f.q}</summary>
+                  <p className="lp-text" style={{ marginTop: 10, marginBottom: 0 }}>{f.a}</p>
+                </details>
+              ))}
+            </div>
+          </section>
+        )}
 
         <div className="lp-final" style={{ marginTop: 48 }}>
           <h2 className="lp-h2" style={{ marginBottom: 10 }}>Automatízalo con BotWA</h2>
@@ -88,6 +127,20 @@ export default async function GuidePage({ params }: Props) {
             </a>
           </div>
         </div>
+
+        {related.length > 0 && (
+          <section>
+            <h2>Sigue leyendo</h2>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {related.map(g => (
+                <Link key={g.slug} href={`/guias/${g.slug}`} className="card lp-guide-card">
+                  <h3 className="lp-h3" style={{ fontSize: 16 }}>{g.title}</h3>
+                  <p className="lp-text" style={{ fontSize: 13, marginBottom: 0 }}>{g.description}</p>
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
       </main>
       <PublicFooter />
     </div>

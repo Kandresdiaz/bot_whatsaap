@@ -27,6 +27,11 @@ export default function GuidesIndexPage() {
           Guías para vender y atender por WhatsApp
         </h1>
         <p className="lp-lead">Consejos prácticos para negocios que reciben pedidos y citas por WhatsApp todos los días.</p>
+        <aside className="lp-inline-cta">
+          <strong>¿Cuánto te cuesta no responder a tiempo?</strong>
+          <span>Calcula en 1 minuto las ventas que se pierden en tu WhatsApp.</span>
+          <Link href="/calculadora-whatsapp" className="btn btn-primary lp-btn-sm">Usar la calculadora →</Link>
+        </aside>
 
         {SECTIONS.map(({ niche, label }) => (
           <section key={niche.key} style={{ marginTop: 40 }}>

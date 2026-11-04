@@ -48,26 +48,30 @@ Clínicas: `agendar citas por whatsapp`, `bot de whatsapp para consultorio odont
 
 Regla: 1 página = 1 intención. Antes de escribir una guía nueva, buscar la palabra en Google (modo incógnito, ubicación Colombia) y mirar qué tipo de página sale arriba.
 
-## 5. Calendario de contenido (12 semanas, 1 guía/semana, alternando nichos)
+## 5. Contenido publicado y pendiente
 
-Cada guía se agrega en `frontend/src/lib/guides.ts` (sitemap y enlaces se actualizan solos).
+Cada guía se agrega en `frontend/src/lib/guides.ts` (sitemap, enlaces y "Sigue leyendo" se actualizan solos). Todas llevan a mitad del texto un llamado a la calculadora y al final a la página del nicho.
 
-| Semana | Nicho | Guía |
+**Publicado (12 guías + calculadora):**
+- Restaurantes: recibir pedidos por WhatsApp · domicilios propios vs apps · **cuánto cuesta un bot** · **WhatsApp Business vs bot** · menú en PDF, fotos o texto · plantillas de mensajes.
+- Clínicas: agendar citas por WhatsApp · plantillas de mensajes · **reducir inasistencias** · **recordatorio de citas automático** · **cuánto cuesta un bot** · **WhatsApp Business vs bot**.
+- `/calculadora-whatsapp`: calcula las ventas perdidas por responder tarde y compara con el precio del plan Pro.
+
+En negrita, las de intención de compra: son las que más clientes traen.
+
+**Pendiente (1 por semana, alternando nichos):**
+
+| # | Nicho | Guía |
 |---|---|---|
-| 1 | Restaurante | Cómo armar un menú para WhatsApp que venda (foto vs PDF) |
-| 2 | Clínica | Cómo reducir las citas que no asisten (inasistencia) |
-| 3 | Restaurante | Mensajes de WhatsApp para restaurantes: plantillas listas |
-| 4 | Clínica | WhatsApp Business vs bot con IA para consultorios |
-| 5 | Restaurante | Cómo cobrar domicilios por Nequi sin enredos |
+| 1 | Restaurante | Cómo cobrar domicilios por Nequi sin enredos |
+| 2 | Clínica | Cómo responder "¿cuánto vale?" sin espantar al paciente |
+| 3 | Restaurante | Cómo atender pedidos por audio en WhatsApp |
+| 4 | Clínica | Cómo llenar la agenda de los días flojos por WhatsApp |
+| 5 | Restaurante | Caso real: primer restaurante que use BotWA (con permiso) |
 | 6 | Clínica | Qué datos del paciente pedir por WhatsApp (y cuáles no) |
-| 7 | Restaurante | Cómo atender pedidos por audio en WhatsApp |
-| 8 | Clínica | Cómo responder "¿cuánto vale?" sin espantar al paciente |
-| 9 | Restaurante | WhatsApp Business vs bot con IA para restaurantes |
-| 10 | Clínica | Cómo llenar la agenda de los días flojos por WhatsApp |
-| 11 | Restaurante | Cuánto cuesta un bot de WhatsApp para restaurante en Colombia |
-| 12 | Clínica | Cuánto cuesta un bot de WhatsApp para consultorio en Colombia |
+| 7 | Clínica | Caso real: primer consultorio que use BotWA (con permiso) |
 
-Las de "cuánto cuesta" y "X vs Y" atraen gente lista para comprar: priorizarlas si hay poco tiempo.
+Cuando Search Console muestre búsquedas reales con impresiones, priorizarlas sobre esta lista.
 
 ## 6. Tráfico gratis fuera de Google (lo que trae clientes más rápido)
 

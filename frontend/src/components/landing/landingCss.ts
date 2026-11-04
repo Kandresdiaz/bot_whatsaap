@@ -74,13 +74,28 @@ export const LANDING_CSS = `
 .lp-article .lp-h1 { font-size: clamp(28px, 4.2vw, 42px); }
 .lp-article h2 { font-size: 22px; font-weight: 800; color: #fff; margin: 34px 0 12px; }
 .lp-article p { color: #cbd5e1; font-size: 16px; line-height: 1.75; margin-bottom: 14px; }
-.lp-article ul { margin: 0 0 14px 22px; display: flex; flex-direction: column; gap: 8px; color: #cbd5e1; font-size: 16px; line-height: 1.6; }
+.lp-article ul { list-style: disc; padding-left: 0; margin: 0 0 14px 22px; display: flex; flex-direction: column; gap: 8px; color: #cbd5e1; font-size: 16px; line-height: 1.6; }
 .lp-breadcrumb { font-size: 13px; color: #94a3b8; margin-bottom: 14px; }
 .lp-breadcrumb a { color: #00CFFF; }
+
+.lp-inline-cta { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; margin: 30px 0 6px; padding: 18px 20px; border-radius: 14px; border: 1px solid rgba(0,207,255,0.35); background: rgba(26,107,255,0.1); }
+.lp-inline-cta strong { color: #fff; font-size: 16px; }
+.lp-inline-cta span { color: #cbd5e1; font-size: 14px; margin-bottom: 6px; }
+
+.lp-calc { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 28px; }
+.lp-calc label { display: flex; flex-direction: column; gap: 6px; font-size: 14px; color: #cbd5e1; font-weight: 600; }
+.lp-calc input { background: #0B132B; border: 1px solid rgba(255,255,255,0.15); color: #fff; border-radius: 10px; padding: 11px 12px; font-size: 16px; width: 100%; }
+.lp-calc small { color: #94a3b8; font-weight: 400; font-size: 12px; }
+.lp-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 20px; }
+.lp-tab { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.12); color: #cbd5e1; border-radius: 30px; padding: 8px 16px; font-size: 14px; font-weight: 700; cursor: pointer; }
+.lp-tab-on { background: rgba(0,207,255,0.15); border-color: #00CFFF; color: #fff; }
+.lp-result { margin-top: 24px; padding: 24px; border-radius: 16px; border: 1px solid rgba(239,68,68,0.4); background: rgba(239,68,68,0.08); }
+.lp-big { font-size: clamp(30px, 6vw, 44px); font-weight: 900; color: #fff; line-height: 1.1; }
 
 @media (max-width: 900px) {
   .lp-hero { grid-template-columns: 1fr; gap: 36px; padding-top: 24px; }
   .lp-grid-3, .lp-grid-audience { grid-template-columns: 1fr; }
+  .lp-calc { grid-template-columns: 1fr; }
   .lp-grid-audience { grid-template-columns: repeat(2, 1fr); }
   .lp-nav-links { display: none; }
   .lp-plan-popular { margin-top: 8px; }
