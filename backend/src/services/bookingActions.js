@@ -139,16 +139,20 @@ const saveAppointment = async (supabase, { business, conversation, data: rawData
 
   const busy = await loadBusySlots(supabase, business, { now });
   // La IA a veces repite la etiqueta al seguir conversando: la misma cita no se guarda dos veces
-  const { data: same } = await supabase.from('appointments').select('id')
-    .eq('conversation_id', conversation.id).eq('status', 'confirmed')
-    .eq('appointment_date', data.fecha).eq('appointment_time', data.hora).limit(1);
+  // Sin conversación (no se pudo leer o crear en la base) la cita se guarda igual: se identifica por el teléfono
+  let sameQ = supabase.from('appointments').select('id').eq('status', 'confirmed')
+    .eq('appointment_date', data.fecha).eq('appointment_time', data.hora);
+  sameQ = conversation?.id
+    ? sameQ.eq('conversation_id', conversation.id)
+    : sameQ.eq('business_id', business.id).eq('client_phone', clientPhone);
+  const { data: same } = await sameQ.limit(1);
   if (same?.length) return { status: 'duplicate' };
 
   const slot = validateSlot(business, data.fecha, data.hora, { busy, now });
   if (!slot.ok) return { status: 'invalid', reason: slot.reason };
 
   const { data: rows, error } = await supabase.from('appointments').insert({
-    conversation_id: conversation.id,
+    conversation_id: conversation?.id || null,
     business_id: business.id,
     client_name: clientName,
     client_phone: clientPhone,
@@ -312,7 +316,7 @@ const applyBookingActions = async (ctx, actions) => {
     try { out[key] = await fn(); } catch (e) { out[key] = { status: 'error', reason: e.message }; console.error(`[RESERVAS] Error en ${key}:`, e.message); }
   };
 
-  if (actions.newAppointment && conversation?.id) {
+  if (actions.newAppointment) {
     await run('newAppointment', async () => {
       const r = await saveAppointment(supabase, { ...base, data: actions.newAppointment, clientName, clientPhone: phoneFor(actions.newAppointment) });
       if (r.status === 'created') emit('new_appointment', r.appointment);
@@ -331,7 +335,7 @@ const applyBookingActions = async (ctx, actions) => {
       return r;
     });
   }
-  if (actions.modifyAppointment && conversation?.id) {
+  if (actions.modifyAppointment) {
     await run('modifyAppointment', async () => {
       const r = await modifyAppointment(supabase, { ...base, data: actions.modifyAppointment, clientName, clientPhone: phoneFor(actions.modifyAppointment) });
       if (r.status === 'updated') emit('appointment_modified', r.appointment);
