@@ -882,6 +882,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-11-04** | Merge pull request #34 from Kandresdiaz/fix/endpoint-debug-publico (`9bc4df1`) | Auto-deploy |
 
+| **2026-11-08** | Merge pull request #39 from Kandresdiaz/fix/bot-citas-humano (`47541e2`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
