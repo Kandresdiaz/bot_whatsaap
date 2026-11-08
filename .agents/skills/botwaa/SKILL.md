@@ -886,6 +886,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-11-08** | Merge pull request #40 from Kandresdiaz/feat/chat-reiniciar-eliminar (`2a9539b`) | Auto-deploy |
 
+| **2026-11-08** | Merge pull request #41 from Kandresdiaz/fix/citas-se-guardan (`f78781b`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
