@@ -7,6 +7,7 @@ const { applyBookingActions, loadBusySlots } = require('../services/bookingActio
 const { resolveUserBusiness } = require('../services/businessResolver');
 const { notifyLead } = require('./notifier');
 const { handleAppointmentFlow } = require('./appointmentFlow');
+const { cutAtReset } = require('../services/chatReset');
 const { isOutsideHours } = require('../services/businessHours');
 const { norm } = require('../ai/catalogUtils');
 const { isFullListRequest } = require('../ai/catalogIntent');
@@ -84,6 +85,16 @@ const rememberTurn = (key, direction, content, timestamp = new Date().toISOStrin
   list.push({ content, direction, timestamp });
   recentTurns.set(key, list.slice(-RECENT_TURNS_MAX));
   if (recentTurns.size > 5000) recentTurns.delete(recentTurns.keys().next().value);
+};
+
+// Olvida la memoria en RAM de un contacto (al reiniciar o eliminar su chat desde el panel)
+const forgetChat = (phones = []) => {
+  const wanted = phones.map(p => String(p || '').replace(/[^0-9]/g, '')).filter(Boolean);
+  if (!wanted.length) return;
+  for (const key of [...recentTurns.keys()]) {
+    const phone = key.slice(key.lastIndexOf(':') + 1).replace(/[^0-9]/g, '');
+    if (wanted.includes(phone)) recentTurns.delete(key);
+  }
 };
 
 const recallTurns = (key) => {
@@ -779,8 +790,13 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
     console.error('[MSG] Error cargando historial:', e.message);
   }
 
+  // El dueño reinició la conversación del bot desde el panel: solo cuenta lo de después
+  const resetCut = cutAtReset(history);
+  history = resetCut.history;
+
   // Fallback a mensajes en RAM de Baileys si la DB aún no tiene historial acumulado
-  if (history.length <= 1) {
+  // (no tras un reinicio: traería de vuelta la conversación que el dueño quiso dejar atrás)
+  if (history.length <= 1 && !resetCut.wasReset) {
     try {
       const { getUserStore, getValidUserId } = require('./sessionManager');
       const store = getUserStore(getValidUserId(userId));
@@ -1159,4 +1175,4 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
   });
 };
 
-module.exports = { handleIncomingMessage };
+module.exports = { handleIncomingMessage, forgetChat };

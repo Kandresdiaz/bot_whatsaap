@@ -46,6 +46,11 @@ export default function ConversationsPage() {
   const [filterTab, setFilterTab] = useState<'all' | 'unread' | 'leads' | 'bot' | 'personal'>('all');
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showInfoDrawer, setShowInfoDrawer] = useState(false);
+  // Gestionar chat: reiniciar la conversación del bot o eliminar el chat
+  const [manageAction, setManageAction] = useState<null | 'reset' | 'delete'>(null);
+  const [deleteBookings, setDeleteBookings] = useState(false);
+  const [managing, setManaging] = useState(false);
+  const [manageError, setManageError] = useState('');
   const [globalBotEnabled, setGlobalBotEnabled] = useState<boolean>(false);
   const [togglingGlobal, setTogglingGlobal] = useState<boolean>(false);
   
@@ -642,6 +647,56 @@ export default function ConversationsPage() {
     if (active?.id === conv.id) setActive({ ...conv, is_blacklisted: newVal });
   };
 
+  const closeManage = () => {
+    setManageAction(null);
+    setDeleteBookings(false);
+    setManageError('');
+  };
+
+  const resetChat = async () => {
+    if (!active || managing) return;
+    setManaging(true);
+    setManageError('');
+    try {
+      const res = await apiFetch(`${BACKEND}/api/conversations/${active.id}/reset`, { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) throw new Error(data.error || 'No se pudo reiniciar la conversación.');
+      if (data.message) setMessages(prev => dedupeMessageList([...prev, data.message]));
+      closeManage();
+    } catch (e) {
+      setManageError(e instanceof Error ? e.message : 'No se pudo reiniciar la conversación.');
+    } finally {
+      setManaging(false);
+    }
+  };
+
+  const deleteChat = async () => {
+    if (!active || managing) return;
+    setManaging(true);
+    setManageError('');
+    try {
+      const res = await apiFetch(`${BACKEND}/api/conversations/${active.id}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deleteBookings }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) throw new Error(data.error || 'No se pudo eliminar el chat.');
+      const removedId = active.id;
+      const removedPhone = active.contact_phone;
+      setConversations(prev => prev.filter(c => c.id !== removedId && c.contact_phone !== removedPhone));
+      setActive(null);
+      activeRef.current = null;
+      setMessages([]);
+      setShowInfoDrawer(false);
+      closeManage();
+    } catch (e) {
+      setManageError(e instanceof Error ? e.message : 'No se pudo eliminar el chat.');
+    } finally {
+      setManaging(false);
+    }
+  };
+
   const sendMessage = async () => {
     if (!reply.trim() || !active || sending) return;
     // El mensaje se envía por la sesión de WhatsApp de la cuenta que se está viendo.
@@ -1233,6 +1288,16 @@ export default function ConversationsPage() {
                   ) : (
                     messages.map(msg => {
                     const isOutbound = msg.direction === 'outbound';
+                    // Marcador de "Reiniciar conversación": nota centrada, no burbuja del bot
+                    if (msg.content?.startsWith('🔄 Conversación reiniciada')) {
+                      return (
+                        <div key={msg.id} style={{ display: 'flex', justifyContent: 'center', margin: '6px 0' }}>
+                          <span style={{ background: '#182229', color: '#8696a0', fontSize: 12, padding: '5px 12px', borderRadius: 8, textAlign: 'center', maxWidth: '85%' }}>
+                            🔄 Conversación del bot reiniciada · el bot no tiene en cuenta los mensajes de arriba
+                          </span>
+                        </div>
+                      );
+                    }
                     return (
                       <div
                         key={msg.id}
@@ -1357,6 +1422,20 @@ export default function ConversationsPage() {
                     >
                       {active.bot_active ? '⏸ Pausar Bot en este chat' : '▶️ Activar Bot en este chat'}
                     </button>
+
+                    <div style={{ borderTop: '1px solid #1e293b', paddingTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      <strong style={{ fontSize: 12, color: '#94a3b8' }}>Gestionar chat</strong>
+                      <button className="btn btn-ghost" style={{ fontSize: 12, width: '100%' }} onClick={() => setManageAction('reset')}>
+                        🔄 Reiniciar conversación del bot
+                      </button>
+                      <button
+                        className="btn btn-ghost"
+                        style={{ fontSize: 12, width: '100%', color: '#f87171', borderColor: 'rgba(239,68,68,0.35)' }}
+                        onClick={() => setManageAction('delete')}
+                      >
+                        🗑️ Eliminar chat
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -1438,6 +1517,61 @@ export default function ConversationsPage() {
           )}
         </div>
       </div>
+
+      {/* Modal para reiniciar o eliminar el chat */}
+      {manageAction && active && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)',
+            display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 9999, padding: 12,
+          }}
+        >
+          <div className="card" style={{ width: '100%', maxWidth: 420, padding: 20, borderRadius: 16, background: '#0c1527', border: '1px solid #1e293b', boxSizing: 'border-box' }}>
+            {manageAction === 'reset' ? (
+              <>
+                <h3 style={{ margin: '0 0 8px 0', fontSize: 17, fontWeight: 700, color: '#f8fafc' }}>🔄 Reiniciar conversación del bot</h3>
+                <p style={{ fontSize: 13, color: '#94a3b8', margin: '0 0 8px 0', lineHeight: 1.5 }}>
+                  El bot atenderá a <strong style={{ color: '#e9edef' }}>{getContactDisplayTitle(active)}</strong> como si fuera la primera vez: lo saluda y no tiene en cuenta lo que hablaron antes.
+                </p>
+                <p style={{ fontSize: 13, color: '#94a3b8', margin: '0 0 16px 0', lineHeight: 1.5 }}>
+                  <strong style={{ color: '#4ade80' }}>No se borra nada.</strong> Los mensajes, citas y pedidos siguen aquí. Úsalo para pruebas o cuando una conversación se enredó.
+                </p>
+              </>
+            ) : (
+              <>
+                <h3 style={{ margin: '0 0 8px 0', fontSize: 17, fontWeight: 700, color: '#f8fafc' }}>🗑️ Eliminar chat</h3>
+                <p style={{ fontSize: 13, color: '#94a3b8', margin: '0 0 8px 0', lineHeight: 1.5 }}>
+                  Se borran para siempre todos los mensajes de <strong style={{ color: '#e9edef' }}>{getContactDisplayTitle(active)}</strong> guardados en el panel. No se puede deshacer.
+                </p>
+                <p style={{ fontSize: 13, color: '#94a3b8', margin: '0 0 12px 0', lineHeight: 1.5 }}>
+                  Úsalo cuando el cliente te pida borrar sus datos. Si solo quieres que el bot empiece de cero, mejor usa <em>Reiniciar conversación</em>. En tu WhatsApp el chat no se borra: hazlo también desde el celular.
+                </p>
+                <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13, color: '#e9edef', marginBottom: 16, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={deleteBookings} onChange={e => setDeleteBookings(e.target.checked)} style={{ marginTop: 3 }} />
+                  <span>Borrar también sus citas y pedidos <span style={{ color: '#94a3b8' }}>(si no lo marcas, quedan guardados en Citas y Pedidos)</span></span>
+                </label>
+              </>
+            )}
+            {manageError && (
+              <p style={{ fontSize: 13, color: '#f87171', margin: '0 0 12px 0' }}>⚠️ {manageError}</p>
+            )}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, flexWrap: 'wrap' }}>
+              <button className="btn btn-ghost" onClick={closeManage} disabled={managing}>Cancelar</button>
+              {manageAction === 'reset' ? (
+                <button className="btn btn-primary" onClick={resetChat} disabled={managing}>
+                  {managing ? 'Reiniciando…' : 'Reiniciar'}
+                </button>
+              ) : (
+                <button className="btn btn-primary" onClick={deleteChat} disabled={managing} style={{ background: '#dc2626', borderColor: '#dc2626' }}>
+                  {managing ? 'Eliminando…' : 'Eliminar para siempre'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal para Abrir Nuevo Chat por Número */}
       {newPhoneModal && (
