@@ -1070,7 +1070,7 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
   }
 
   // ── 10. RAG + Groq: generar respuesta ─────────────────────────────────────
-  let { reply, isLeadHot, tokensUsed, imageName, sendCatalog, newAppointmentData, cancelAppointmentData, modifyAppointmentData, newOrderData, modifyOrderData, cancelOrderData, clientData, ragChunksUsed, productsUsed, claimsBooking, claimsOrder } = await askGroq(
+  let { reply, isLeadHot, tokensUsed, imageName, sendCatalog, newAppointmentData, cancelAppointmentData, modifyAppointmentData, newOrderData, modifyOrderData, cancelOrderData, clientData, ragChunksUsed, productsUsed, claimsBooking, claimsOrder, recoveredAction } = await askGroq(
     aiText, business, knowledge, history, products,
     // Horarios ya ocupados: el bot no los ofrece y no confirma una cita que no se puede agendar
     { ...catalogOptions, contactPhoneUnknown: phoneUnknown, busySlots: await loadBusySlots(supabase, business).catch(() => []), catalogPdf }
@@ -1151,6 +1151,7 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
       ? { status: (bookingResult.newAppointment || bookingResult.modifyAppointment).status, motivo: (bookingResult.newAppointment || bookingResult.modifyAppointment).reason || null }
       : null,
     dijoQueQuedoElPedido: Boolean(claimsOrder),
+    iaRevisoraDecidio: recoveredAction || null,
     pedido: bookingResult.newOrder || bookingResult.modifyOrder
       ? { status: (bookingResult.newOrder || bookingResult.modifyOrder).status, motivo: (bookingResult.newOrder || bookingResult.modifyOrder).reason || null }
       : null,

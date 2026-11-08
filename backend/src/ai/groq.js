@@ -983,7 +983,27 @@ const EXTRACT_SPECS = {
     rules: '- "producto": el nombre EXACTO del producto como se habló (si son varios, sepáralos con coma). "cantidad": número.\n- Usa solo datos que dio el cliente; deja "" lo que no dio. No inventes precios.\n- Si no está claro qué producto pidió, responde {}.',
     valid: (d) => Boolean(String(d.producto || '').trim()),
   },
+  // No se sabe qué afirmó la respuesta: la IA decide si confirmó cita, cambio, pedido o nada
+  auto: {
+    intro: 'acaba de responderle al cliente (el último mensaje "Asesor")',
+    shape: '{"accion": "cita | mover | pedido | ninguna", "nombre": "", "servicio": "", "fecha_anterior": "", "fecha": "YYYY-MM-DD", "hora": "HH:MM:00", "telefono": "", "producto": "", "cantidad": 1, "direccion": "", "ciudad": "", "metodo_pago": "", "notas": ""}',
+    rules: `- "accion": qué afirma el ÚLTIMO mensaje del asesor, aunque lo diga con otras palabras:
+  • "cita": le dice que su cita o visita YA quedó agendada ("te agendé", "listo, te espero el lunes a las 4", "nos vemos el martes a las 10", "quedó para el jueves").
+  • "mover": le dice que YA le cambió o movió una cita que tenía.
+  • "pedido": le dice que su pedido o compra YA quedó registrado o confirmado.
+  • "ninguna": cualquier otra cosa. También si todavía le pregunta un dato (nombre, hora, dirección), le ofrece agendar o le pide que confirme.
+- Llena solo los campos de esa acción con lo que se habló en la conversación; deja "" los demás. Hora en formato 24 h. No inventes datos.`,
+    valid: (d) => ['cita', 'mover', 'pedido', 'ninguna'].includes(String(d.accion || '').trim()),
+  },
 };
+
+// Mensajes que hablan de citas o pedidos: solo en esos se revisa si el bot confirmó algo sin etiqueta
+const BOOKING_TOPIC_RE = /cita|agend|reserv|turno|visita|asesor|pedido|orden|compr|domicilio|env[ií]o|direcci[oó]n|\bhora|ma[ñn]ana|lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo|\d{1,2}\s*(?:am|pm|a\.\s?m|p\.\s?m)|\d{1,2}:\d{2}/i;
+
+// Quita los campos vacíos y la clave "accion" antes de usar los datos recuperados
+const cleanRecovered = (data) => Object.fromEntries(
+  Object.entries(data || {}).filter(([k, v]) => k !== 'accion' && v !== '' && v !== null && v !== undefined),
+);
 
 // Saca de la conversación los datos de lo que el bot acaba de confirmar sin etiqueta.
 // Devuelve { data: {..., _source}, tokens } o null si no hay datos claros.
@@ -1414,8 +1434,9 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
     const visibleReply = stripInternalTags(fullReply);
     const canRecover = !usedFallback && !groundingBlocked;
     const claimsMove = canRecover && claimsAppointmentMoved(visibleReply);
-    const claimsBooking = canRecover && (claimsMove || claimsAppointmentConfirmed(visibleReply));
-    const claimsOrder = canRecover && claimsOrderConfirmed(visibleReply);
+    let claimsBooking = canRecover && (claimsMove || claimsAppointmentConfirmed(visibleReply));
+    let claimsOrder = canRecover && claimsOrderConfirmed(visibleReply);
+    let recoveredAction = null; // qué decidió la IA revisora (se ve en el pipeline)
     const recover = async (kind) => {
       try {
         const extracted = await extractFromConversation({ business: safeBusiness, history: formattedHistory, userMessage, reply: visibleReply, kind });
@@ -1430,15 +1451,24 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
       }
       return null;
     };
-    if (claimsBooking && !newAppointmentData && !modifyAppointmentData && !cancelAppointmentData) {
-      if (claimsMove) modifyAppointmentData = await recover('mover');
-      else newAppointmentData = await recover('cita');
-    }
-
     let newOrderData = null;
     let rawOrder = parseJsonTag(fullReply, 'NUEVO_PEDIDO');
-    if (!rawOrder && claimsOrder && !parseJsonTag(fullReply, 'MODIFICAR_PEDIDO') && !parseJsonTag(fullReply, 'CANCELAR_PEDIDO')) {
-      rawOrder = await recover('pedido');
+
+    // Sin ninguna etiqueta de acción, pero la charla va de citas o pedidos: la respuesta puede
+    // haber confirmado algo con palabras que las frases fijas no reconocen ("te agendé", "nos
+    // vemos el martes"). Una IA revisora lee la respuesta, decide qué afirmó y saca los datos.
+    const hasActionTag = Boolean(newAppointmentData || modifyAppointmentData || cancelAppointmentData || rawOrder
+      || parseJsonTag(fullReply, 'MODIFICAR_PEDIDO') || parseJsonTag(fullReply, 'CANCELAR_PEDIDO'));
+    if (canRecover && !hasActionTag && (claimsBooking || claimsOrder || BOOKING_TOPIC_RE.test(`${userMessage}\n${visibleReply}`))) {
+      const auto = await recover('auto');
+      recoveredAction = auto ? String(auto.accion).trim() : 'sin_respuesta';
+      const data = cleanRecovered(auto);
+      if (recoveredAction === 'cita' && EXTRACT_SPECS.cita.valid(data)) newAppointmentData = { ...data, _source: 'recuperada' };
+      if (recoveredAction === 'mover' && EXTRACT_SPECS.mover.valid(data)) modifyAppointmentData = { ...data, _source: 'recuperada' };
+      if (recoveredAction === 'pedido' && EXTRACT_SPECS.pedido.valid(data)) rawOrder = { ...data, _source: 'recuperada' };
+      // Si la revisora ve una confirmación, la respuesta se trata como tal (y se corrige si no se guarda)
+      if (recoveredAction === 'cita' || recoveredAction === 'mover') claimsBooking = true;
+      if (recoveredAction === 'pedido') claimsOrder = true;
     }
     if (rawOrder) {
       try {
@@ -1492,6 +1522,7 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
       // La respuesta le dice al cliente que su cita quedó: si no se guarda, hay que corregirla
       claimsBooking,
       claimsOrder,
+      recoveredAction,
       ragChunksUsed: relevantKnowledge.length,
       usedFallback,
       groundingBlocked,
