@@ -22,6 +22,31 @@ const nowInZone = (tz = 'America/Bogota', now = new Date()) => {
 };
 
 const toHHMM = (t) => String(t || '').slice(0, 5);
+
+// El modelo a veces escribe la hora como "4:00 pm", "4 pm" o "16:00": se lleva a "HH:MM:00".
+// Lo que no se entiende se deja igual y validateSlot lo rechaza con su motivo.
+const normalizeHora = (raw) => {
+  const t = String(raw || '').trim().toLowerCase().replace(/\s+/g, '').replace(/\./g, '');
+  const m = t.match(/^(\d{1,2})(?::(\d{2}))?(?::\d{2})?(am|pm|a|p|h|hrs)?$/);
+  if (!m) return raw;
+  let h = parseInt(m[1], 10);
+  const min = m[2] || '00';
+  const suffix = m[3] || '';
+  if (!suffix && !m[2]) return raw;
+  if (suffix.startsWith('p') && h < 12) h += 12;
+  if (suffix.startsWith('a') && h === 12) h = 0;
+  if (h > 23 || Number(min) > 59) return raw;
+  return `${String(h).padStart(2, '0')}:${min}:00`;
+};
+
+// Últimos resultados de citas, sin datos personales: se ven en /api/debug/version para saber
+// si una cita que el bot confirmó quedó guardada y, si no, por qué.
+const recentOutcomes = [];
+const recordBookingOutcome = (entry) => {
+  recentOutcomes.push({ at: new Date().toISOString(), ...entry });
+  if (recentOutcomes.length > 30) recentOutcomes.shift();
+};
+const getRecentBookingOutcomes = () => recentOutcomes.slice().reverse();
 const toMinutes = (hhmm) => { const [h, m] = String(hhmm).split(':').map(Number); return h * 60 + (m || 0); };
 const parseDays = (raw) => {
   let days = raw;
@@ -108,7 +133,8 @@ const pickAppointment = (list, fecha, today) => {
   return upcoming.length ? [upcoming[0]] : (list.length ? [list[list.length - 1]] : []);
 };
 
-const saveAppointment = async (supabase, { business, conversation, data, clientName, clientPhone, now }) => {
+const saveAppointment = async (supabase, { business, conversation, data: rawData, clientName, clientPhone, now }) => {
+  const data = rawData ? { ...rawData, hora: normalizeHora(rawData.hora) } : rawData;
   if (!data?.fecha || !data?.hora) return { status: 'invalid', reason: 'faltan la fecha o la hora' };
 
   const busy = await loadBusySlots(supabase, business, { now });
@@ -151,7 +177,7 @@ const modifyAppointment = async (supabase, ctx) => {
   }
 
   const fecha = data.fecha || target.appointment_date;
-  const hora = data.hora || target.appointment_time;
+  const hora = normalizeHora(data.hora) || target.appointment_time;
   const busy = (await loadBusySlots(supabase, business, { now }))
     .filter(s => s !== `${target.appointment_date} ${toHHMM(target.appointment_time)}`); // su propio horario no cuenta
   const slot = validateSlot(business, fecha, hora, { busy, now });
@@ -290,6 +316,11 @@ const applyBookingActions = async (ctx, actions) => {
     await run('newAppointment', async () => {
       const r = await saveAppointment(supabase, { ...base, data: actions.newAppointment, clientName, clientPhone: phoneFor(actions.newAppointment) });
       if (r.status === 'created') emit('new_appointment', r.appointment);
+      recordBookingOutcome({
+        action: 'nueva_cita', source: actions.newAppointment._source || 'etiqueta',
+        fecha: actions.newAppointment.fecha || null, hora: actions.newAppointment.hora || null,
+        status: r.status, reason: r.reason || null,
+      });
       return r;
     });
   }
@@ -305,6 +336,11 @@ const applyBookingActions = async (ctx, actions) => {
       const r = await modifyAppointment(supabase, { ...base, data: actions.modifyAppointment, clientName, clientPhone: phoneFor(actions.modifyAppointment) });
       if (r.status === 'updated') emit('appointment_modified', r.appointment);
       if (r.status === 'created_from_modify') emit('new_appointment', r.appointment);
+      recordBookingOutcome({
+        action: 'mover_cita', source: 'etiqueta',
+        fecha: actions.modifyAppointment.fecha || null, hora: actions.modifyAppointment.hora || null,
+        status: r.status, reason: r.reason || null,
+      });
       return r;
     });
   }
@@ -335,6 +371,7 @@ const applyBookingActions = async (ctx, actions) => {
 
 module.exports = {
   validateSlot, loadBusySlots, nowInZone,
+  normalizeHora, recordBookingOutcome, getRecentBookingOutcomes,
   saveAppointment, modifyAppointment, cancelAppointment,
   saveOrder, modifyOrder, cancelOrder,
   applyBookingActions,

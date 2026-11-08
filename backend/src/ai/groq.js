@@ -695,12 +695,7 @@ const buildSystemPrompt = (business, relevantKnowledge, allKnowledge, products =
   const isoDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(now); // YYYY-MM-DD
   // Calendario de los próximos 14 días: el modelo calcula mal qué día de la semana cae cada fecha
   // ("sábado 9 de noviembre" cuando el 9 es lunes). Con la tabla solo tiene que copiarla.
-  const upcomingDays = Array.from({ length: 14 }, (_, i) => {
-    const d = new Date(now.getTime() + i * 24 * 60 * 60 * 1000);
-    const label = d.toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long', timeZone: tz });
-    const iso = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(d);
-    return `${label} = ${iso}${i === 0 ? ' (hoy)' : i === 1 ? ' (mañana)' : ''}`;
-  }).join('\n');
+  const upcomingDays = buildUpcomingDays(tz, now);
 
   // En catálogos grandes la lista de productos es solo lo encontrado: las categorías son las de TODO el catálogo
   const distinctCategories = catalogInfo?.categories?.length
@@ -929,6 +924,7 @@ ${isSales ? '- Si el cliente quiere ver, probar o revisar algo en persona, ofré
   • Pide SOLO el dato que falta, de a uno y en una frase corta y natural ("¿a nombre de quién la dejo?"). No pidas "nombre completo" ni "qué servicio deseas recibir" como si fuera un trámite.
   • Si quiere hablar con un asesor, conocer el lugar o "ir a ver", el motivo ya está claro: es una visita/asesoría. No le preguntes qué servicio.
   • Apenas tengas día, hora y nombre, confirma de una vez: no pidas más datos de los necesarios.
+  • OBLIGATORIO: el mismo mensaje en que dices que la cita quedó agendada lleva al final la etiqueta [NUEVA_CITA: {...}] (abajo). Sin la etiqueta la cita NO se guarda y el cliente llega a un horario que nadie le apartó.
   • Mensajes de 1 a 2 líneas, sin muletillas repetidas ("¡Perfecto! 😊" en cada mensaje) y máximo 1 emoji.
 - Acuerda día y hora dentro del horario y pide su nombre si no lo tienes. Al confirmar, repite día y hora, felicítalo y añade al final (una sola vez por cita):
 [LEAD_CALIENTE]
@@ -945,6 +941,55 @@ ${busySlots.length ? `- HORARIOS YA OCUPADOS (otras citas; NO los ofrezcas ni lo
 - La foto se envía SOLA con esa etiqueta. ESTÁ PROHIBIDO decir "te la envío en un momento", "ya te la mando", "enseguida te la paso" o prometer mandarla después: si la vas a enviar, pon la etiqueta AHORA y acompáñala de una frase corta ("¡Claro! Mira 👇").
 - Usa el nombre tal como aparece en el catálogo. Solo usa la etiqueta si ese producto tiene "Foto/Imagen" registrada; si no la tiene, dile con calidez que un asesor se la comparte y NO uses la etiqueta.
 - La foto llega con el nombre y el precio en su pie: NO preguntes si quiere conocer el precio ni lo repitas. Escribe el nombre del producto EXACTAMENTE como está en el catálogo (sin cambiar letras ni números de la referencia) y pregunta si le gustaría comprarlo o ver más detalles.`;
+};
+
+// Próximos días con su fecha exacta ("lunes, 9 de noviembre = 2026-11-09")
+const buildUpcomingDays = (tz, now = new Date(), days = 14) => Array.from({ length: days }, (_, i) => {
+  const d = new Date(now.getTime() + i * 24 * 60 * 60 * 1000);
+  const label = d.toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long', timeZone: tz });
+  const iso = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(d);
+  return `${label} = ${iso}${i === 0 ? ' (hoy)' : i === 1 ? ' (mañana)' : ''}`;
+}).join('\n');
+
+// ¿La respuesta le dice al cliente que su cita ya quedó? ("Queda agendada tu visita", "tu cita está confirmada")
+const BOOKING_CLAIM_RE = /(?:^|[^a-záéíóúñ])(?:qued[oó]|queda|est[aá]|dej[eé]|te\s+dejo)\s[^.!?\n]{0,40}?(?:agendad|reservad|confirmad|programad|apartad)[oa]s?|(?:cita|visita|reserva|turno)[^.!?\n]{0,30}?(?:agendad|confirmad|reservad|programad)[oa]s?/i;
+const claimsAppointmentConfirmed = (text) => BOOKING_CLAIM_RE.test(text || '');
+
+// Saca de la conversación la cita que el bot acaba de confirmar sin etiqueta.
+// Devuelve { data: { nombre, servicio, fecha, hora, _source }, tokens } o null si no hay fecha y hora claras.
+const extractConfirmedAppointment = async ({ business, history = [], userMessage, reply }) => {
+  const tz = business?.timezone || 'America/Bogota';
+  const transcript = [
+    ...history.slice(-10).map(m => `${m.direction === 'inbound' ? 'Cliente' : 'Asesor'}: ${(m.content || '').slice(0, 400)}`),
+    `Cliente: ${userMessage}`,
+    `Asesor: ${reply}`,
+  ].join('\n');
+  const response = await chatComplete({
+    messages: [
+      {
+        role: 'system',
+        content: `Extraes datos de citas. En la conversación, el asesor de "${business?.name || 'el negocio'}" acaba de confirmarle una cita al cliente.
+Responde SOLO con un JSON, sin texto extra:
+{"nombre": "...", "servicio": "...", "fecha": "YYYY-MM-DD", "hora": "HH:MM:00"}
+- "fecha" y "hora": las de la cita confirmada (hora en formato 24 h). Convierte la fecha con este calendario:
+${buildUpcomingDays(tz)}
+- "nombre": el que dio el cliente; "" si no lo dio. "servicio": el motivo (p. ej. "Visita con asesor"); "" si no se sabe.
+- Si en la conversación no hay una fecha y una hora claras, responde {}.`,
+      },
+      { role: 'user', content: transcript },
+    ],
+    max_tokens: 400,
+    temperature: 0,
+    accept: (text) => /\{[\s\S]*\}/.test((text || '').replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, '')),
+  });
+  if (!response) return null;
+  const raw = (response.content || '').replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, '');
+  const match = raw.match(/\{[\s\S]*\}/);
+  if (!match) return null;
+  let data;
+  try { data = JSON.parse(match[0]); } catch (_) { return null; }
+  if (!data || !/^\d{4}-\d{2}-\d{2}$/.test(String(data.fecha || '')) || !data.hora) return null;
+  return { data: { ...data, _source: 'recuperada' }, tokens: response.tokens || 0 };
 };
 
 // Quita un saludo al comienzo de la respuesta ("¡Hola! 👋", "Hola Kevin,", "¡Hola de nuevo!").
@@ -1327,10 +1372,33 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
     const sendCatalog = Boolean(options.catalogPdf) && /\[\s*ENVIAR_CATALOGO\s*\]?/i.test(fullReply);
 
     // Las etiquetas se leen aunque el modelo olvide el "]" final o la respuesta quede cortada
-    const newAppointmentData = parseJsonTag(fullReply, 'NUEVA_CITA');
+    let newAppointmentData = parseJsonTag(fullReply, 'NUEVA_CITA');
     const cancelAppointmentData = parseJsonTag(fullReply, 'CANCELAR_CITA');
     const clientData = parseJsonTag(fullReply, 'DATOS_CLIENTE');
     const modifyAppointmentData = parseJsonTag(fullReply, 'MODIFICAR_CITA');
+
+    // El bot le dijo al cliente "queda agendada" pero olvidó la etiqueta: sin ella la cita no se
+    // guardaba. Se sacan los datos de la conversación con una llamada corta y se guardan igual.
+    const claimsBooking = !usedFallback && !groundingBlocked && claimsAppointmentConfirmed(stripInternalTags(fullReply));
+    if (claimsBooking && !newAppointmentData && !modifyAppointmentData && !cancelAppointmentData) {
+      try {
+        const extracted = await extractConfirmedAppointment({
+          business: safeBusiness,
+          history: formattedHistory,
+          userMessage,
+          reply: stripInternalTags(fullReply),
+        });
+        if (extracted) {
+          newAppointmentData = extracted.data;
+          tokensUsed += extracted.tokens || 0;
+          console.log('[CITA] ⚠️ El bot confirmó sin etiqueta: datos recuperados de la conversación');
+        } else {
+          console.warn('[CITA] ⚠️ El bot confirmó una cita sin etiqueta y no se pudieron recuperar fecha y hora');
+        }
+      } catch (e) {
+        console.warn('[CITA] Error recuperando la cita sin etiqueta:', e.message);
+      }
+    }
 
     let newOrderData = null;
     const rawOrder = parseJsonTag(fullReply, 'NUEVO_PEDIDO');
@@ -1383,6 +1451,8 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
       modifyOrderData,
       cancelOrderData,
       clientData,
+      // La respuesta le dice al cliente que su cita quedó: si no se guarda, hay que corregirla
+      claimsBooking,
       ragChunksUsed: relevantKnowledge.length,
       usedFallback,
       groundingBlocked,
@@ -1425,4 +1495,4 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
   }
 };
 
-module.exports = { askGroq, ragSearch, searchKnowledge, rankAndFilterProducts, shouldExpandWithLLM, buildVocabulary, getSubQueries, extractSearchTerms, retrieveFromLargeCatalog, detectCategory, buildBrowse, isBrowseRequest, buildSystemPrompt, stripRepeatedGreeting };
+module.exports = { askGroq, ragSearch, searchKnowledge, rankAndFilterProducts, shouldExpandWithLLM, buildVocabulary, getSubQueries, extractSearchTerms, retrieveFromLargeCatalog, detectCategory, buildBrowse, isBrowseRequest, buildSystemPrompt, stripRepeatedGreeting, claimsAppointmentConfirmed, buildUpcomingDays };
