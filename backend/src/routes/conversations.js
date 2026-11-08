@@ -70,7 +70,7 @@ router.get('/:sessionId', ownsParam('sessionId'), async (req, res) => {
     let data = [];
     if (sessionList.length > 0) {
       let q = supabase.from('conversations').select('*').in('session_id', sessionList).order('last_message_at', { ascending: false }).limit(200);
-      q = await acotarAlNumero(q, telefonoConectado);
+      q = acotarAlNumero(q, telefonoConectado);
       if (status) q = q.eq('status', status);
       if (search) q = q.or(`contact_name.ilike.%${search}%,contact_phone.ilike.%${search}%`);
       const { data: d } = await q;
@@ -232,7 +232,7 @@ router.get('/:sessionId', ownsParam('sessionId'), async (req, res) => {
           .from('conversations')
           .select('contact_phone, bot_active, is_blacklisted')
           .in('session_id', sessionList);
-        qDisabled = await acotarAlNumero(qDisabled, telefonoConectado);
+        qDisabled = acotarAlNumero(qDisabled, telefonoConectado);
         const { data: dr } = await qDisabled.or('bot_active.eq.false,is_blacklisted.eq.true');
         disabledRows = dr || [];
       }
@@ -316,7 +316,7 @@ router.get('/:conversationId/messages', ownsQuery(), ownsRow('conversations', 'c
           .select('id')
           .in('session_id', sessionScope)
           .eq('contact_phone', cleanPhone);
-        qConv = await acotarAlNumero(qConv, telefonoConectado);
+        qConv = acotarAlNumero(qConv, telefonoConectado);
         const { data: conv } = await qConv.order('last_message_at', { ascending: false }).limit(1);
 
         if (conv && conv[0]?.id) realConvId = conv[0].id;
@@ -334,7 +334,7 @@ router.get('/:conversationId/messages', ownsQuery(), ownsRow('conversations', 'c
           .select('id')
           .in('session_id', sessionScope)
           .eq('contact_phone', cleanPhone);
-        qRelated = await acotarAlNumero(qRelated, telefonoConectado);
+        qRelated = acotarAlNumero(qRelated, telefonoConectado);
         const { data: relatedConvs } = await qRelated;
         if (relatedConvs && relatedConvs.length > 0) {
           relatedConvs.forEach(c => convIdsToQuery.add(c.id));
@@ -345,7 +345,7 @@ router.get('/:conversationId/messages', ownsQuery(), ownsRow('conversations', 'c
             .select('id')
             .in('session_id', sessionScope)
             .eq('contact_phone', resolvedTarget.lid);
-          qLid = await acotarAlNumero(qLid, telefonoConectado);
+          qLid = acotarAlNumero(qLid, telefonoConectado);
           const { data: lidConvs } = await qLid;
           if (lidConvs && lidConvs.length > 0) {
             lidConvs.forEach(c => convIdsToQuery.add(c.id));
@@ -469,7 +469,7 @@ router.post('/create', ownsBody(), async (req, res) => {
       .select('*')
       .in('session_id', ownSessionIds.length > 0 ? ownSessionIds : [sessionUuid])
       .eq('contact_phone', cleanPhone);
-    qExisting = await acotarAlNumero(qExisting, telefonoConectado);
+    qExisting = acotarAlNumero(qExisting, telefonoConectado);
     const { data: existing } = await qExisting.limit(1);
 
     if (existing && existing.length > 0) {

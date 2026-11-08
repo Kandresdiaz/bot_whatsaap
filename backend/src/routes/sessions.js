@@ -422,7 +422,7 @@ router.post('/send', ownsBody(), async (req, res) => {
           .select('id')
           .in('session_id', ownSessionIds.length > 0 ? ownSessionIds : [sessionUuid])
           .eq('contact_phone', resolvedPhone);
-        qExisting = await ownership.acotarAlNumero(qExisting, telefonoDueno);
+        qExisting = ownership.acotarAlNumero(qExisting, telefonoDueno);
         const { data: existing } = await qExisting.limit(1);
 
         const existingRow = existing && existing[0];
