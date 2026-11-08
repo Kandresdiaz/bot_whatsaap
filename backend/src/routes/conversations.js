@@ -678,6 +678,124 @@ router.patch('/:conversationId/blacklist', ownsBody(), ownsRow('conversations', 
 });
 
 // Endpoint de diagnóstico transparente: estado de Baileys, chats en RAM y chats en DB
+// ─── Reiniciar / eliminar un chat desde el panel ─────────────────────────────
+// Conversaciones de ese contacto en las sesiones del mismo dueño (por su número y por su LID)
+const relatedConversations = async (conversationId) => {
+  const { data: rows } = await supabase
+    .from('conversations')
+    .select('id, session_id, contact_phone')
+    .eq('id', conversationId)
+    .limit(1);
+  const conv = rows && rows[0];
+  if (!conv) return null;
+
+  const { data: sess } = await supabase.from('whatsapp_sessions').select('user_id').eq('id', conv.session_id).limit(1);
+  const ownerUserId = sess && sess[0]?.user_id;
+
+  const { getUserSessionIds, resolvePhoneAndJid } = require('../whatsapp/sessionManager');
+  const sessionIds = ownerUserId ? await getUserSessionIds(ownerUserId) : [];
+  if (!sessionIds.includes(conv.session_id)) sessionIds.push(conv.session_id);
+
+  const phones = new Set([conv.contact_phone]);
+  try {
+    const resolved = resolvePhoneAndJid(conv.contact_phone);
+    if (resolved?.phone) phones.add(resolved.phone);
+    if (resolved?.lid) phones.add(resolved.lid);
+  } catch (_) {}
+
+  const { data: related } = await supabase
+    .from('conversations')
+    .select('id')
+    .in('session_id', sessionIds)
+    .in('contact_phone', [...phones].filter(Boolean));
+  const ids = new Set([conv.id, ...(related || []).map(r => r.id)]);
+  return { conv, ownerUserId, ids: [...ids], phones: [...phones].filter(Boolean) };
+};
+
+// Reiniciar: el bot atiende a ese cliente como si fuera la primera vez. No borra nada:
+// deja un marcador y el bot solo tiene en cuenta los mensajes que vengan después.
+router.post('/:conversationId/reset', ownsRow('conversations', 'conversationId'), async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    if (!isUuid(conversationId)) return res.status(400).json({ success: false, error: 'Abre el chat de nuevo y vuelve a intentarlo.' });
+
+    const found = await relatedConversations(conversationId);
+    if (!found) return res.status(404).json({ success: false, error: 'No se encontró la conversación.' });
+
+    const { RESET_MARK } = require('../services/chatReset');
+    const marker = {
+      conversation_id: found.conv.id,
+      content: `${RESET_MARK}: desde aquí el bot atiende a este cliente como si fuera la primera vez.`,
+      direction: 'outbound',
+      sent_by: 'bot',
+      timestamp: new Date().toISOString(),
+    };
+    const { data: inserted, error } = await supabase.from('messages').insert(marker).select().limit(1);
+    if (error) throw error;
+
+    require('../whatsapp/messageHandler').forgetChat(found.phones);
+    res.json({ success: true, message: (inserted && inserted[0]) || marker });
+  } catch (err) {
+    console.error('[Reset Chat Error]:', err.message);
+    res.status(500).json({ success: false, error: 'No se pudo reiniciar la conversación.' });
+  }
+});
+
+// Eliminar: borra los mensajes y la conversación de ese contacto (p. ej. cuando el cliente pide
+// que borren sus datos). Las citas y pedidos se borran solo si el dueño lo marca; si no, quedan
+// guardados pero sin enlace al chat.
+router.delete('/:conversationId', ownsRow('conversations', 'conversationId'), async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const deleteBookings = req.body?.deleteBookings === true || req.query.deleteBookings === 'true';
+    if (!isUuid(conversationId)) return res.status(400).json({ success: false, error: 'Abre el chat de nuevo y vuelve a intentarlo.' });
+
+    const found = await relatedConversations(conversationId);
+    if (!found) return res.status(404).json({ success: false, error: 'No se encontró la conversación.' });
+    const { ids } = found;
+
+    for (const table of ['appointments', 'orders']) {
+      const q = deleteBookings
+        ? supabase.from(table).delete().in('conversation_id', ids)
+        : supabase.from(table).update({ conversation_id: null }).in('conversation_id', ids);
+      const { error } = await q;
+      if (error) throw new Error(`${table}: ${error.message}`);
+    }
+
+    const { error: msgErr } = await supabase.from('messages').delete().in('conversation_id', ids);
+    if (msgErr) throw new Error(`messages: ${msgErr.message}`);
+    const { error: convErr } = await supabase.from('conversations').delete().in('id', ids);
+    if (convErr) throw new Error(`conversations: ${convErr.message}`);
+
+    // Que no reaparezca desde la memoria del servidor (bot y panel)
+    require('../whatsapp/messageHandler').forgetChat(found.phones);
+    if (found.ownerUserId) {
+      try {
+        const { getUserStore, resolvePhoneAndJid, cleanPhoneFromJid } = require('../whatsapp/sessionManager');
+        const store = getUserStore(found.ownerUserId);
+        const matches = (jid) => {
+          if (!jid) return false;
+          const r = resolvePhoneAndJid(jid);
+          return [r?.phone, r?.lid, cleanPhoneFromJid(jid)].some(p => p && found.phones.includes(p));
+        };
+        for (const [key, m] of [...(store?.messages?.entries() || [])]) {
+          if (matches(m?.key?.remoteJid)) store.messages.delete(key);
+        }
+        for (const jid of [...(store?.chats?.keys() || [])]) {
+          if (matches(jid)) store.chats.delete(jid);
+        }
+      } catch (e) {
+        console.warn('[Delete Chat] Aviso limpiando memoria:', e.message);
+      }
+    }
+
+    res.json({ success: true, deletedConversations: ids.length, deletedBookings: deleteBookings });
+  } catch (err) {
+    console.error('[Delete Chat Error]:', err.message);
+    res.status(500).json({ success: false, error: 'No se pudo eliminar el chat. Intenta de nuevo.' });
+  }
+});
+
 router.get('/debug-info/:userId', ownsParam('userId'), async (req, res) => {
   try {
     const { userId } = req.params;
