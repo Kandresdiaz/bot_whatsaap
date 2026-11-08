@@ -42,6 +42,9 @@ const limpiarTelefono = (valor) => (valor === null || valor === undefined ? '' :
 const telefonoDeLaSesion = async (userId) => {
   if (!userId) return '';
 
+  // acotarAlNumero es síncrona: deja resuelto aquí si la columna owner_phone existe
+  await soportaOwnerPhone().catch(() => false);
+
   try {
     const { getSession, getValidUserId } = require('../whatsapp/sessionManager');
     const sesion = getSession(userId);
@@ -77,11 +80,17 @@ const marcarDueno = async (fila, telefono) => {
 
 // Acota una consulta de conversaciones al número conectado.
 // Sin número conocido se devuelve la consulta tal cual: el que llama ya acotó por sesión.
-const acotarAlNumero = async (query, telefono) => {
+//
+// OJO: es SÍNCRONA a propósito. Una consulta de Supabase es "thenable": antes esta función era
+// async y los llamadores hacían `q = await acotarAlNumero(q)`, así que el await EJECUTABA la
+// consulta y devolvía { data, error } en vez de la consulta. Luego `q.order(...)` fallaba con
+// "order is not a function": el bot nunca encontraba el chat (sin memoria, sin lead, sin poder
+// mover citas) y el panel tampoco. Se llama sin await.
+// Las conversaciones aún sin owner_phone (creadas antes de la migración 008) también cuentan.
+const acotarAlNumero = (query, telefono) => {
   const limpio = limpiarTelefono(telefono);
-  if (!limpio) return query;
-  if (!(await soportaOwnerPhone())) return query;
-  return query.eq('owner_phone', limpio);
+  if (!limpio || soportaColumna !== true) return query;
+  return query.or(`owner_phone.eq.${limpio},owner_phone.is.null`);
 };
 
 module.exports = {

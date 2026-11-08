@@ -919,7 +919,7 @@ const syncChatsAndMessagesToDb = async (userId, inputChats = [], inputContacts =
               .select('id, contact_phone')
               .in('session_id', userSessionIds.length > 0 ? userSessionIds : [sessionUuid])
               .eq('contact_phone', contactPhone);
-            qDirect = await acotarAlNumero(qDirect, telefonoDueno);
+            qDirect = acotarAlNumero(qDirect, telefonoDueno);
             const { data: directConv } = await qDirect.limit(1);
 
             if (directConv && directConv[0]?.id) {
@@ -2056,7 +2056,7 @@ const createSession = async (userId, businessId, io, forceClean = false, isManua
             .select('id')
             .in('session_id', ownSessionIds)
             .eq('contact_phone', contactPhone);
-          qConv = await ownership.acotarAlNumero(qConv, telefonoDueno);
+          qConv = ownership.acotarAlNumero(qConv, telefonoDueno);
           const { data: convRows } = await qConv.order('last_message_at', { ascending: false }).limit(1);
 
           let conversationId = convRows && convRows[0]?.id;

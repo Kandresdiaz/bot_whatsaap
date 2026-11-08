@@ -955,9 +955,41 @@ const buildUpcomingDays = (tz, now = new Date(), days = 14) => Array.from({ leng
 const BOOKING_CLAIM_RE = /(?:^|[^a-záéíóúñ])(?:qued[oó]|queda|est[aá]|dej[eé]|te\s+dejo)\s[^.!?\n]{0,40}?(?:agendad|reservad|confirmad|programad|apartad)[oa]s?|(?:cita|visita|reserva|turno)[^.!?\n]{0,30}?(?:agendad|confirmad|reservad|programad)[oa]s?/i;
 const claimsAppointmentConfirmed = (text) => BOOKING_CLAIM_RE.test(text || '');
 
-// Saca de la conversación la cita que el bot acaba de confirmar sin etiqueta.
-// Devuelve { data: { nombre, servicio, fecha, hora, _source }, tokens } o null si no hay fecha y hora claras.
-const extractConfirmedAppointment = async ({ business, history = [], userMessage, reply }) => {
+// ¿Le dice que su cita ya se movió? ("moví tu cita para el lunes", "tu cita quedó reprogramada")
+const MOVE_CLAIM_RE = /(?:moví|cambié|reprogramé|pasé|corrí)\s[^.!?\n]{0,30}?(?:cita|visita|reserva|turno)|(?:cita|visita|reserva|turno)[^.!?\n]{0,30}?(?:movid|cambiad|reprogramad)[oa]/i;
+const claimsAppointmentMoved = (text) => MOVE_CLAIM_RE.test(text || '');
+
+// ¿Le dice que su pedido ya quedó? ("tu pedido quedó registrado", "pedido confirmado")
+const ORDER_CLAIM_RE = /(?:pedido|orden|compra)[^.!?\n]{0,30}?(?:registrad|confirmad|tomad|anotad|cread)[oa]|(?:registré|anoté|tomé|confirmé)\s[^.!?\n]{0,20}?(?:pedido|orden|compra)/i;
+const claimsOrderConfirmed = (text) => ORDER_CLAIM_RE.test(text || '');
+
+// Qué pedirle al extractor según lo que el bot afirmó sin dejar etiqueta
+const EXTRACT_SPECS = {
+  cita: {
+    intro: 'acaba de confirmarle una cita NUEVA al cliente',
+    shape: '{"nombre": "...", "servicio": "...", "fecha": "YYYY-MM-DD", "hora": "HH:MM:00"}',
+    rules: '- "fecha" y "hora": las de la cita confirmada (hora en formato 24 h).\n- "nombre": el que dio el cliente; "" si no lo dio. "servicio": el motivo (p. ej. "Visita con asesor"); "" si no se sabe.\n- Si no hay una fecha y una hora claras, responde {}.',
+    valid: (d) => /^\d{4}-\d{2}-\d{2}$/.test(String(d.fecha || '')) && Boolean(d.hora),
+  },
+  mover: {
+    intro: 'acaba de MOVER (reprogramar) una cita que el cliente ya tenía',
+    shape: '{"nombre": "...", "servicio": "...", "fecha_anterior": "YYYY-MM-DD", "fecha": "YYYY-MM-DD", "hora": "HH:MM:00"}',
+    rules: '- "fecha" y "hora": los NUEVOS (hora en formato 24 h). Si el cliente solo cambió la hora, "fecha" es la misma de antes.\n- "fecha_anterior": la fecha que tenía la cita antes del cambio; "" si no se sabe.\n- Si no hay una nueva fecha u hora claras, responde {}.',
+    valid: (d) => /^\d{4}-\d{2}-\d{2}$/.test(String(d.fecha || '')) || Boolean(d.hora),
+  },
+  pedido: {
+    intro: 'acaba de confirmarle un PEDIDO al cliente',
+    shape: '{"nombre": "...", "telefono": "...", "producto": "...", "cantidad": 1, "direccion": "...", "ciudad": "...", "metodo_pago": "...", "notas": "..."}',
+    rules: '- "producto": el nombre EXACTO del producto como se habló (si son varios, sepáralos con coma). "cantidad": número.\n- Usa solo datos que dio el cliente; deja "" lo que no dio. No inventes precios.\n- Si no está claro qué producto pidió, responde {}.',
+    valid: (d) => Boolean(String(d.producto || '').trim()),
+  },
+};
+
+// Saca de la conversación los datos de lo que el bot acaba de confirmar sin etiqueta.
+// Devuelve { data: {..., _source}, tokens } o null si no hay datos claros.
+const extractFromConversation = async ({ business, history = [], userMessage, reply, kind }) => {
+  const spec = EXTRACT_SPECS[kind];
+  if (!spec) return null;
   const tz = business?.timezone || 'America/Bogota';
   const transcript = [
     ...history.slice(-10).map(m => `${m.direction === 'inbound' ? 'Cliente' : 'Asesor'}: ${(m.content || '').slice(0, 400)}`),
@@ -968,13 +1000,12 @@ const extractConfirmedAppointment = async ({ business, history = [], userMessage
     messages: [
       {
         role: 'system',
-        content: `Extraes datos de citas. En la conversación, el asesor de "${business?.name || 'el negocio'}" acaba de confirmarle una cita al cliente.
+        content: `Extraes datos de una conversación de WhatsApp. El asesor de "${business?.name || 'el negocio'}" ${spec.intro}.
 Responde SOLO con un JSON, sin texto extra:
-{"nombre": "...", "servicio": "...", "fecha": "YYYY-MM-DD", "hora": "HH:MM:00"}
-- "fecha" y "hora": las de la cita confirmada (hora en formato 24 h). Convierte la fecha con este calendario:
-${buildUpcomingDays(tz)}
-- "nombre": el que dio el cliente; "" si no lo dio. "servicio": el motivo (p. ej. "Visita con asesor"); "" si no se sabe.
-- Si en la conversación no hay una fecha y una hora claras, responde {}.`,
+${spec.shape}
+${spec.rules}
+Calendario para convertir fechas ("mañana", "el lunes 9"):
+${buildUpcomingDays(tz)}`,
       },
       { role: 'user', content: transcript },
     ],
@@ -988,7 +1019,7 @@ ${buildUpcomingDays(tz)}
   if (!match) return null;
   let data;
   try { data = JSON.parse(match[0]); } catch (_) { return null; }
-  if (!data || !/^\d{4}-\d{2}-\d{2}$/.test(String(data.fecha || '')) || !data.hora) return null;
+  if (!data || !spec.valid(data)) return null;
   return { data: { ...data, _source: 'recuperada' }, tokens: response.tokens || 0 };
 };
 
@@ -1375,33 +1406,40 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
     let newAppointmentData = parseJsonTag(fullReply, 'NUEVA_CITA');
     const cancelAppointmentData = parseJsonTag(fullReply, 'CANCELAR_CITA');
     const clientData = parseJsonTag(fullReply, 'DATOS_CLIENTE');
-    const modifyAppointmentData = parseJsonTag(fullReply, 'MODIFICAR_CITA');
+    let modifyAppointmentData = parseJsonTag(fullReply, 'MODIFICAR_CITA');
 
-    // El bot le dijo al cliente "queda agendada" pero olvidó la etiqueta: sin ella la cita no se
-    // guardaba. Se sacan los datos de la conversación con una llamada corta y se guardan igual.
-    const claimsBooking = !usedFallback && !groundingBlocked && claimsAppointmentConfirmed(stripInternalTags(fullReply));
-    if (claimsBooking && !newAppointmentData && !modifyAppointmentData && !cancelAppointmentData) {
+    // El bot le dijo al cliente "queda agendada", "moví tu cita" o "tu pedido quedó registrado"
+    // pero olvidó la etiqueta: sin ella no se guardaba nada. Se sacan los datos de la conversación
+    // con una llamada corta y se guardan igual.
+    const visibleReply = stripInternalTags(fullReply);
+    const canRecover = !usedFallback && !groundingBlocked;
+    const claimsMove = canRecover && claimsAppointmentMoved(visibleReply);
+    const claimsBooking = canRecover && (claimsMove || claimsAppointmentConfirmed(visibleReply));
+    const claimsOrder = canRecover && claimsOrderConfirmed(visibleReply);
+    const recover = async (kind) => {
       try {
-        const extracted = await extractConfirmedAppointment({
-          business: safeBusiness,
-          history: formattedHistory,
-          userMessage,
-          reply: stripInternalTags(fullReply),
-        });
+        const extracted = await extractFromConversation({ business: safeBusiness, history: formattedHistory, userMessage, reply: visibleReply, kind });
         if (extracted) {
-          newAppointmentData = extracted.data;
           tokensUsed += extracted.tokens || 0;
-          console.log('[CITA] ⚠️ El bot confirmó sin etiqueta: datos recuperados de la conversación');
-        } else {
-          console.warn('[CITA] ⚠️ El bot confirmó una cita sin etiqueta y no se pudieron recuperar fecha y hora');
+          console.log(`[RECUPERADO] ⚠️ El bot confirmó (${kind}) sin etiqueta: datos sacados de la conversación`);
+          return extracted.data;
         }
+        console.warn(`[RECUPERADO] ⚠️ El bot confirmó (${kind}) sin etiqueta y no se pudieron sacar los datos`);
       } catch (e) {
-        console.warn('[CITA] Error recuperando la cita sin etiqueta:', e.message);
+        console.warn(`[RECUPERADO] Error sacando datos (${kind}):`, e.message);
       }
+      return null;
+    };
+    if (claimsBooking && !newAppointmentData && !modifyAppointmentData && !cancelAppointmentData) {
+      if (claimsMove) modifyAppointmentData = await recover('mover');
+      else newAppointmentData = await recover('cita');
     }
 
     let newOrderData = null;
-    const rawOrder = parseJsonTag(fullReply, 'NUEVO_PEDIDO');
+    let rawOrder = parseJsonTag(fullReply, 'NUEVO_PEDIDO');
+    if (!rawOrder && claimsOrder && !parseJsonTag(fullReply, 'MODIFICAR_PEDIDO') && !parseJsonTag(fullReply, 'CANCELAR_PEDIDO')) {
+      rawOrder = await recover('pedido');
+    }
     if (rawOrder) {
       try {
         // El total se recalcula con los precios reales del catálogo: el del modelo no se guarda a ciegas
@@ -1453,6 +1491,7 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
       clientData,
       // La respuesta le dice al cliente que su cita quedó: si no se guarda, hay que corregirla
       claimsBooking,
+      claimsOrder,
       ragChunksUsed: relevantKnowledge.length,
       usedFallback,
       groundingBlocked,
@@ -1495,4 +1534,4 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
   }
 };
 
-module.exports = { askGroq, ragSearch, searchKnowledge, rankAndFilterProducts, shouldExpandWithLLM, buildVocabulary, getSubQueries, extractSearchTerms, retrieveFromLargeCatalog, detectCategory, buildBrowse, isBrowseRequest, buildSystemPrompt, stripRepeatedGreeting, claimsAppointmentConfirmed, buildUpcomingDays };
+module.exports = { askGroq, ragSearch, searchKnowledge, rankAndFilterProducts, shouldExpandWithLLM, buildVocabulary, getSubQueries, extractSearchTerms, retrieveFromLargeCatalog, detectCategory, buildBrowse, isBrowseRequest, buildSystemPrompt, stripRepeatedGreeting, claimsAppointmentConfirmed, claimsAppointmentMoved, claimsOrderConfirmed, buildUpcomingDays };

@@ -433,7 +433,7 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
       .select('*')
       .eq('session_id', sessionUuid)
       .eq('contact_phone', contactPhone);
-    convQuery = await acotarAlNumero(convQuery, telefonoDueno);
+    convQuery = acotarAlNumero(convQuery, telefonoDueno);
     const { data: existingConvs } = await convQuery.order('last_message_at', { ascending: false }).limit(1);
 
     if (existingConvs && existingConvs.length > 0) {
@@ -1070,7 +1070,7 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
   }
 
   // ── 10. RAG + Groq: generar respuesta ─────────────────────────────────────
-  let { reply, isLeadHot, tokensUsed, imageName, sendCatalog, newAppointmentData, cancelAppointmentData, modifyAppointmentData, newOrderData, modifyOrderData, cancelOrderData, clientData, ragChunksUsed, productsUsed, claimsBooking } = await askGroq(
+  let { reply, isLeadHot, tokensUsed, imageName, sendCatalog, newAppointmentData, cancelAppointmentData, modifyAppointmentData, newOrderData, modifyOrderData, cancelOrderData, clientData, ragChunksUsed, productsUsed, claimsBooking, claimsOrder } = await askGroq(
     aiText, business, knowledge, history, products,
     // Horarios ya ocupados: el bot no los ofrece y no confirma una cita que no se puede agendar
     { ...catalogOptions, contactPhoneUnknown: phoneUnknown, busySlots: await loadBusySlots(supabase, business).catch(() => []), catalogPdf }
@@ -1129,6 +1129,16 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
     isLeadHot = true;
   }
 
+  // Lo mismo con los pedidos: "tu pedido quedó registrado" solo si de verdad se guardó
+  const orderSaved = [bookingResult.newOrder, bookingResult.modifyOrder]
+    .some(r => r && ['created', 'duplicate', 'updated', 'created_from_modify', 'needs_review'].includes(r.status));
+  if (claimsOrder && !orderSaved) {
+    const failed = bookingResult.newOrder;
+    console.warn(`[PEDIDO] 🛑 El bot iba a confirmar un pedido que NO se guardó (${failed ? `${failed.status}: ${failed.reason || ''}` : 'sin datos del pedido'}): se corrige la respuesta`);
+    reply = 'Ya tengo tus datos ✍️ Un asesor del equipo revisa tu pedido y te lo confirma en un momento por aquí.';
+    isLeadHot = true;
+  }
+
   // ── 13. Lead caliente / Cierre → notificar al dueño ────────────────────────
   // Paso a paso de este mensaje, sin contenido ni teléfonos
   recordPipeline({
@@ -1139,6 +1149,10 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
     dijoQueQuedoAgendada: Boolean(claimsBooking),
     cita: bookingResult.newAppointment || bookingResult.modifyAppointment
       ? { status: (bookingResult.newAppointment || bookingResult.modifyAppointment).status, motivo: (bookingResult.newAppointment || bookingResult.modifyAppointment).reason || null }
+      : null,
+    dijoQueQuedoElPedido: Boolean(claimsOrder),
+    pedido: bookingResult.newOrder || bookingResult.modifyOrder
+      ? { status: (bookingResult.newOrder || bookingResult.modifyOrder).status, motivo: (bookingResult.newOrder || bookingResult.modifyOrder).reason || null }
       : null,
     leadCaliente: Boolean(isLeadHot),
   });
