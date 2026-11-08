@@ -693,6 +693,14 @@ const buildSystemPrompt = (business, relevantKnowledge, allKnowledge, products =
     hour: '2-digit', minute: '2-digit', hour12: true, timeZone: tz
   });
   const isoDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(now); // YYYY-MM-DD
+  // Calendario de los próximos 14 días: el modelo calcula mal qué día de la semana cae cada fecha
+  // ("sábado 9 de noviembre" cuando el 9 es lunes). Con la tabla solo tiene que copiarla.
+  const upcomingDays = Array.from({ length: 14 }, (_, i) => {
+    const d = new Date(now.getTime() + i * 24 * 60 * 60 * 1000);
+    const label = d.toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long', timeZone: tz });
+    const iso = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(d);
+    return `${label} = ${iso}${i === 0 ? ' (hoy)' : i === 1 ? ' (mañana)' : ''}`;
+  }).join('\n');
 
   // En catálogos grandes la lista de productos es solo lo encontrado: las categorías son las de TODO el catálogo
   const distinctCategories = catalogInfo?.categories?.length
@@ -847,7 +855,9 @@ Solo sabes lo que aparece en: DATOS DEL NEGOCIO, CATÁLOGO, BASE DE CONOCIMIENTO
 - Si preguntan algo ajeno al negocio (tareas, política, recetas, bromas), responde con humor en 1 línea y vuelve al negocio, sin volver a saludar.
 
 ## FECHA ACTUAL (${tz})
-Hoy es ${currentDateStr} (${isoDateStr}), hora ${currentTimeStr}. Úsala para calcular "mañana", "el jueves", etc.
+Hoy es ${currentDateStr} (${isoDateStr}), hora ${currentTimeStr}.
+Próximos días (cópialos de aquí; nunca calcules tú qué día de la semana cae una fecha):
+${upcomingDays}
 ${business?.custom_instructions ? `
 ## INSTRUCCIONES DEL DUEÑO (máxima prioridad, cúmplelas al pie de la letra)
 ${business.custom_instructions}
@@ -913,7 +923,14 @@ ${contactPhoneUnknown ? `
 ## CITAS (${isSales ? 'visitas al punto de venta, demostraciones, servicio técnico o asesorías' : 'objetivo principal del negocio'})
 - Horario: ${hoursText || 'NO configurado: no propongas horas; pregunta su preferencia y aclara que un asesor la confirma'}.
 ${daysText ? `- Días de atención: ${daysText}. Cerrado: ${closedDaysText}. Nunca agendes en un día cerrado: ofrece el día hábil más cercano.\n` : ''}${duration > 0 ? `- Cada cita dura ${duration} minutos: la última debe terminar antes del cierre.\n` : ''}- Nunca agendes en una fecha u hora que ya pasó.
-${isSales ? '- Si el cliente quiere ver, probar o revisar algo en persona, ofrécele agendar la visita.\n' : ''}- Acuerda día y hora dentro del horario y pide su nombre si no lo tienes. Al confirmar, repite día y hora, felicítalo y añade al final (una sola vez por cita):
+${isSales ? '- Si el cliente quiere ver, probar o revisar algo en persona, ofrécele agendar la visita.\n' : ''}- AGENDA COMO UNA PERSONA, NO COMO UN FORMULARIO:
+  • Antes de responder, revisa el historial: lo que el cliente ya dijo (día, hora, nombre, motivo) YA LO TIENES. Nunca lo vuelvas a preguntar ni le cambies el día o la hora que eligió.
+  • Si eligió un día y hora válidos, acéptalos tal cual ("Listo, el lunes 9 a las 4:00 pm 👌"); no le propongas otro horario.
+  • Pide SOLO el dato que falta, de a uno y en una frase corta y natural ("¿a nombre de quién la dejo?"). No pidas "nombre completo" ni "qué servicio deseas recibir" como si fuera un trámite.
+  • Si quiere hablar con un asesor, conocer el lugar o "ir a ver", el motivo ya está claro: es una visita/asesoría. No le preguntes qué servicio.
+  • Apenas tengas día, hora y nombre, confirma de una vez: no pidas más datos de los necesarios.
+  • Mensajes de 1 a 2 líneas, sin muletillas repetidas ("¡Perfecto! 😊" en cada mensaje) y máximo 1 emoji.
+- Acuerda día y hora dentro del horario y pide su nombre si no lo tienes. Al confirmar, repite día y hora, felicítalo y añade al final (una sola vez por cita):
 [LEAD_CALIENTE]
 [NUEVA_CITA: {"nombre": "...", ${contactPhoneUnknown ? '"telefono": "...", ' : ''}"servicio": "...", "fecha": "YYYY-MM-DD", "hora": "HH:MM:00"}]
 - Si pide cancelar su cita, confírmalo con calidez en menos de 3 líneas y añade al final:
@@ -928,6 +945,17 @@ ${busySlots.length ? `- HORARIOS YA OCUPADOS (otras citas; NO los ofrezcas ni lo
 - La foto se envía SOLA con esa etiqueta. ESTÁ PROHIBIDO decir "te la envío en un momento", "ya te la mando", "enseguida te la paso" o prometer mandarla después: si la vas a enviar, pon la etiqueta AHORA y acompáñala de una frase corta ("¡Claro! Mira 👇").
 - Usa el nombre tal como aparece en el catálogo. Solo usa la etiqueta si ese producto tiene "Foto/Imagen" registrada; si no la tiene, dile con calidez que un asesor se la comparte y NO uses la etiqueta.
 - La foto llega con el nombre y el precio en su pie: NO preguntes si quiere conocer el precio ni lo repitas. Escribe el nombre del producto EXACTAMENTE como está en el catálogo (sin cambiar letras ni números de la referencia) y pregunta si le gustaría comprarlo o ver más detalles.`;
+};
+
+// Quita un saludo al comienzo de la respuesta ("¡Hola! 👋", "Hola Kevin,", "¡Hola de nuevo!").
+// Solo el saludo: si después no queda nada, se deja la respuesta como venía.
+const stripRepeatedGreeting = (text) => {
+  if (!text) return text;
+  const cleaned = text
+    .replace(/^\s*[¡!]*\s*(hola|holi|buen(os|as)\s+(d[ií]as|tardes|noches))(\s+de\s+nuevo)?(\s+[a-záéíóúñ]+(?=\s*[,!]))?\s*[!¡.,]*\s*(\p{Extended_Pictographic}|‍|️|\s)*/iu, '')
+    .trim();
+  if (!cleaned) return text;
+  return cleaned.replace(/^([¿¡]?)(\p{L})/u, (_, mark, letter) => mark + letter.toUpperCase());
 };
 
 // ─── Respuesta Asistente Humana (Fallback Contextual de Alto Nivel) ───────────
@@ -1123,10 +1151,8 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
     const isFirstMessage = formattedHistory.length === 0;
 
     // Detectar si el bot ya saludó al usuario en mensajes previos salientes
-    const hasAlreadyGreeted = formattedHistory.some(m =>
-      m.direction === 'outbound' &&
-      (m.content.toLowerCase().includes('hola') || m.content.toLowerCase().includes('bienvenid'))
-    );
+    // Cualquier respuesta previa del bot cuenta: si ya habló con el cliente, no vuelve a saludar
+    const hasAlreadyGreeted = formattedHistory.some(m => m.direction === 'outbound');
 
     // Catálogo grande → se busca en SQL lo que pide el cliente; si no, el catálogo completo ya está en `products`
     const largeCatalog = typeof options?.searchProducts === 'function';
@@ -1328,7 +1354,8 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
 
     const isLeadHot = isLeadHotFlag || Boolean(newAppointmentData) || Boolean(newOrderData) || Boolean(clientData) || Boolean(cancelAppointmentData) || Boolean(modifyAppointmentData) || Boolean(modifyOrderData);
 
-    const reply = stripInternalTags(fullReply);
+    // Ya hubo respuesta del bot en este chat: un "¡Hola! 👋" al inicio suena a máquina que olvidó la charla
+    const reply = hasAlreadyGreeted ? stripRepeatedGreeting(stripInternalTags(fullReply)) : stripInternalTags(fullReply);
 
     // Guardar respuesta en caché Redis/RAM para consumo 0 tokens en siguientes consultas iguales.
     // Solo respuestas informativas: una que crea pedido o cita lleva datos de ESE cliente y no
@@ -1398,4 +1425,4 @@ const askGroq = async (userMessage, business, knowledge, chatHistory = [], produ
   }
 };
 
-module.exports = { askGroq, ragSearch, searchKnowledge, rankAndFilterProducts, shouldExpandWithLLM, buildVocabulary, getSubQueries, extractSearchTerms, retrieveFromLargeCatalog, detectCategory, buildBrowse, isBrowseRequest, buildSystemPrompt };
+module.exports = { askGroq, ragSearch, searchKnowledge, rankAndFilterProducts, shouldExpandWithLLM, buildVocabulary, getSubQueries, extractSearchTerms, retrieveFromLargeCatalog, detectCategory, buildBrowse, isBrowseRequest, buildSystemPrompt, stripRepeatedGreeting };

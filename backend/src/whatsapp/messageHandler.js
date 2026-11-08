@@ -68,6 +68,38 @@ const isSupersededByNewer = async (burstKey, seq) => {
 // LID cuyo chat duplicado ya se unió al del celular real en este proceso
 const mergedLidChats = new Set();
 
+// ─── Memoria corta en RAM por chat ────────────────────────────────────────────
+// Respaldo del historial de la DB. Si la conversación no se pudo leer o guardar (contacto con
+// LID, sesión sin resolver, fallo de Supabase), el bot recibía cada mensaje como el primero:
+// saludaba otra vez con "¡Hola! 👋", olvidaba el día y la hora que el cliente ya dio y volvía
+// a pedir el nombre. Con esto siempre recuerda los últimos turnos del chat.
+const RECENT_TURNS_MAX = 16;
+const RECENT_TURNS_TTL_MS = 6 * 60 * 60 * 1000;
+const recentTurns = new Map(); // `${userId}:${phone}` -> [{ content, direction, timestamp }]
+
+const rememberTurn = (key, direction, content, timestamp = new Date().toISOString()) => {
+  if (!key || !content) return;
+  const now = Date.now();
+  const list = (recentTurns.get(key) || []).filter(m => now - new Date(m.timestamp).getTime() < RECENT_TURNS_TTL_MS);
+  list.push({ content, direction, timestamp });
+  recentTurns.set(key, list.slice(-RECENT_TURNS_MAX));
+  if (recentTurns.size > 5000) recentTurns.delete(recentTurns.keys().next().value);
+};
+
+const recallTurns = (key) => {
+  const now = Date.now();
+  return (recentTurns.get(key) || []).filter(m => now - new Date(m.timestamp).getTime() < RECENT_TURNS_TTL_MS);
+};
+
+// Usa la memoria en RAM si trae respuestas del bot que la DB no tiene (la DB es la fuente normal)
+const mergeWithRecentTurns = (dbHistory, key) => {
+  const ram = recallTurns(key);
+  if (!ram.length) return dbHistory;
+  const dbBot = dbHistory.filter(m => m.direction === 'outbound').length;
+  const ramBot = ram.filter(m => m.direction === 'outbound').length;
+  return ramBot > dbBot ? ram.slice(-12) : dbHistory;
+};
+
 // ─── Extraer texto del mensaje Baileys ────────────────────────────────────────
 const extractText = (msg) => {
   if (!msg || !msg.message) return '';
@@ -354,6 +386,11 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
     const contactName = msg.pushName || contactPhone;
     const text = extractText(msg).trim();
     if (!text) return;
+    try {
+      rememberTurn(burstKey, 'inbound', text, require('./sessionManager').safeToIsoString(msg.messageTimestamp));
+    } catch (_) {
+      rememberTurn(burstKey, 'inbound', text);
+    }
 
     console.log(`[MSG] ${contactPhone} (${contactName}) → ${userId}: "${text.slice(0, 60)}"`);
 
@@ -772,6 +809,9 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
     } catch (_) {}
   }
 
+  // Si la DB no trae las respuestas del bot, se usa lo que este proceso recuerda del chat
+  history = mergeWithRecentTurns(history, burstKey);
+
   // ── 9.5 ACCESO Y CUOTA ─────────────────────────────────────────────────────
   // Regla estándar para todos los usuarios: registrarse, configurar el negocio y conectar
   // WhatsApp es libre; el bot solo responde con tarjeta registrada (prueba de 7 días, tope de
@@ -913,8 +953,9 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
 
   // Guarda la respuesta del bot y la muestra en el panel en vivo
   const recordBotReply = async (content, tokens = 0) => {
-    if (!conversation?.id) return;
     const timestamp = new Date().toISOString();
+    rememberTurn(burstKey, 'outbound', content, timestamp);
+    if (!conversation?.id) return;
     await safeQuery(() => supabase.from('messages').insert({
       conversation_id: conversation.id,
       content,
