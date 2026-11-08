@@ -890,6 +890,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-11-08** | Merge pull request #42 from Kandresdiaz/fix/citas-sin-conversacion (`a6928c4`) | Auto-deploy |
 
+| **2026-11-08** | Merge pull request #43 from Kandresdiaz/fix/chat-no-se-encontraba (`5d36018`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
