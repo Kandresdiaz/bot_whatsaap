@@ -892,6 +892,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-11-08** | Merge pull request #43 from Kandresdiaz/fix/chat-no-se-encontraba (`5d36018`) | Auto-deploy |
 
+| **2026-11-08** | Merge pull request #44 from Kandresdiaz/fix/deteccion-citas-pedidos-ia (`f007fc0`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
