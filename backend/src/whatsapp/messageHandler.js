@@ -8,6 +8,7 @@ const { resolveUserBusiness } = require('../services/businessResolver');
 const { notifyLead } = require('./notifier');
 const { handleAppointmentFlow } = require('./appointmentFlow');
 const { cutAtReset } = require('../services/chatReset');
+const { recordPipeline } = require('../services/pipelineDiag');
 const { isOutsideHours } = require('../services/businessHours');
 const { norm } = require('../ai/catalogUtils');
 const { isFullListRequest } = require('../ai/catalogIntent');
@@ -407,6 +408,7 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
 
   // ── 1. Buscar o crear conversación (por número de contacto garantizado) ─────
   let conversation = null;
+  let conversationError = null; // por qué no se pudo leer/crear (se ve en /api/debug/version)
   try {
     const { getSessionUuid } = require('./sessionManager');
     const sessionUuid = await getSessionUuid(userId);
@@ -460,11 +462,15 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
         .select()
         .limit(1);
 
-      if (insErr) console.warn('[MSG] Aviso insertando conversación:', insErr.message);
+      if (insErr) {
+        console.warn('[MSG] Aviso insertando conversación:', insErr.message);
+        conversationError = `crear: ${insErr.message}`;
+      }
       conversation = newConv && newConv[0];
     }
   } catch (e) {
     console.error('[MSG] Error con conversación:', e.message);
+    conversationError = e.message;
   }
 
   // ── 2. Guardar mensaje entrante ───────────────────────────────────────────
@@ -1124,13 +1130,26 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
   }
 
   // ── 13. Lead caliente / Cierre → notificar al dueño ────────────────────────
-  if (isLeadHot && conversation?.id) {
-    await safeQuery(() => supabase.from('conversations').update({ is_lead: true }).eq('id', conversation.id));
+  // Paso a paso de este mensaje, sin contenido ni teléfonos
+  recordPipeline({
+    conversacion: conversation?.id ? 'ok' : `FALTA (${conversationError || 'no se encontró ni se creó'})`,
+    historial: history.length,
+    respuestasBotEnHistorial: history.filter(m => m.direction === 'outbound').length,
+    etiquetas: { cita: Boolean(newAppointmentData), moverCita: Boolean(modifyAppointmentData), cancelarCita: Boolean(cancelAppointmentData), pedido: Boolean(newOrderData) },
+    dijoQueQuedoAgendada: Boolean(claimsBooking),
+    cita: bookingResult.newAppointment || bookingResult.modifyAppointment
+      ? { status: (bookingResult.newAppointment || bookingResult.modifyAppointment).status, motivo: (bookingResult.newAppointment || bookingResult.modifyAppointment).reason || null }
+      : null,
+    leadCaliente: Boolean(isLeadHot),
+  });
+
+  if (isLeadHot) {
+    if (conversation?.id) await safeQuery(() => supabase.from('conversations').update({ is_lead: true }).eq('id', conversation.id));
     try {
       const leadPhone = phoneUnknown
         ? (givenPhone(newAppointmentData) || givenPhone(newOrderData) || givenPhone(clientData) || contactPhone)
         : contactPhone;
-      await notifyLead(business, leadPhone, capturedName || contactName, text, conversation.id, sock, jid, { newAppointmentData, newOrderData, clientData });
+      await notifyLead(business, leadPhone, capturedName || contactName, text, conversation?.id || null, sock, jid, { newAppointmentData, newOrderData, clientData });
     } catch (e) {
       console.error('[MSG] Error notificando lead:', e.message);
     }

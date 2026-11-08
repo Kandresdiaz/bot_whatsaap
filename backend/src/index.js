@@ -96,6 +96,8 @@ app.get('/api/debug/version', (req, res) => {
     queue: require('./queues/messageQueue').getQueueStatus(),
     // Últimas citas que el bot intentó guardar (sin nombres ni teléfonos): status created = guardada
     bookings: require('./services/bookingActions').getRecentBookingOutcomes(),
+    // Paso a paso de los últimos mensajes respondidos: conversación, historial, etiquetas y cita
+    pipeline: require('./services/pipelineDiag').getPipeline(),
     timestamp: new Date().toISOString(),
   });
 });
