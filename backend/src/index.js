@@ -94,6 +94,8 @@ app.get('/api/debug/version', (req, res) => {
     // Capacidad de IA: llamadas en curso, en espera y proveedores en pausa por límite
     ai: require('./ai/llmPool').getPoolStatus(),
     queue: require('./queues/messageQueue').getQueueStatus(),
+    // Últimas citas que el bot intentó guardar (sin nombres ni teléfonos): status created = guardada
+    bookings: require('./services/bookingActions').getRecentBookingOutcomes(),
     timestamp: new Date().toISOString(),
   });
 });

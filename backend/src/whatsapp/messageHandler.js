@@ -1064,7 +1064,7 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
   }
 
   // ── 10. RAG + Groq: generar respuesta ─────────────────────────────────────
-  const { reply, isLeadHot, tokensUsed, imageName, sendCatalog, newAppointmentData, cancelAppointmentData, modifyAppointmentData, newOrderData, modifyOrderData, cancelOrderData, clientData, ragChunksUsed, productsUsed } = await askGroq(
+  let { reply, isLeadHot, tokensUsed, imageName, sendCatalog, newAppointmentData, cancelAppointmentData, modifyAppointmentData, newOrderData, modifyOrderData, cancelOrderData, clientData, ragChunksUsed, productsUsed, claimsBooking } = await askGroq(
     aiText, business, knowledge, history, products,
     // Horarios ya ocupados: el bot no los ofrece y no confirma una cita que no se puede agendar
     { ...catalogOptions, contactPhoneUnknown: phoneUnknown, busySlots: await loadBusySlots(supabase, business).catch(() => []), catalogPdf }
@@ -1106,6 +1106,21 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
     if (result.status === 'invalid' || result.status === 'error' || result.status === 'none' || result.status === 'needs_review') {
       console.warn(`[RESERVAS] ${action}: ${result.status}${result.reason ? ' — ' + result.reason : ''}`);
     }
+  }
+
+  // El bot le dijo al cliente que su cita quedó, pero no se guardó (sin datos, horario no válido o
+  // error de la base): no se le confirma algo que no existe. Se le dice la verdad y el dueño se entera.
+  const savedStatuses = ['created', 'duplicate', 'updated', 'created_from_modify'];
+  const bookingSaved = [bookingResult.newAppointment, bookingResult.modifyAppointment]
+    .some(r => r && savedStatuses.includes(r.status));
+  if (claimsBooking && !bookingSaved) {
+    const failed = bookingResult.newAppointment || bookingResult.modifyAppointment;
+    const outOfSlot = failed?.status === 'invalid' && /horario|no atiende|ocupado|ya pasó/.test(failed.reason || '');
+    console.warn(`[CITA] 🛑 El bot iba a confirmar una cita que NO se guardó (${failed ? `${failed.status}: ${failed.reason || ''}` : 'sin datos de la cita'}): se corrige la respuesta`);
+    reply = outOfSlot
+      ? 'Uy, ese horario no lo tengo disponible para dejarlo agendado 🙏 ¿Te sirve otro día u hora dentro de nuestro horario?'
+      : 'Ya tengo tus datos ✍️ Un asesor del equipo te confirma la cita en un momento por aquí.';
+    isLeadHot = true;
   }
 
   // ── 13. Lead caliente / Cierre → notificar al dueño ────────────────────────
