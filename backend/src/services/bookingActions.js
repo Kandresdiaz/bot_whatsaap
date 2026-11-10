@@ -78,19 +78,34 @@ const validateSlot = (business, fecha, hora, { busy = [], now = new Date() } = {
     return { ok: false, reason: `${fecha} ${time} ya pasó (ahora es ${today.date} ${today.time})` };
   }
 
-  const days = parseDays(business?.active_days);
-  const weekday = new Date(`${fecha}T12:00:00Z`).getUTCDay();
-  if (days && !days.includes(weekday)) {
-    const open = days.slice().sort((a, b) => a - b).map(d => DAY_NAMES[d]).join(', ');
-    const plural = (d) => (d.endsWith('s') ? d : `${d}s`);
-    return { ok: false, reason: `el negocio no atiende los ${plural(DAY_NAMES[weekday])} (atiende: ${open})` };
-  }
-
+  // Un horario puede CRUZAR LA MEDIANOCHE (restaurante de 6:00 pm a 2:00 am): la franja abierta
+  // es [inicio, medianoche) ∪ [0, fin], y la madrugada pertenece al turno del día anterior.
+  // Con la comparación simple de antes, un negocio de 18:00 a 02:00 rechazaba TODAS las horas.
   const start = toHHMM(business?.active_hours_start);
   const end = toHHMM(business?.active_hours_end);
-  if (start && end) {
+  const hasHours = Boolean(start && end);
+  const startMin = hasHours ? toMinutes(start) : 0;
+  const endMin = hasHours ? toMinutes(end) : 0;
+  const overnight = hasHours && endMin <= startMin;
+  const timeMin = toMinutes(time);
+  const isEarlyShift = overnight && timeMin < endMin;
+
+  const days = parseDays(business?.active_days);
+  const weekday = new Date(`${fecha}T12:00:00Z`).getUTCDay();
+  // La 1:00 am del domingo la atiende el turno que abrió el sábado
+  const shiftDay = isEarlyShift ? (weekday + 6) % 7 : weekday;
+  if (days && !days.includes(shiftDay)) {
+    const open = days.slice().sort((a, b) => a - b).map(d => DAY_NAMES[d]).join(', ');
+    const plural = (d) => (d.endsWith('s') ? d : `${d}s`);
+    return { ok: false, reason: `el negocio no atiende los ${plural(DAY_NAMES[shiftDay])} (atiende: ${open})` };
+  }
+
+  if (hasHours) {
     const duration = parseInt(business?.appointment_duration, 10) || 0;
-    if (toMinutes(time) < toMinutes(start) || toMinutes(time) + duration > toMinutes(end)) {
+    const fits = overnight
+      ? (timeMin >= startMin ? timeMin + duration <= 24 * 60 + endMin : timeMin + duration <= endMin)
+      : (timeMin >= startMin && timeMin + duration <= endMin);
+    if (!fits) {
       return { ok: false, reason: `${time} está fuera del horario (${start} - ${end}${duration ? `, cada cita dura ${duration} min` : ''})` };
     }
   }

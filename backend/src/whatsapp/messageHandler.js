@@ -153,6 +153,36 @@ const getImageMessage = (msg) => {
   return m?.imageMessage || null;
 };
 
+// ─── Devuelve el audioMessage (nota de voz) si el mensaje trae uno ──────────
+const getAudioMessage = (msg) => {
+  let m = msg?.message;
+  if (!m) return null;
+  if (m.ephemeralMessage) m = m.ephemeralMessage.message;
+  if (m?.viewOnceMessage) m = m.viewOnceMessage.message;
+  if (m?.viewOnceMessageV2) m = m.viewOnceMessageV2.message;
+  if (m?.viewOnceMessageV2Extension) m = m.viewOnceMessageV2Extension.message;
+  return m?.audioMessage || null;
+};
+
+// Pasa la nota de voz a texto para tratarla igual que un mensaje escrito. Devuelve null si no se
+// puede (sin llave de IA, audio corrupto o el servicio caído): ahí el bot pide que le escriban.
+const transcribeVoiceNote = async (msg, sock, contactPhone) => {
+  const audio = getAudioMessage(msg);
+  if (!audio) return null;
+  const { transcribeAudio, isAudioEnabled } = require('../ai/audio');
+  if (!isAudioEnabled()) return null;
+  try {
+    const { downloadMediaMessage } = require('@whiskeysockets/baileys');
+    const buffer = await downloadMediaMessage(msg, 'buffer', {}, { reuploadRequest: sock?.updateMediaMessage });
+    const text = await transcribeAudio(buffer, audio.mimetype);
+    if (text) console.log(`[AUDIO] 🎙️ ${contactPhone} dijo: "${text.slice(0, 80)}"`);
+    return text;
+  } catch (e) {
+    console.warn('[AUDIO] No se pudo descargar o transcribir la nota de voz:', e.message);
+    return null;
+  }
+};
+
 // ─── Fotos del catálogo: encontrar el producto correcto aunque lo pidan "mal" ──
 // El cliente puede pedir ver algo de mil formas ("mándame una foto", "la puedo ver?",
 // "cómo se ve", "muéstrame", "y una imagen?"). Estas piezas vuelven robusta esa búsqueda.
@@ -396,8 +426,16 @@ const handleIncomingMessage = async (sock, msg, userId, businessId) => {
 
   return enqueueIncomingMessage(contactPhone, async () => {
     const contactName = msg.pushName || contactPhone;
-    const text = extractText(msg).trim();
+    let text = extractText(msg).trim();
     if (!text) return;
+
+    // Nota de voz: se transcribe ANTES de guardar el mensaje, para que en el chat del panel quede
+    // lo que el cliente realmente dijo (y no "[Audio]") y el bot pueda cerrar el pedido igual que
+    // por escrito. Si no se logra, `text` sigue siendo "[Audio]" y más abajo se le pide que escriba.
+    if (text === '[Audio]') {
+      const transcript = await transcribeVoiceNote(msg, sock, contactPhone);
+      if (transcript) text = `🎙️ ${transcript}`;
+    }
     try {
       rememberTurn(burstKey, 'inbound', text, require('./sessionManager').safeToIsoString(msg.messageTimestamp));
     } catch (_) {
