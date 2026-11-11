@@ -65,12 +65,45 @@ const extractAllNumbers = (text) => {
 
 const MAX_QTY = 50;
 
+// ─── Cantidad escrita junto a un producto ────────────────────────────────────
+// Un pedido de restaurante casi nunca lleva una sola cantidad: "2 hamburguesas, 1 gaseosa y
+// papas". Para saber cuánto vale hay que leer la cantidad de CADA plato, no una para todo.
+// Reconoce "2 combo parche", "3 porciones de papas", "combo parche x2".
+// Hacia adelante exige la marca "x"/"por": si no, el precio que suele venir después del nombre
+// ("Combo Parche $28.000" → "combo parche 28 000") se leería como cantidad 28.
+const QTY_BEFORE_RE = /(\d{1,3})\s*(?:x|und|unds?|unidades?|porciones?|porcion|platos?|ordenes?|orden)?\s*(?:de\s+)?$/;
+const QTY_AFTER_RE = /^\s*(?:x|por)\s*(\d{1,3})\b/;
+
+const qtyNextTo = (normText, normName) => {
+  if (!normText || !normName) return 1;
+  let qty = 0;
+  let from = 0;
+  for (;;) {
+    const at = normText.indexOf(normName, from);
+    if (at === -1) break;
+    from = at + normName.length;
+    const before = QTY_BEFORE_RE.exec(normText.slice(Math.max(0, at - 16), at));
+    const after = QTY_AFTER_RE.exec(normText.slice(from, from + 10));
+    const found = Math.max(
+      before ? parseInt(before[1], 10) : 0,
+      after ? parseInt(after[1], 10) : 0,
+    );
+    qty = Math.max(qty, found >= 1 && found <= MAX_QTY ? found : 1);
+  }
+  return qty || 1;
+};
+
 // Conjunto de valores que el bot SÍ puede decir.
 // "$0" solo vale si el negocio lo dice (una prueba gratis, un envío gratis): un producto sin precio
 // registrado NO es gratis. `allowZero` es para el negocio cuyo producto es justo "$0 hoy" (BotWA).
 const buildAllowedAmounts = ({ products = [], knowledge = [], business = null, texts = [], reply = '', allowZero = false } = {}) => {
   const allowed = new Set(allowZero ? [0] : []);
   const add = (n) => { if (typeof n === 'number' && Number.isFinite(n)) allowed.add(Math.round(n)); };
+
+  // Cargos que el negocio configuró aparte del catálogo (domicilio, recargo, descuento): se
+  // guardan por separado porque el total que paga el cliente los suma al valor de los platos.
+  const fees = new Set();
+  const addFee = (n) => { if (typeof n === 'number' && Number.isFinite(n) && n > 0) fees.add(Math.round(n)); };
 
   const prices = [];
   for (const p of products) {
@@ -79,17 +112,17 @@ const buildAllowedAmounts = ({ products = [], knowledge = [], business = null, t
     prices.push({ name: normalize(p.name), price });
     add(price);
     for (let q = 2; q <= MAX_QTY; q++) add(price * q);
-    extractAllNumbers(p.description).forEach(add);
+    extractAllNumbers(p.description).forEach((v) => { add(v); addFee(v); });
   }
 
   for (const k of knowledge) {
-    extractAllNumbers(k?.title).forEach(add);
-    extractAllNumbers(k?.content).forEach(add);
+    extractAllNumbers(k?.title).forEach((v) => { add(v); addFee(v); });
+    extractAllNumbers(k?.content).forEach((v) => { add(v); addFee(v); });
   }
   if (business) {
     [business.description, business.custom_instructions, business.closing_instructions,
       business.payment_or_booking_link, business.address, business.greeting_msg]
-      .forEach(t => extractAllNumbers(t).forEach(add));
+      .forEach(t => extractAllNumbers(t).forEach((v) => { add(v); addFee(v); }));
   }
   // Lo que dijo el cliente (su presupuesto, un monto que cita) puede repetirse en la respuesta
   texts.forEach(t => extractAllNumbers(t).forEach(add));
@@ -98,13 +131,52 @@ const buildAllowedAmounts = ({ products = [], knowledge = [], business = null, t
   const normReply = normalize(reply);
   const mentioned = prices.filter(p => p.name && p.name.length >= 3 && normReply.includes(p.name)).slice(0, 8);
   const n = mentioned.length;
+  // Cada plato con la cantidad que la respuesta le puso: "2 Combo Parche y 1 Gaseosa" = 2×+1×
+  const qtys = mentioned.map(p => qtyNextTo(normReply, p.name));
+  const sums = new Set();
   for (let mask = 1; mask < (1 << n); mask++) {
-    let sum = 0;
-    for (let i = 0; i < n; i++) if (mask & (1 << i)) sum += mentioned[i].price;
-    for (let q = 1; q <= 10; q++) add(sum * q);
+    let unit = 0;
+    let withQty = 0;
+    for (let i = 0; i < n; i++) {
+      if (!(mask & (1 << i))) continue;
+      unit += mentioned[i].price;
+      withQty += mentioned[i].price * qtys[i];
+    }
+    sums.add(withQty);
+    // Cantidades parejas ("dos de cada uno"), que es lo que ya se admitía antes
+    for (let q = 1; q <= 10; q++) sums.add(unit * q);
   }
+  sums.forEach(add);
   for (let i = 0; i < n; i++) {
     for (let j = i + 1; j < n; j++) add(Math.abs(mentioned[i].price - mentioned[j].price));
+  }
+
+  // El total que paga el cliente = los platos + el domicilio (o - un descuento) que el negocio
+  // tiene configurado. Cada parte ya está respaldada, así que la suma también lo está: sin esto
+  // el bot no podía decir "son $56.000 + $5.000 de domicilio, total $61.000".
+  const extras = [...new Set(extractMoney(reply).map(a => Math.round(a)).filter(a => fees.has(a)))].slice(0, 3);
+  const e = extras.length;
+  if (e > 0 && sums.size > 0) {
+    for (let mask = 1; mask < (1 << e); mask++) {
+      let extra = 0;
+      for (let i = 0; i < e; i++) if (mask & (1 << i)) extra += extras[i];
+      for (const s of sums) {
+        add(s + extra);
+        if (s - extra > 0) add(s - extra);
+      }
+    }
+  }
+
+  // "Son $56.000 más $5.000 de domicilio, total $61.000": si un valor es la suma (o la resta) de
+  // otros que la MISMA respuesta dice y que ya están respaldados, ese valor también lo está.
+  // Cubre el total final cuando el subtotal viene de lo que ya se habló en la conversación.
+  const backed = [...new Set(extractMoney(reply).map(a => Math.round(a)).filter(a => a > 0 && allowed.has(a)))].slice(0, 6);
+  for (let i = 0; i < backed.length; i++) {
+    for (let j = i + 1; j < backed.length; j++) {
+      add(backed[i] + backed[j]);
+      add(Math.abs(backed[i] - backed[j]));
+      for (let k = j + 1; k < backed.length; k++) add(backed[i] + backed[j] + backed[k]);
+    }
   }
   return allowed;
 };
@@ -172,7 +244,16 @@ const reconcileOrderTotal = (order, products = []) => {
       const inside = [...byName.keys()].filter(n => normItem.includes(n));
       const specific = inside.filter(n => !inside.some(o => o !== n && o.includes(n)));
       if (specific.length === 1) expected = byName.get(specific[0]) * qty;
-      else if (specific.length > 1) expected = specific.reduce((s, n) => s + byName.get(n), 0);
+      else if (specific.length > 1) {
+        // Varios platos en un mismo pedido: cada uno se cobra por SU cantidad ("2 hamburguesas,
+        // 1 gaseosa" = 2×18.000 + 1×4.000). Antes se sumaban los precios unitarios y el total
+        // guardado quedaba por debajo de lo que el cliente paga.
+        const perItem = specific.map(n => qtyNextTo(normItem, n));
+        const sum = specific.reduce((s, n, i) => s + byName.get(n) * perItem[i], 0);
+        // Si ningún plato trae su propia cantidad, "cantidad" aplica al pedido completo
+        // ("2 combos de hamburguesa y gaseosa").
+        expected = perItem.some(q => q > 1) ? sum : sum * qty;
+      }
     }
   }
 

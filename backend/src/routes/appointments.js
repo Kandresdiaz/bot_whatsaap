@@ -177,12 +177,15 @@ router.get('/availability/:businessId', ownsParam('businessId'), async (req, res
     const endMin = parseInt(endTimeStr.split(':')[1]) || 0;
 
     const startTotalMinutes = startHour * 60 + startMin;
-    const endTotalMinutes = endHour * 60 + endMin;
+    let endTotalMinutes = endHour * 60 + endMin;
+    // Horario que cruza la medianoche (6:00 pm a 2:00 am): el cierre es del día siguiente, así
+    // que se le suman 24 h. Sin esto el bucle no daba ni un solo horario disponible.
+    if (endTotalMinutes <= startTotalMinutes) endTotalMinutes += 24 * 60;
     const step = parseInt(duration) || 30;
 
     const slots = [];
     for (let m = startTotalMinutes; m < endTotalMinutes; m += step) {
-      const h = Math.floor(m / 60);
+      const h = Math.floor(m / 60) % 24;
       const min = m % 60;
       const timeStr = `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
       const isBooked = bookedTimes.has(timeStr);

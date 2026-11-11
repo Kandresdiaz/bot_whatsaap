@@ -10,7 +10,13 @@ const notifyLead = async (business, contactPhone, contactName, lastMessage, conv
     let detailsText = '';
     if (extraData?.newOrderData) {
       const o = extraData.newOrderData;
-      detailsText = `\n\n📦 *NUEVO PEDIDO REGISTRADO*\n• Cliente: ${o.nombre || contactName}\n• Producto/s: ${o.producto || 'Pedido'}\n• Cantidad: ${o.cantidad || 1}\n• Total: $${o.total || 'Por liquidar'}\n• Dirección: ${o.direccion || o.ciudad || 'No especificada'}\n• Pago: ${o.metodo_pago || 'Por confirmar'}`;
+      // En un pedido de varios platos la cantidad va dentro de cada uno ("2 Hamburguesa, 1 Gaseosa"):
+      // poner además "Cantidad: 1" solo confunde al dueño, así que esa línea va únicamente cuando
+      // el pedido es de un solo producto con varias unidades.
+      const qty = parseInt(o.cantidad, 10);
+      const qtyLine = Number.isFinite(qty) && qty > 1 ? `\n• Cantidad: ${qty}` : '';
+      const totalText = Number(o.total) > 0 ? `$${Number(o.total).toLocaleString('es-CO')}` : 'Por liquidar';
+      detailsText = `\n\n📦 *NUEVO PEDIDO REGISTRADO*\n• Cliente: ${o.nombre || contactName}\n• Producto/s: ${o.producto || 'Pedido'}${qtyLine}\n• Total: ${totalText}\n• Dirección: ${o.direccion || o.ciudad || 'No especificada'}\n• Pago: ${o.metodo_pago || 'Por confirmar'}`;
     } else if (extraData?.newAppointmentData) {
       const a = extraData.newAppointmentData;
       detailsText = `\n\n📅 *NUEVA CITA AGENDADA*\n• Servicio: ${a.servicio || 'General'}\n• Fecha: ${a.fecha || 'Por coordinar'}\n• Hora: ${a.hora || 'Por coordinar'}\n• Nombre: ${a.nombre || contactName}`;
