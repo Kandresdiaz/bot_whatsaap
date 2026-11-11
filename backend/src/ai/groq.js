@@ -6,6 +6,7 @@ const { verifyReplyAmounts, verifyReplyCodes, reconcileOrderTotal } = require('.
 const { parseJsonTag, stripInternalTags } = require('./replyTags');
 const { isBrowseRequest } = require('./catalogIntent');
 const { validateSlot } = require('../services/bookingActions');
+const { detectNiche } = require('../services/nichePlaybooks');
 const { categoryKey, groupProductsByCategory } = require('../services/categories');
 
 // Lo que el cliente va a leer (sin etiquetas internas) debe ser una respuesta de verdad: una de
@@ -781,9 +782,8 @@ const buildSystemPrompt = (business, relevantKnowledge, allKnowledge, products =
 4. CONFIRMA: repite servicio, día y hora y lo que debe traer o saber (solo si está registrado).
 5. Si duda o pospone, pregunta qué le frena, resuélvelo y deja la puerta abierta con una opción de horario.`;
 
-  // Negocio de comida (restaurante, domicilios, panadería...): el pedido se cierra rápido y con adicionales
-  const isFood = /comida|restaurant|pizz|hamburgues|almuerz|corrientazo|panader|pasteler|postre|repost|cafeter|asadero|pollo|sushi|helad|comidas r[aá]pidas|food|cocina|parrilla|empanad|arepa|frit|bebida|licor/i
-    .test(`${busCategory} ${business?.description || ''}`);
+  // Tipo de negocio (restaurante, clínica, barbería, taller...): qué preguntar, ofrecer y cómo cerrar en ese rubro
+  const niche = detectNiche(business);
 
   // Las preguntas que más se repiten por WhatsApp, respondidas para vender (aplica a todo negocio)
   const salesAnswers = `
@@ -795,12 +795,20 @@ const buildSystemPrompt = (business, relevantKnowledge, allKnowledge, products =
 - URGENCIA REAL: menciona promociones, últimas unidades o tiempos de entrega SOLO si están registrados. Nunca los inventes.
 - TODO mensaje termina con un siguiente paso hacia la compra. Si el cliente se enfría, retómalo con algo concreto ("¿Te dejo separada la de $X mientras lo piensas?").`;
 
-  const foodRules = isFood ? `
-## NEGOCIO DE COMIDA (pedidos rápidos)
-- Ante "¿qué tienen?", "el menú" o "la carta": muestra lo más pedido o 3 o 4 platos con precio y pregunta "¿qué se te antoja hoy?". Si pide la carta completa, entrégala.
-- Cuando elija: confirma plato y cantidad, ofrece UNA vez la bebida, el adicional o el combo que esté en el catálogo, y pregunta "¿domicilio o para recoger?".
-- Para cerrar pide en un solo mensaje lo que falte (lo que digan las instrucciones de cierre del dueño; si no hay, nombre, dirección con barrio y forma de pago). Repite el pedido con el total (y el domicilio solo si su valor está registrado) antes de confirmarlo.
-- Tono rápido y antojador: frases cortas, describe el plato con lo que diga su descripción registrada, sin inventar ingredientes ni tiempos de entrega.` : '';
+  // Lo mismo para negocios de citas: cada consulta debe terminar en una cita en la agenda
+  const bookingAnswers = `
+## RESPUESTAS QUE AGENDAN (úsalas siempre)
+- "¿CUÁNTO VALE?": da el precio registrado de una vez y en la misma frase ofrece agendar con 2 horarios concretos ("Cuesta $X. ¿Te queda bien mañana 10:00 am o el jueves 3:00 pm?"). Si el precio depende del caso, dilo y ofrece la cita de valoración o revisión.
+- "¿TIENEN CITA HOY / ESTA SEMANA?" o "¿HAY ESPACIO?": revisa el horario, los días de atención y los HORARIOS YA OCUPADOS y ofrece los 2 huecos libres más cercanos. Nunca respondas "sí hay" sin proponer una hora.
+- "¿QUÉ SERVICIOS TIENEN?": muestra los 3 o 4 principales con precio y pregunta cuál necesita. Si pide la lista completa, entrégala.
+- "LO VOY A PENSAR" / "TE AVISO": pregunta qué duda le queda, resuélvela y ofrécele dejar el espacio apartado ("¿Te lo dejo apartado el jueves 3:00 pm? Si no puedes, lo movemos").
+- Si quiere cambiar o cancelar, hazlo sin trabas y ofrécele de una vez otro horario para no perderlo.
+- TODO mensaje termina con un siguiente paso hacia la cita (un horario concreto, un dato que falta o la confirmación).`;
+
+  // Guía del tipo de negocio detectado (no aplica a BotWA, que tiene su propio guion)
+  const nicheGuide = niche ? `
+## TU NEGOCIO ES: ${niche.label.toUpperCase()} (atiende como alguien del oficio)
+${niche.guide}` : '';
 
   const isGreetingOnly = isFirstMessage && !hasAlreadyGreeted && isSimpleGreeting(userMessage);
 
@@ -881,7 +889,7 @@ ${business.custom_instructions}
 ` : ''}
 ## MÉTODO COMERCIAL
 ${playbook}
-${isSales && !isBotwa ? salesAnswers : ''}${isSales && !isBotwa ? foodRules : ''}
+${isBotwa ? '' : isSales ? salesAnswers : bookingAnswers}${isBotwa ? '' : nicheGuide}
 
 ## ATENCIÓN AL CLIENTE
 - Lee la intención aunque el cliente escriba con errores o abreviado ("manden e catlog comple" = quiere el catálogo completo).
