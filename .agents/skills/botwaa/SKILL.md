@@ -898,6 +898,8 @@ Se ejecuta en cada `git push` a `main`:
 
 | **2026-11-11** | Merge pull request #46 from Kandresdiaz/feat/asesor-cierra-ventas (`2bdfe29`) | Auto-deploy |
 
+| **2026-11-11** | Merge pull request #47 from Kandresdiaz/feat/prompt-por-tipo-de-negocio (`7c090a4`) | Auto-deploy |
+
 ## Próximas mejoras sugeridas
 
 | Feature | Prioridad | Impacto |
