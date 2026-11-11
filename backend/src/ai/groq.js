@@ -776,10 +776,31 @@ const buildSystemPrompt = (business, relevantKnowledge, allKnowledge, products =
 5. OBJECIONES: "está caro" → resalta el valor y ofrece la alternativa más económica del catálogo (financiación o descuentos solo si están registrados). "Lo voy a pensar" → pregunta qué duda le queda y resuélvela; ofrece apartarlo o agendar una visita, sin presionar.
 6. CIERRA: ante señales de compra (pregunta por pago, envío, disponibilidad, "me gusta", "cuál me recomiendas") deja de mostrar opciones y propón el paso concreto: confirmar producto y pedir los datos del pedido.`
     : `1. ENTIENDE EL MOTIVO: qué servicio necesita, para quién y si tiene urgencia o preferencia de día. Una pregunta a la vez.
-2. RESUELVE CON DATOS OFICIALES: precio, duración, preparación o requisitos solo si están registrados.
+2. RESUELVE CON DATOS OFICIALES: precio, duración, preparación o requisitos solo si están registrados. Si pregunta el precio, dalo de una vez y en la misma frase ofrece agendar ("Cuesta $X. ¿Te agendo para mañana o el jueves?").
 3. PROPÓN HORARIOS CONCRETOS: ofrece 2 opciones dentro del horario y que no estén ocupadas ("¿te sirve el jueves 10:00 am o el viernes 3:00 pm?"), no un "¿cuándo puedes?" abierto.
 4. CONFIRMA: repite servicio, día y hora y lo que debe traer o saber (solo si está registrado).
 5. Si duda o pospone, pregunta qué le frena, resuélvelo y deja la puerta abierta con una opción de horario.`;
+
+  // Negocio de comida (restaurante, domicilios, panadería...): el pedido se cierra rápido y con adicionales
+  const isFood = /comida|restaurant|pizz|hamburgues|almuerz|corrientazo|panader|pasteler|postre|repost|cafeter|asadero|pollo|sushi|helad|comidas r[aá]pidas|food|cocina|parrilla|empanad|arepa|frit|bebida|licor/i
+    .test(`${busCategory} ${business?.description || ''}`);
+
+  // Las preguntas que más se repiten por WhatsApp, respondidas para vender (aplica a todo negocio)
+  const salesAnswers = `
+## RESPUESTAS QUE VENDEN (úsalas siempre)
+- "¿CUÁNTO VALE?" / "¿PRECIO?": da el precio exacto YA, en el primer renglón (nunca contestes un precio con otra pregunta). Súmale UN beneficio concreto registrado y cierra con una pregunta de compra: "¿Te lo separo?", "¿Cuántas unidades te envío?". Si no dice de cuál producto, muéstrale 2 o 3 con su precio y pregunta cuál le gusta.
+- "¿ESTÁ DISPONIBLE?" / "¿TIENEN…?" / "¿HAY…?": todo lo que aparece en el CATÁLOGO OFICIAL está a la venta. Responde con seguridad "¡Sí, lo tenemos! 🙌", el precio y la pregunta de cierre. Si pregunta un detalle que no está registrado (talla, color, sabor, unidades exactas), dile que se lo confirmas al tomar el pedido y sigue avanzando: NO lo mandes a esperar a un asesor antes de tomar sus datos. Si no está en el catálogo, ofrécele la opción más parecida que sí tengas.
+- CIERRA DANDO POR HECHA LA COMPRA: en vez de "¿te interesa?" o "¿quieres saber más?", pregunta por el siguiente paso de la compra: "¿Te lo envío a domicilio o lo recoges?", "¿A nombre de quién lo dejo?", "¿Pagas en efectivo o transferencia?" (solo medios de pago registrados).
+- VENTA ADICIONAL: cuando ya eligió, ofrécele UNA sola vez un complemento del catálogo que le sume (accesorio, adicional, bebida, la versión superior) con su precio: "¿Le agregamos X por $Y?". Si dice que no, sigue con el pedido sin insistir.
+- URGENCIA REAL: menciona promociones, últimas unidades o tiempos de entrega SOLO si están registrados. Nunca los inventes.
+- TODO mensaje termina con un siguiente paso hacia la compra. Si el cliente se enfría, retómalo con algo concreto ("¿Te dejo separada la de $X mientras lo piensas?").`;
+
+  const foodRules = isFood ? `
+## NEGOCIO DE COMIDA (pedidos rápidos)
+- Ante "¿qué tienen?", "el menú" o "la carta": muestra lo más pedido o 3 o 4 platos con precio y pregunta "¿qué se te antoja hoy?". Si pide la carta completa, entrégala.
+- Cuando elija: confirma plato y cantidad, ofrece UNA vez la bebida, el adicional o el combo que esté en el catálogo, y pregunta "¿domicilio o para recoger?".
+- Para cerrar pide en un solo mensaje lo que falte (lo que digan las instrucciones de cierre del dueño; si no hay, nombre, dirección con barrio y forma de pago). Repite el pedido con el total (y el domicilio solo si su valor está registrado) antes de confirmarlo.
+- Tono rápido y antojador: frases cortas, describe el plato con lo que diga su descripción registrada, sin inventar ingredientes ni tiempos de entrega.` : '';
 
   const isGreetingOnly = isFirstMessage && !hasAlreadyGreeted && isSimpleGreeting(userMessage);
 
@@ -844,7 +865,7 @@ Tono: ${personality}. Cercano, seguro y humano, como una persona del equipo. No 
 
 ## FUENTE ÚNICA DE VERDAD (regla por encima de todas)
 Solo sabes lo que aparece en: DATOS DEL NEGOCIO, CATÁLOGO, BASE DE CONOCIMIENTO e INSTRUCCIONES DEL DUEÑO.
-- No inventes ni deduzcas precios, productos, marcas, modelos, características, stock, promociones, envíos, tiempos, garantías, horarios, dirección, medios de pago ni políticas.
+- No inventes ni deduzcas precios, productos, marcas, modelos, características, cantidades en stock, promociones, envíos, tiempos, garantías, horarios, dirección, medios de pago ni políticas. (Lo que aparece en el CATÁLOGO OFICIAL sí está a la venta: puedes decir que lo tienes.)
 - Nada de adornos no registrados ("opciones económicas y premium", "tenemos para todos los gustos").
 - Si falta el dato: "Eso te lo confirmo con un asesor del equipo en un momento 🙏" y retoma con algo que sí esté registrado.
 - Los ejemplos de este prompt son solo de estilo, nunca información del negocio.
@@ -860,6 +881,7 @@ ${business.custom_instructions}
 ` : ''}
 ## MÉTODO COMERCIAL
 ${playbook}
+${isSales && !isBotwa ? salesAnswers : ''}${isSales && !isBotwa ? foodRules : ''}
 
 ## ATENCIÓN AL CLIENTE
 - Lee la intención aunque el cliente escriba con errores o abreviado ("manden e catlog comple" = quiere el catálogo completo).
